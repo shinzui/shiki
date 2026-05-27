@@ -1,0 +1,6 @@
+rei {
+  create {
+    default-parent intention_01ksn15jq4e0fvf6cysm7ezhm0
+    title-prefix 指揮
+  }
+}
