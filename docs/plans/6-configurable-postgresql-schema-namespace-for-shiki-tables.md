@@ -75,16 +75,18 @@ This section must always reflect the actual current state of the work.
   that double-quotes the validated identifier for use in SQL literals. Add unit tests
   under `shiki-core/test/Shiki/Persistence/SchemaSpec.hs` that pin down the accepted and
   rejected inputs. _(done 2026-05-27 — 4/4 cases green)_
-- [ ] M2 — Teach `Shiki.Persistence.Connection.acquirePool` to take a `Schema` argument and
+- [x] M2 — Teach `Shiki.Persistence.Connection.acquirePool` to take a `Schema` argument and
   set `search_path` on every connection acquired from the pool, either via a hasql-pool
   connection-init hook (preferred — research at the start of M2) or by appending
   `options=-c%20search_path%3D...` to the libpq connection URI (fallback). Document the
-  approach taken in the Decision Log.
-- [ ] M3 — Teach `Shiki.Persistence.Migration.runMigrations` to take a `Schema` argument
+  approach taken in the Decision Log. _(done 2026-05-27 — hook path via `PoolConfig.initSession`; downstream callers wired in M3/M5)_
+- [x] M3 — Teach `Shiki.Persistence.Migration.runMigrations` to take a `Schema` argument
   and to run `CREATE SCHEMA IF NOT EXISTS "<schema>"` inside the same transaction as
   the migration session, before `hasql-migration` initializes `schema_migrations`. The
   `001-create-runs.sql` script is **not** edited — search_path resolves `runs` to
-  `<schema>.runs`.
+  `<schema>.runs`. _(done 2026-05-27 — `withCliEnv` threads `defaultSchema`; existing
+  tasty suite stays green; live `psql` check deferred to M6's ephemeral-pg test since the
+  dev Postgres is not running in this session)_
 - [ ] M4 — Surface the schema as a CLI flag and environment variable. Add
   `Shiki.Cli.Schema` exporting `resolveSchema :: Maybe Text -> IO Schema`, with
   precedence `--db-schema` flag > `SHIKI_DB_SCHEMA` env > default `shiki`. Wire it
@@ -112,7 +114,16 @@ This section must always reflect the actual current state of the work.
 Document unexpected behaviors, bugs, optimizations, or insights discovered during
 implementation. Provide concise evidence.
 
-(None yet — this section is populated during implementation.)
+- **M2** — `hasql-pool 1.4.2` exposes `Hasql.Pool.Config.initSession :: Session () -> Setting`
+  exactly for this use case. Its docstring at
+  `src/library/other/Hasql/Pool/Config/Setting.hs:87-94` literally cites
+  `initSession (Session.sql "SET search_path TO schema1, schema2, public;")` as the
+  motivating example. The hook path described as "preferred" in the plan is therefore
+  available — no URI rewrite fallback required.
+- **M2** — `Hasql.Session.sql` (mentioned in the plan's sample code) no longer exists in
+  the `hasql` version we pin. The equivalent is `Hasql.Session.script :: Text -> Session ()`
+  (takes `Text` directly, no `Text.Encoding.encodeUtf8` wrapping). Adjusted the
+  `setSearchPath` helper accordingly.
 
 
 ## Decision Log
@@ -172,6 +183,19 @@ Record every decision made while working on the plan.
   eliminates the SQL injection risk; double-quoting handles the (now impossible) case
   of a reserved word like `user`. 63 bytes is PostgreSQL's `NAMEDATALEN` default — a
   longer identifier would be silently truncated on the server.
+  Date: 2026-05-27
+
+- Decision: M2 uses `hasql-pool`'s `PoolConfig.initSession` hook rather than the URI
+  rewrite fallback.
+  Rationale: `hasql-pool 1.4.2` exposes `initSession :: Session () -> Setting`
+  (`Hasql.Pool.Config.initSession`), invoked on every newly-acquired connection. The
+  upstream docstring at
+  `/Users/shinzui/Keikaku/hub/haskell/hasql-project/hasql-pool/src/library/other/Hasql/Pool/Config/Setting.hs:87-94`
+  even uses our exact `SET search_path TO …` example. The connection string stays
+  untouched and the schema lives in one obvious place at the pool config.
+  Note: the plan's sample code calls `Hasql.Session.sql`; in the pinned `hasql` version
+  that helper is named `Hasql.Session.script` and takes `Text` directly. The
+  implementation uses `Session.script`.
   Date: 2026-05-27
 
 - Decision: Do **not** provide an automatic data migration from `public.runs` to

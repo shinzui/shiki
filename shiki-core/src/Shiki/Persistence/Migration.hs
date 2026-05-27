@@ -8,8 +8,12 @@ module Shiki.Persistence.Migration
   , migrationsDirectory
   ) where
 
+import Shiki.Persistence.Schema (Schema, quoteSchema)
+
+import "text" Data.Text.Encoding qualified as Text.Encoding
 import "hasql-migration" Hasql.Migration qualified as Migration
 import "hasql-pool" Hasql.Pool qualified as Pool
+import "hasql-transaction" Hasql.Transaction qualified as Transaction
 import "hasql-transaction" Hasql.Transaction.Sessions
   ( IsolationLevel (Serializable)
   , Mode (Write)
@@ -23,16 +27,24 @@ import "hasql" Hasql.Session qualified as Session
 migrationsDirectory :: IO FilePath
 migrationsDirectory = Paths.getDataFileName "sql/migrations"
 
--- | Apply every unapplied migration script in 'migrationsDirectory'.
+-- | Apply every unapplied migration script in 'migrationsDirectory'
+--   inside the given 'Schema'. The first thing the migration transaction
+--   does is @CREATE SCHEMA IF NOT EXISTS \"\<schema\>\"@ so the
+--   @schema_migrations@ table that @hasql-migration@ subsequently creates
+--   lands inside the configured schema rather than @public@. The pool's
+--   @initSession@ hook (see "Shiki.Persistence.Connection") has already
+--   set @search_path@ on the connection, so unqualified table references
+--   in the migration scripts resolve correctly.
+--
 --   Throws 'error' on pool/transaction failure; 'hasql-migration' also
 --   throws if a previously-applied script's checksum no longer matches
 --   what was recorded.
-runMigrations :: Pool.Pool -> IO ()
-runMigrations pool = do
+runMigrations :: Pool.Pool -> Schema -> IO ()
+runMigrations pool schema = do
   dir <- migrationsDirectory
   scripts <- Migration.loadMigrationsFromDirectory dir
   let cmds = Migration.MigrationInitialization : scripts
-  result <- Pool.use pool (migrationSession cmds)
+  result <- Pool.use pool (migrationSession schema cmds)
   case result of
     Left poolErr ->
       error ("shiki: migration pool error: " <> show poolErr)
@@ -41,14 +53,19 @@ runMigrations pool = do
       error ("shiki: migration failed: " <> show merr)
 
 migrationSession
-  :: [Migration.MigrationCommand]
+  :: Schema
+  -> [Migration.MigrationCommand]
   -> Session.Session (Maybe Migration.MigrationError)
-migrationSession scripts =
-  transaction Serializable Write (runFirstError scripts)
+migrationSession schema scripts =
+  transaction Serializable Write $ do
+    Transaction.sql
+      ( Text.Encoding.encodeUtf8
+          ("CREATE SCHEMA IF NOT EXISTS " <> quoteSchema schema <> ";")
+      )
+    runFirstError scripts
   where
     runFirstError [] = pure Nothing
     runFirstError (c : cs) =
       Migration.runMigration c >>= \case
         Just err -> pure (Just err)
         Nothing -> runFirstError cs
-

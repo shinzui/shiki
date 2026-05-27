@@ -8,6 +8,7 @@ import Shiki.Persistence.Connection
   , releasePool
   )
 import Shiki.Persistence.Migration (runMigrations)
+import Shiki.Persistence.Schema (defaultSchema)
 import Shiki.Persistence.Run
   ( NewRun (..)
   , RunRecord
@@ -32,7 +33,7 @@ tests =
   testGroup "Shiki.Persistence.Run (list)"
     [ testCase "listRecentRunsStatement returns rows newest-first" $
         withTempPg $ \pool -> do
-          runMigrations pool
+          runMigrations pool defaultSchema
           t0 <- getCurrentTime
           let mkRow svc offsetSec = do
                 rid <- newRunId
@@ -71,7 +72,7 @@ withTempPg :: (Pool.Pool -> IO ()) -> IO ()
 withTempPg action = do
   result <- EpPg.with $ \db ->
     bracket
-      (acquirePool (ConnectionString (EpPg.connectionString db)))
+      (acquirePool (ConnectionString (EpPg.connectionString db)) defaultSchema)
       releasePool
       action
   case result of

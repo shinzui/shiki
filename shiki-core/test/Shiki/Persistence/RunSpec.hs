@@ -8,6 +8,7 @@ import Shiki.Persistence.Connection
   , releasePool
   )
 import Shiki.Persistence.Migration (runMigrations)
+import Shiki.Persistence.Schema (defaultSchema)
 import Shiki.Persistence.Run
   ( NewRun (..)
   , RunCompletion (..)
@@ -35,7 +36,7 @@ tests =
   testGroup "Shiki.Persistence.Run"
     [ testCase "insert / mark running / complete / list" $
         withTempPg $ \pool -> do
-          runMigrations pool
+          runMigrations pool defaultSchema
           now <- getCurrentTime
           rid <- newRunId
 
@@ -79,7 +80,7 @@ tests =
           assertBool "one row recent" (length (recent :: [RunRecord]) == 1)
     , testCase "Failed status round-trips" $
         withTempPg $ \pool -> do
-          runMigrations pool
+          runMigrations pool defaultSchema
           now <- getCurrentTime
           rid <- newRunId
           useStmt pool insertRunStatement
@@ -118,7 +119,7 @@ withTempPg :: (Pool.Pool -> IO ()) -> IO ()
 withTempPg action = do
   result <- EpPg.with $ \db ->
     bracket
-      (acquirePool (ConnectionString (EpPg.connectionString db)))
+      (acquirePool (ConnectionString (EpPg.connectionString db)) defaultSchema)
       releasePool
       action
   case result of

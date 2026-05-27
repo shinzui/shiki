@@ -10,8 +10,11 @@ module Shiki.Persistence.Connection
 
 import Shiki.Prelude
 
+import Shiki.Persistence.Schema (Schema, quoteSchema)
+
 import "time" Data.Time.Clock (DiffTime)
 import "hasql" Hasql.Connection.Settings qualified as ConnSettings
+import "hasql" Hasql.Session qualified as Session
 import "hasql-pool" Hasql.Pool qualified as Pool
 import "hasql-pool" Hasql.Pool.Config qualified as PoolConfig
 
@@ -22,8 +25,13 @@ newtype ConnectionString = ConnectionString { unConnectionString :: Text }
 -- | Acquire a 5-connection pool with a 10-second acquisition timeout and
 --   1-hour idle and aging timeouts. Sized for a short-lived CLI; raise
 --   the pool size if 'shiki' grows long-running responsibilities.
-acquirePool :: ConnectionString -> IO Pool.Pool
-acquirePool (ConnectionString cs) =
+--
+--   Every connection handed out by the pool first runs
+--   @SET search_path TO "\<schema\>", public;@ via @hasql-pool@'s
+--   @initSession@ hook, so unqualified table references in 'Hasql.Statement'
+--   values resolve into the configured 'Schema'.
+acquirePool :: ConnectionString -> Schema -> IO Pool.Pool
+acquirePool (ConnectionString cs) schema =
   Pool.acquire
     ( PoolConfig.settings
         [ PoolConfig.size 5
@@ -31,8 +39,13 @@ acquirePool (ConnectionString cs) =
         , PoolConfig.idlenessTimeout (3600 :: DiffTime)
         , PoolConfig.agingTimeout (3600 :: DiffTime)
         , PoolConfig.staticConnectionSettings (ConnSettings.connectionString cs)
+        , PoolConfig.initSession (setSearchPath schema)
         ]
     )
+
+setSearchPath :: Schema -> Session.Session ()
+setSearchPath schema =
+  Session.script ("SET search_path TO " <> quoteSchema schema <> ", public;")
 
 releasePool :: Pool.Pool -> IO ()
 releasePool = Pool.release

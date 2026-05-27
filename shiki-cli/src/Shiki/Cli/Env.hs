@@ -15,6 +15,7 @@ import Shiki.Prelude
 import Shiki.K8s.Client (ClientEnv, loadDefaultClientConfig)
 import Shiki.Persistence.Connection (ConnectionString, acquirePool, releasePool)
 import Shiki.Persistence.Migration (runMigrations)
+import Shiki.Persistence.Schema (defaultSchema)
 
 import "base" Control.Exception (bracket)
 import "hasql-pool" Hasql.Pool qualified as Pool
@@ -32,7 +33,7 @@ data CliEnv = CliEnv
 --   explicit teardown.
 withCliEnv :: ConnectionString -> (CliEnv -> IO a) -> IO a
 withCliEnv cs action =
-  bracket (acquirePool cs) releasePool $ \p -> do
-    runMigrations p
+  bracket (acquirePool cs defaultSchema) releasePool $ \p -> do
+    runMigrations p defaultSchema
     cl <- loadDefaultClientConfig
     action CliEnv { pool = p, client = cl }
