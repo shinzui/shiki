@@ -25,9 +25,7 @@
             pkgs.cabal-install
             pkgs.pkg-config
             pkgs.postgresql
-            (haskellPackages.ghcWithPackages (ps: [
-              ps.haskell-language-server
-            ]))
+            haskellPackages.ghc
           ]
           ++ pkgs.lib.optional true pkgs.process-compose;
 
