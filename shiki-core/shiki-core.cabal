@@ -107,6 +107,7 @@ test-suite shiki-core-test
     -with-rtsopts=-N
   other-modules:
     Shiki.K8s.JobBuilderSpec
+    Shiki.Persistence.RunListSpec
     Shiki.Persistence.RunSpec
     Shiki.Service.ConfigSpec
 
@@ -123,3 +124,4 @@ test-suite shiki-core-test
     tasty ^>=1.5,
     tasty-hunit ^>=0.10,
     text ^>=2.1,
+    time ^>=1.12,
