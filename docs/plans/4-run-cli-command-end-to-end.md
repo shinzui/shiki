@@ -61,7 +61,7 @@ longer needed.
 - [x] Add `Shiki.Cli.Config` exporting `resolveConnectionString`. _(2026-05-27)_
 - [x] Add `Shiki.Cli.Env` exporting `CliEnv` and `withCliEnv` (acquires pool, runs
   migrations, loads kubeconfig). _(2026-05-27)_
-- [ ] Add `Shiki.Cli.Run` exporting `RunOptions`, `runOptionsParser`, and `runRun`.
+- [x] Add `Shiki.Cli.Run` exporting `RunOptions`, `runOptionsParser`, and `runRun`. _(2026-05-27)_
 - [ ] Extend `Shiki.Cli.Command` sum type with `Run RunOptions` constructor (the
   canonical type per the MasterPlan's Integration Points).
 - [ ] Remove the placeholder `hello` subcommand from `Shiki.Cli`.
@@ -77,7 +77,19 @@ longer needed.
 
 ## Surprises & Discoveries
 
-(None yet.)
+- 2026-05-27 (M2): The plan's `round (diffUTCTime endedAt startedAt * 1000
+  :: Double)` does not typecheck under GHC 9.12 — `diffUTCTime` returns
+  `NominalDiffTime`, which does not have a `Num` instance compatible
+  with the literal-typed `Double`. Lifted the conversion into a small
+  `elapsedMs :: UTCTime -> UTCTime -> Int` helper that goes through
+  `realToFrac` first. Future code in this repo that needs millisecond
+  durations should use the same helper rather than re-deriving it.
+
+- 2026-05-27 (M2): The plan's `noWaitPath`/`waitPath` type signatures use
+  partial type signatures (`_`) for `ServiceConfig` and
+  `DeploymentSnapshot`. That requires `PartialTypeSignatures`, which is
+  not enabled in `shiki-cli/shiki-cli.cabal`'s `default-extensions`.
+  Wrote out the explicit types — no functional change, just signatures.
 
 
 ## Decision Log
