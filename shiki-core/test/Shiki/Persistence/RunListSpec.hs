@@ -2,13 +2,6 @@ module Shiki.Persistence.RunListSpec (tests) where
 
 import Shiki.Prelude
 
-import Shiki.Persistence.Connection
-  ( ConnectionString (..)
-  , acquirePool
-  , releasePool
-  )
-import Shiki.Persistence.Migration (runMigrations)
-import Shiki.Persistence.Schema (defaultSchema)
 import Shiki.Persistence.Run
   ( NewRun (..)
   , RunRecord
@@ -17,11 +10,10 @@ import Shiki.Persistence.Run
   , listRecentRunsStatement
   , newRunId
   )
+import Shiki.Persistence.TestPg (withSchemaPool)
 
-import "base" Control.Exception (bracket)
 import "aeson" Data.Aeson qualified as Aeson
 import "time" Data.Time.Clock (addUTCTime)
-import "ephemeral-pg" EphemeralPg qualified as EpPg
 import "hasql-pool" Hasql.Pool qualified as Pool
 import "hasql" Hasql.Session qualified as Session
 import "hasql" Hasql.Statement (Statement)
@@ -32,8 +24,7 @@ tests :: TestTree
 tests =
   testGroup "Shiki.Persistence.Run (list)"
     [ testCase "listRecentRunsStatement returns rows newest-first" $
-        withTempPg $ \pool -> do
-          runMigrations pool defaultSchema
+        withSchemaPool $ \pool -> do
           t0 <- getCurrentTime
           let mkRow svc offsetSec = do
                 rid <- newRunId
@@ -67,18 +58,6 @@ tests =
             "all rows are svc-a"
             (all (\r -> r ^. #serviceName == "svc-a") aOnly)
     ]
-
-withTempPg :: (Pool.Pool -> IO ()) -> IO ()
-withTempPg action = do
-  result <- EpPg.with $ \db ->
-    bracket
-      (acquirePool (ConnectionString (EpPg.connectionString db)) defaultSchema)
-      releasePool
-      action
-  case result of
-    Right () -> pure ()
-    Left err ->
-      fail ("ephemeral-pg failed to start: " <> show (EpPg.renderStartError err))
 
 useStmt :: Pool.Pool -> Statement a () -> a -> IO ()
 useStmt pool stmt input =

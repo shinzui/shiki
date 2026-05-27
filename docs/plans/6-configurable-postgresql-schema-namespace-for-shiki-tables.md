@@ -95,9 +95,11 @@ This section must always reflect the actual current state of the work.
   enough; nothing else changes in the CLI handlers because table references stay
   unqualified. _(done 2026-05-27 — `cabal run shiki -- --help` lists `--db-schema
   SCHEMA` with the expected help text)_
-- [ ] M5 — Update the existing tasty suite so each test runs against a unique schema
+- [x] M5 — Update the existing tasty suite so each test runs against a unique schema
   (e.g. `shiki_test_<random>`) instead of the default `shiki`. This proves the
-  configurability is real and isolates concurrent test runs.
+  configurability is real and isolates concurrent test runs. _(done 2026-05-27 — new
+  `Shiki.Persistence.TestPg` helper drives `RunSpec` + `RunListSpec` with a UUID-derived
+  per-test schema; all 10 tests still green)_
 - [ ] M6 — Add an integration test
   `shiki-core/test/Shiki/Persistence/SchemaIsolationSpec.hs` that, against an
   ephemeral Postgres, runs migrations with `Schema "alpha"` and `Schema "beta"`

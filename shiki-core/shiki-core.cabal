@@ -111,6 +111,7 @@ test-suite shiki-core-test
     Shiki.Persistence.RunListSpec
     Shiki.Persistence.RunSpec
     Shiki.Persistence.SchemaSpec
+    Shiki.Persistence.TestPg
     Shiki.Service.ConfigSpec
 
   build-depends:
@@ -127,3 +128,4 @@ test-suite shiki-core-test
     tasty-hunit ^>=0.10,
     text ^>=2.1,
     time ^>=1.12,
+    uuid ^>=1.3,

@@ -2,13 +2,6 @@ module Shiki.Persistence.RunSpec (tests) where
 
 import Shiki.Prelude
 
-import Shiki.Persistence.Connection
-  ( ConnectionString (..)
-  , acquirePool
-  , releasePool
-  )
-import Shiki.Persistence.Migration (runMigrations)
-import Shiki.Persistence.Schema (defaultSchema)
 import Shiki.Persistence.Run
   ( NewRun (..)
   , RunCompletion (..)
@@ -21,10 +14,9 @@ import Shiki.Persistence.Run
   , newRunId
   )
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
+import Shiki.Persistence.TestPg (withSchemaPool)
 
-import "base" Control.Exception (bracket)
 import "aeson" Data.Aeson qualified as Aeson
-import "ephemeral-pg" EphemeralPg qualified as EpPg
 import "hasql-pool" Hasql.Pool qualified as Pool
 import "hasql" Hasql.Session qualified as Session
 import "hasql" Hasql.Statement (Statement)
@@ -35,8 +27,7 @@ tests :: TestTree
 tests =
   testGroup "Shiki.Persistence.Run"
     [ testCase "insert / mark running / complete / list" $
-        withTempPg $ \pool -> do
-          runMigrations pool defaultSchema
+        withSchemaPool $ \pool -> do
           now <- getCurrentTime
           rid <- newRunId
 
@@ -79,8 +70,7 @@ tests =
           recent <- useStmt' pool listRecentRunsStatement (10 :: Int)
           assertBool "one row recent" (length (recent :: [RunRecord]) == 1)
     , testCase "Failed status round-trips" $
-        withTempPg $ \pool -> do
-          runMigrations pool defaultSchema
+        withSchemaPool $ \pool -> do
           now <- getCurrentTime
           rid <- newRunId
           useStmt pool insertRunStatement
@@ -111,21 +101,6 @@ tests =
               assertEqual "status" Failed (r ^. #status)
               assertEqual "error" (Just "OOMKilled") (r ^. #errorMessage)
     ]
-
--- | Spin up a throwaway PostgreSQL via 'ephemeral-pg', acquire a hasql
---   pool against it, hand both to the action, and tear everything down
---   regardless of failures.
-withTempPg :: (Pool.Pool -> IO ()) -> IO ()
-withTempPg action = do
-  result <- EpPg.with $ \db ->
-    bracket
-      (acquirePool (ConnectionString (EpPg.connectionString db)) defaultSchema)
-      releasePool
-      action
-  case result of
-    Right () -> pure ()
-    Left err ->
-      fail ("ephemeral-pg failed to start: " <> show (EpPg.renderStartError err))
 
 -- | Run a write-style 'Statement' (no result) against the pool and
 --   collapse any pool error into a test failure.
