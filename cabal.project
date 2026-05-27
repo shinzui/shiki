@@ -2,6 +2,37 @@ packages:
   shiki-core
   shiki-cli
 
+-- baikai (the unified AI-provider library at /Users/shinzui/Keikaku/bokuno/baikai) is
+-- not yet on Hackage. Pulled in by path while it stabilises; flip to a
+-- source-repository-package entry once it tags a release.
+packages:
+  /Users/shinzui/Keikaku/bokuno/baikai/baikai
+  /Users/shinzui/Keikaku/bokuno/baikai/baikai-claude
+  /Users/shinzui/Keikaku/bokuno/baikai/baikai-openai
+
+-- baikai pins streamly and streamly-core to a shinzui fork because the
+-- project depends on the unreleased 0.12/0.4 package pair. Mirror the
+-- entries from baikai/cabal.project so the dep tree resolves identically.
+source-repository-package
+  type: git
+  location: https://github.com/shinzui/streamly-project
+  tag: f8e33b5600f5ddadc17ce5d9a8e45a16c09899cb
+  subdir: streamly
+
+source-repository-package
+  type: git
+  location: https://github.com/shinzui/streamly-project
+  tag: f8e33b5600f5ddadc17ce5d9a8e45a16c09899cb
+  subdir: streamly/core
+
+-- baikai's vendored streamly packages ship live tasty suites that we do
+-- not want to drag into `cabal test all`. Library only.
+package streamly
+  tests: False
+
+package streamly-core
+  tests: False
+
 -- The Hackage `hasql-migration 0.3.1` still uses the old hidden `Statement`
 -- data constructor and does not compile against hasql 1.10. The user's local
 -- fork at shinzui/hasql-migration has already been ported to the smart
@@ -47,10 +78,14 @@ source-repository-package
 -- Allow newer constraints where dhall and hoauth2 lag behind the kubernetes-api
 -- side of the dep tree. dhall 1.42 caps http-client-tls < 0.4 via its
 -- use-http-client-tls flag (manual, can't be flipped); hoauth2 caps crypton < 1.1
--- but works fine against the local 1.1.2 fork.
+-- but works fine against the local 1.1.2 fork. The Hackage `claude` library
+-- (pulled in by baikai-claude) caps http-client-tls < 0.4 but builds fine
+-- against 0.4; same for the `openai` library against base/text bumps.
 allow-newer:
   dhall:http-client-tls,
-  hoauth2:crypton
+  hoauth2:crypton,
+  claude:http-client-tls,
+  openai:http-client-tls
 
 -- aeson 2.3 breaks too much of the surrounding dep tree (hoauth2, kubernetes-api
 -- transitive deps). Pin to 2.2.x explicitly.

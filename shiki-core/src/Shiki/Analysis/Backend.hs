@@ -14,6 +14,7 @@ module Shiki.Analysis.Backend
 
 import Shiki.Prelude
 
+import Shiki.Analysis.Baikai (runBaikai)
 import Shiki.Analysis.Heuristic (summarizeFailure)
 import Shiki.Service.Config qualified as Cfg
 
@@ -65,8 +66,18 @@ runAnalyzer kind input = case kind of
             , source  = "heuristic"
             }
       )
-  Baikai _ ->
-    pure (Left (AnalyzerBaikaiError "backend not yet wired (M7)"))
+  Baikai modelId -> do
+    r <- runBaikai modelId input
+    case r of
+      Left err -> pure (Left (AnalyzerBaikaiError err))
+      Right t  ->
+        pure
+          ( Right
+              AnalyzerResult
+                { summary = Just t
+                , source  = "baikai:" <> modelId
+                }
+          )
   None ->
     pure (Left AnalyzerBackendDisabled)
 

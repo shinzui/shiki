@@ -20,6 +20,14 @@ tests =
         case r of
           Left AnalyzerBackendDisabled -> pure ()
           other -> fail ("expected AnalyzerBackendDisabled, got " <> show other)
+    , testCase "Baikai with an unknown model id returns AnalyzerBaikaiError" $ do
+        r <- runAnalyzer (Baikai "no-such-model") "x"
+        case r of
+          Left (AnalyzerBaikaiError msg) ->
+            assertBool
+              "error mentions the offending id"
+              ("no-such-model" `Text.isInfixOf` msg)
+          other -> fail ("expected AnalyzerBaikaiError, got " <> show other)
     , testCase "Heuristic on a Python traceback returns Right with source = \"heuristic\"" $ do
         let logs =
               Text.unlines
