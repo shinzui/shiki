@@ -50,8 +50,8 @@ consumers must not extend it locally.
   unit — the `codedownio/kubernetes-api` repo bundles many version-specific
   packages) plus the upstream-jose-jwt and shinzui/hoauth2 forks needed to
   reconcile the OIDC auth chain with the `ram`-based crypton fork. _(2026-05-27)_
-- [ ] Add `Shiki.K8s.Client` exporting `loadDefaultClientConfig :: IO ClientEnv` (wraps
-  kubeconfig loading from `~/.kube/config` plus auth handlers).
+- [x] Add `Shiki.K8s.Client` exporting `loadDefaultClientConfig :: IO ClientEnv` (wraps
+  kubeconfig loading from `~/.kube/config` plus auth handlers). _(2026-05-27)_
 - [ ] Add `Shiki.K8s.Introspection` exporting `inspectDeployment :: ClientEnv ->
   Namespace -> DeploymentName -> IO DeploymentSnapshot` (returns image, configmap name,
   secret name, service account, node selector for the named container of the named
