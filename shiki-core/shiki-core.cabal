@@ -53,6 +53,7 @@ library
     Shiki.Persistence.Migration
     Shiki.Persistence.Run
     Shiki.Persistence.RunStatus
+    Shiki.Persistence.Schema
     Shiki.Service.Config
     Shiki.Service.Config.Dhall
 
@@ -109,6 +110,7 @@ test-suite shiki-core-test
     Shiki.K8s.JobBuilderSpec
     Shiki.Persistence.RunListSpec
     Shiki.Persistence.RunSpec
+    Shiki.Persistence.SchemaSpec
     Shiki.Service.ConfigSpec
 
   build-depends:
