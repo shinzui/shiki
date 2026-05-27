@@ -113,6 +113,7 @@ test-suite shiki-core-test
     Shiki.Analysis.BackendSpec
     Shiki.Analysis.HeuristicSpec
     Shiki.K8s.JobBuilderSpec
+    Shiki.Persistence.ErrorSummaryColumnSpec
     Shiki.Persistence.RunListSpec
     Shiki.Persistence.RunSpec
     Shiki.Persistence.SchemaIsolationSpec

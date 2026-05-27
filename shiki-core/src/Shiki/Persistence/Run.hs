@@ -18,6 +18,7 @@ module Shiki.Persistence.Run
   , insertRunStatement
   , markRunRunningStatement
   , completeRunStatement
+  , updateErrorSummaryStatement
   , getRunStatement
   , listRecentRunsStatement
   , listRecentRunsByServiceStatement
@@ -66,6 +67,8 @@ data RunRecord = RunRecord
   , logTail :: !(Maybe Text)
   , serviceConfig :: !Aeson.Value
   , errorMessage :: !(Maybe Text)
+  , errorSummary :: !(Maybe Text)
+  , errorSummarySource :: !Text
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -98,6 +101,8 @@ data RunCompletion = RunCompletion
   , durationMs :: !Int
   , logTail :: !(Maybe Text)
   , errorMessage :: !(Maybe Text)
+  , errorSummary :: !(Maybe Text)
+  , errorSummarySource :: !Text
   }
   deriving stock (Generic, Eq, Show)
 
@@ -146,13 +151,15 @@ completeRunStatement = preparable sql encoder Decoders.noResult
     sql =
       """
       UPDATE runs
-         SET status       = $2,
-             exit_code    = $3,
-             ended_at     = $4,
-             duration_ms  = $5,
-             log_tail     = $6,
-             error        = $7,
-             updated_at   = now()
+         SET status                = $2,
+             exit_code             = $3,
+             ended_at              = $4,
+             duration_ms           = $5,
+             log_tail              = $6,
+             error                 = $7,
+             error_summary         = $8,
+             error_summary_source  = $9,
+             updated_at            = now()
        WHERE id = $1
       """
     encoder =
@@ -163,6 +170,27 @@ completeRunStatement = preparable sql encoder Decoders.noResult
         <> ((^. #durationMs) >$< int8Param)
         <> ((^. #logTail) >$< nullableTextParam)
         <> ((^. #errorMessage) >$< nullableTextParam)
+        <> ((^. #errorSummary) >$< nullableTextParam)
+        <> ((^. #errorSummarySource) >$< textParam)
+
+-- | Overwrite the analyzer fields on an existing row. The post-hoc
+--   @shiki runs analyze@ subcommand writes through this rather than
+--   touching 'completeRunStatement' so the rest of the row stays intact.
+updateErrorSummaryStatement :: Statement (RunId, Maybe Text, Text) ()
+updateErrorSummaryStatement = preparable sql encoder Decoders.noResult
+  where
+    sql =
+      """
+      UPDATE runs
+         SET error_summary        = $2,
+             error_summary_source = $3,
+             updated_at           = now()
+       WHERE id = $1
+      """
+    encoder =
+      ((\(rid, _, _) -> unRunId rid) >$< uuidParam)
+        <> ((\(_, s, _) -> s) >$< nullableTextParam)
+        <> ((\(_, _, src) -> src) >$< textParam)
 
 -- | Look up a single run by id.
 getRunStatement :: Statement RunId (Maybe RunRecord)
@@ -172,7 +200,8 @@ getRunStatement = preparable sql encoder decoder
       """
       SELECT id, service_name, command, namespace, job_name,
              image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error
+             duration_ms, log_tail, service_config, error,
+             error_summary, error_summary_source
         FROM runs
        WHERE id = $1
       """
@@ -187,7 +216,8 @@ listRecentRunsStatement = preparable sql encoder decoder
       """
       SELECT id, service_name, command, namespace, job_name,
              image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error
+             duration_ms, log_tail, service_config, error,
+             error_summary, error_summary_source
         FROM runs
     ORDER BY started_at DESC
        LIMIT $1
@@ -203,7 +233,8 @@ listRecentRunsByServiceStatement = preparable sql encoder decoder
       """
       SELECT id, service_name, command, namespace, job_name,
              image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error
+             duration_ms, log_tail, service_config, error,
+             error_summary, error_summary_source
         FROM runs
        WHERE service_name = $1
     ORDER BY started_at DESC
@@ -224,7 +255,8 @@ findRunByPrefixStatement = preparable sql encoder decoder
       """
       SELECT id, service_name, command, namespace, job_name,
              image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error
+             duration_ms, log_tail, service_config, error,
+             error_summary, error_summary_source
         FROM runs
        WHERE id::text LIKE $1 || '%'
        LIMIT 2
@@ -291,6 +323,8 @@ runRecordRow =
     <*> Decoders.column (Decoders.nullable Decoders.text)
     <*> Decoders.column (Decoders.nonNullable Decoders.jsonb)
     <*> Decoders.column (Decoders.nullable Decoders.text)
+    <*> Decoders.column (Decoders.nullable Decoders.text)
+    <*> Decoders.column (Decoders.nonNullable Decoders.text)
 
 textArrayDecoder :: Decoders.Value [Text]
 textArrayDecoder =

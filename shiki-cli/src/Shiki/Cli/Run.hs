@@ -196,13 +196,15 @@ finalizeFailed env rid startedAt e = do
     env
     completeRunStatement
     RunCompletion
-      { runId        = rid
-      , status       = Failed
-      , exitCode     = Nothing
-      , endedAt      = endedAt
-      , durationMs   = durationMs
-      , logTail      = Nothing
-      , errorMessage = Just (Text.pack (show e))
+      { runId              = rid
+      , status             = Failed
+      , exitCode           = Nothing
+      , endedAt            = endedAt
+      , durationMs         = durationMs
+      , logTail            = Nothing
+      , errorMessage       = Just (Text.pack (show e))
+      , errorSummary       = Nothing
+      , errorSummarySource = "heuristic"
       }
   TIO.putStrLn
     ("FAILED run " <> showRunId rid <> ": " <> Text.pack (show e))
@@ -224,13 +226,15 @@ finalizeOutcome env rid startedAt outcome = do
     env
     completeRunStatement
     RunCompletion
-      { runId        = rid
-      , status       = finalStatus
-      , exitCode     = outcome ^. #exitCode
-      , endedAt      = endedAt
-      , durationMs   = durationMs
-      , logTail      = outcome ^. #logTail
-      , errorMessage = errMsg
+      { runId              = rid
+      , status             = finalStatus
+      , exitCode           = outcome ^. #exitCode
+      , endedAt            = endedAt
+      , durationMs         = durationMs
+      , logTail            = outcome ^. #logTail
+      , errorMessage       = errMsg
+      , errorSummary       = Nothing
+      , errorSummarySource = "heuristic"
       }
   TIO.putStrLn
     ( "run "

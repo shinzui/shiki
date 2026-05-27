@@ -12,6 +12,7 @@ import Shiki.Persistence.Run
   , listRecentRunsStatement
   , markRunRunningStatement
   , newRunId
+  , updateErrorSummaryStatement
   )
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Persistence.TestPg (withSchemaPool)
@@ -53,6 +54,8 @@ tests =
               , durationMs = 12345
               , logTail = Just "everything is fine\n"
               , errorMessage = Nothing
+              , errorSummary = Nothing
+              , errorSummarySource = "heuristic"
               }
 
           mRow <- useStmt' pool getRunStatement rid
@@ -66,6 +69,14 @@ tests =
                 "logTail"
                 (Just "everything is fine\n")
                 (r ^. #logTail)
+              assertEqual
+                "errorSummary"
+                Nothing
+                (r ^. #errorSummary)
+              assertEqual
+                "errorSummarySource defaults to heuristic"
+                ("heuristic" :: Text)
+                (r ^. #errorSummarySource)
 
           recent <- useStmt' pool listRecentRunsStatement (10 :: Int)
           assertBool "one row recent" (length (recent :: [RunRecord]) == 1)
@@ -91,8 +102,10 @@ tests =
               , exitCode = Just 137
               , endedAt = now
               , durationMs = 0
-              , logTail = Nothing
+              , logTail = Just "Traceback (most recent call last):\nRuntimeError: boom\n"
               , errorMessage = Just "OOMKilled"
+              , errorSummary = Just "RuntimeError: boom"
+              , errorSummarySource = "heuristic"
               }
           mRow <- useStmt' pool getRunStatement rid
           case mRow of
@@ -100,6 +113,32 @@ tests =
             Just r -> do
               assertEqual "status" Failed (r ^. #status)
               assertEqual "error" (Just "OOMKilled") (r ^. #errorMessage)
+              assertEqual
+                "errorSummary"
+                (Just "RuntimeError: boom")
+                (r ^. #errorSummary)
+              assertEqual
+                "errorSummarySource"
+                ("heuristic" :: Text)
+                (r ^. #errorSummarySource)
+
+          -- updateErrorSummaryStatement rewrites the analyzer fields
+          -- without touching the rest of the row.
+          useStmt pool updateErrorSummaryStatement
+            (rid, Just "model-derived summary", "baikai:test")
+          mRow' <- useStmt' pool getRunStatement rid
+          case mRow' of
+            Nothing -> fail "expected row after analyzer rewrite"
+            Just r -> do
+              assertEqual
+                "rewritten errorSummary"
+                (Just "model-derived summary")
+                (r ^. #errorSummary)
+              assertEqual
+                "rewritten errorSummarySource"
+                ("baikai:test" :: Text)
+                (r ^. #errorSummarySource)
+              assertEqual "rest of row preserved" Failed (r ^. #status)
     ]
 
 -- | Run a write-style 'Statement' (no result) against the pool and
