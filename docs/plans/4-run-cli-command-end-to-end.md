@@ -62,15 +62,15 @@ longer needed.
 - [x] Add `Shiki.Cli.Env` exporting `CliEnv` and `withCliEnv` (acquires pool, runs
   migrations, loads kubeconfig). _(2026-05-27)_
 - [x] Add `Shiki.Cli.Run` exporting `RunOptions`, `runOptionsParser`, and `runRun`. _(2026-05-27)_
-- [ ] Extend `Shiki.Cli.Command` sum type with `Run RunOptions` constructor (the
-  canonical type per the MasterPlan's Integration Points).
-- [ ] Remove the placeholder `hello` subcommand from `Shiki.Cli`.
-- [ ] Add `--db`, `--namespace`, `--no-wait`, `--config-dir` flags.
-- [ ] Wire end-to-end: load config → insert `NewRun` → mark `Running` → submit Job →
+- [x] Extend `Shiki.Cli`'s top-level `Command` sum type with `Run RunOptions`
+  constructor (the canonical type per the MasterPlan's Integration Points). _(2026-05-27)_
+- [x] Remove the placeholder `hello` subcommand from `Shiki.Cli`. _(2026-05-27)_
+- [x] Add `--db`, `--namespace`, `--no-wait`, `--config-dir` flags. _(2026-05-27)_
+- [x] Wire end-to-end: load config → insert `NewRun` → mark `Running` → submit Job →
   `runJob` → on completion, write `RunCompletion`; on exception, write
-  `RunCompletion { status = Failed, ... }` and exit non-zero.
-- [ ] Capture `cabal run shiki -- --help` and `cabal run shiki -- run --help`
-  transcripts in Concrete Steps.
+  `RunCompletion { status = Failed, ... }` and exit non-zero. _(2026-05-27)_
+- [x] Capture `cabal run shiki -- --help` and `cabal run shiki -- run --help`
+  transcripts in Concrete Steps. _(2026-05-27)_
 - [ ] End-to-end manual smoke test against a real cluster + local Postgres; record
   expected output and failure-mode behavior.
 
@@ -90,6 +90,14 @@ longer needed.
   `DeploymentSnapshot`. That requires `PartialTypeSignatures`, which is
   not enabled in `shiki-cli/shiki-cli.cabal`'s `default-extensions`.
   Wrote out the explicit types — no functional change, just signatures.
+
+- 2026-05-27 (M3): The new `Options` record field `command :: Command`
+  collides with `Options.Applicative.command` when the optparse module
+  is imported unqualified. The plan's code sample imports both
+  unqualified and would not compile. Switched the optparse import to a
+  qualified `Opt` alias (only `Parser`, `ParserInfo`, and the `<**>`
+  operator stay unqualified). EP-5 should follow the same convention
+  when adding the `runs` subparsers.
 
 
 ## Decision Log
@@ -670,36 +678,62 @@ cabal build all
 cabal run shiki -- --help
 ```
 
-Expected (truncated):
+Captured output:
 
 ```text
-shiki - operational commands with observability
+shiki - one-off Kubernetes Jobs with durable run history
 
 Usage: shiki [--db CONNSTR] COMMAND
 
+  shiki conducts operational commands across Kubernetes services and records
+  what ran, where it ran, and how long it took.
+
+Available options:
+  --db CONNSTR             Postgres connection string (overrides
+                           SHIKI_DATABASE_URL / PG_CONNECTION_STRING)
+  -h,--help                Show this help text
+
 Available commands:
-  run      Submit a one-off Job and record the run in Postgres
-  service  Inspect microservice configuration files
+  run                      Submit a one-off Job and record the run in Postgres
+  service                  Inspect microservice configuration files
 ```
 
 ```bash
 cabal run shiki -- run --help
 ```
 
-Expected (truncated):
+Captured output:
 
 ```text
-Usage: shiki run SERVICE [-n|--namespace NS] [--no-wait]
-                         [--config-dir DIR] [-- ARG...]
+Usage: shiki run SERVICE [-n|--namespace NS] [--no-wait] [--config-dir DIR]
+                 [-- ARG...]
 
   Submit a one-off Job and record the run in Postgres
 
 Available options:
-  SERVICE
-  -n,--namespace NS    Override the service's default namespace
-  --no-wait            Submit and exit without waiting
-  --config-dir DIR     Directory holding <service>.dhall files
-                       (default: "services")
+  -n,--namespace NS        Override the service's default namespace
+  --no-wait                Submit and exit without waiting for completion
+  --config-dir DIR         Directory holding <service>.dhall files
+                           (default: "services")
+  -h,--help                Show this help text
+```
+
+```bash
+cabal run shiki -- service --help
+```
+
+Captured output:
+
+```text
+Usage: shiki service COMMAND
+
+  Inspect microservice configuration files
+
+Available options:
+  -h,--help                Show this help text
+
+Available commands:
+  show                     Pretty-print the parsed ServiceConfig for NAME
 ```
 
 End-to-end (see Milestone 4 above).

@@ -1,94 +1,113 @@
--- | Top-level CLI entry point for shiki.
+-- | Top-level CLI entry point for @shiki@.
 --
---   The current scaffold ships two subcommands:
+--   Canonical owner of the top-level 'Command' sum type per the
+--   MasterPlan's Integration Points; EP-4 adds 'Run' (the
+--   user-visible @shiki run \<service\> -- \<args\>@ command), EP-5 will
+--   add the @runs list / show / logs@ constructors to the same type.
 --
---   * @shiki hello [--name NAME]@ — a placeholder greeting carried over from
---     the initial project skeleton; later plans (EP-4) remove it.
---   * @shiki service show NAME@ — load
---     @services\/\<NAME\>.dhall@, decode it into a 'ServiceConfig', and
---     pretty-print the result as JSON to stdout. This proves end-to-end
---     that the typed configuration loader works without touching
---     Kubernetes or PostgreSQL.
+--   Subcommands today:
+--
+--   * @shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...@
+--     — submit a one-off Kubernetes Job and record the run in Postgres.
+--   * @shiki service show NAME@ — pretty-print the parsed 'ServiceConfig'
+--     for NAME as JSON. Useful for debugging service config files
+--     without touching the database or the cluster.
 module Shiki.Cli
   ( runCli
   ) where
 
 import Shiki.Prelude hiding (Options, argument)
 
+import Shiki.Cli.Config (resolveConnectionString)
+import Shiki.Cli.Env (CliEnv, withCliEnv)
+import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 
 import "aeson-pretty" Data.Aeson.Encode.Pretty qualified as AesonPretty
 import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
 import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
-import "optparse-applicative" Options.Applicative
+import "optparse-applicative" Options.Applicative (Parser, ParserInfo, (<**>))
+import "optparse-applicative" Options.Applicative qualified as Opt
 
 data Command
-  = Hello !(Maybe Text)
+  = Run         !RunOptions
   | ServiceShow !Text
-  deriving stock (Eq, Show)
+  deriving stock (Generic, Eq, Show)
 
-newtype Options = Options
-  { command :: Command
+data Options = Options
+  { dbConnStr :: !(Maybe Text)
+  , command   :: !Command
   }
   deriving stock (Generic, Eq, Show)
 
 runCli :: IO ()
 runCli = do
-  opts <- execParser parserInfo
-  runCommand (opts ^. #command)
+  opts <- Opt.execParser parserInfo
+  case opts ^. #command of
+    ServiceShow nm -> serviceShowHandler nm
+    Run runOpts    ->
+      withDbEnv (opts ^. #dbConnStr) $ \env -> runRun env runOpts
 
-parserInfo :: ParserInfo Options
-parserInfo =
-  info
-    (optionsParser <**> helper)
-    ( fullDesc
-        <> progDesc
-          "shiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."
-        <> header "shiki - one-off Kubernetes Jobs with durable run history"
-    )
+withDbEnv :: Maybe Text -> (CliEnv -> IO a) -> IO a
+withDbEnv mFlag k = do
+  cs <- resolveConnectionString mFlag
+  withCliEnv cs k
 
-optionsParser :: Parser Options
-optionsParser = Options <$> commandParser
-
-commandParser :: Parser Command
-commandParser =
-  hsubparser
-    ( Options.Applicative.command "hello"
-        ( info
-            ( Hello
-                <$> optional
-                      (strOption (long "name" <> metavar "NAME" <> help "Whom to greet"))
-            )
-            (progDesc "Print a greeting")
-        )
-        <> Options.Applicative.command
-          "service"
-          ( info
-              serviceCommand
-              (progDesc "Inspect microservice configuration files")
-          )
-    )
-
-serviceCommand :: Parser Command
-serviceCommand =
-  hsubparser
-    ( Options.Applicative.command
-        "show"
-        ( info
-            (ServiceShow <$> argument str (metavar "NAME"))
-            (progDesc "Pretty-print the parsed ServiceConfig for NAME")
-        )
-    )
-
-runCommand :: Command -> IO ()
-runCommand (Hello mName) =
-  TIO.putStrLn ("Hello, " <> fromMaybe "shiki" mName <> "!")
-runCommand (ServiceShow nm) = do
+serviceShowHandler :: Text -> IO ()
+serviceShowHandler nm = do
   let path = "services/" <> Text.unpack nm <> ".dhall"
   cfg <- loadServiceConfig path
   printConfig cfg
 
 printConfig :: ServiceConfig -> IO ()
 printConfig = BL8.putStrLn . AesonPretty.encodePretty
+
+parserInfo :: ParserInfo Options
+parserInfo =
+  Opt.info
+    (optionsParser <**> Opt.helper)
+    ( Opt.fullDesc
+        <> Opt.progDesc
+          "shiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."
+        <> Opt.header "shiki - one-off Kubernetes Jobs with durable run history"
+    )
+
+optionsParser :: Parser Options
+optionsParser =
+  Options
+    <$> Opt.optional
+          ( Opt.strOption
+              ( Opt.long "db"
+                  <> Opt.metavar "CONNSTR"
+                  <> Opt.help
+                      "Postgres connection string (overrides SHIKI_DATABASE_URL / PG_CONNECTION_STRING)"
+              )
+          )
+    <*> commandParser
+
+commandParser :: Parser Command
+commandParser =
+  Opt.hsubparser
+    ( Opt.command "run"
+        ( Opt.info
+            (Run <$> runOptionsParser)
+            (Opt.progDesc "Submit a one-off Job and record the run in Postgres")
+        )
+        <> Opt.command
+          "service"
+          ( Opt.info
+              serviceSubparser
+              (Opt.progDesc "Inspect microservice configuration files")
+          )
+    )
+
+serviceSubparser :: Parser Command
+serviceSubparser =
+  Opt.hsubparser
+    ( Opt.command "show"
+        ( Opt.info
+            (ServiceShow <$> Opt.argument Opt.str (Opt.metavar "NAME"))
+            (Opt.progDesc "Pretty-print the parsed ServiceConfig for NAME")
+        )
+    )
