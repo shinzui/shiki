@@ -108,7 +108,7 @@ here, even if it requires splitting a partially completed task into two ("done" 
   `SHIKI_AGENT_MODEL`) → default. Ship tasty-hunit tests under
   `shiki-cli/test/Shiki/Cli/Agent/ProviderSpec.hs` (the cabal test suite already lives
   on the package; if `shiki-cli` does not have one yet, add one in the same milestone).
-- [ ] M2 — Add `shiki-cli/src/Shiki/Cli/Agent/Context.hs` exporting an `AgentContext`
+- [x] M2 — Add `shiki-cli/src/Shiki/Cli/Agent/Context.hs` exporting an `AgentContext`
   record and a `gatherAgentContext :: CliEnv -> IO AgentContext`. The record captures
   `cwd :: Text`, `servicesDir :: FilePath`, `services :: [ServiceSummary]` (one
   `ServiceSummary` per `.dhall` file under `services/` — the loader is best-effort and
