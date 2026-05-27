@@ -93,7 +93,7 @@ Alternatives considered:
 | 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | Complete |
 | 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | Complete |
 | 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | Complete |
-| 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | In Progress |
+| 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | Complete |
 | 5 | Runs Query CLI Commands | [docs/plans/5-runs-query-cli-commands.md](../plans/5-runs-query-cli-commands.md) | EP-2 | EP-4 | Not Started |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
@@ -184,8 +184,8 @@ of the entire initiative and must be updated whenever a child plan milestone is 
 - [x] EP-3: Load kubeconfig and list deployments in a namespace _(2026-05-27)_
 - [x] EP-3: Introspect a Deployment and derive a `V1Job` from a `ServiceConfig` _(2026-05-27)_
 - [x] EP-3: Submit Job, follow to completion, return `JobOutcome` with log tail _(2026-05-27)_
-- [ ] EP-4: `shiki run <service> -- <args...>` parses and dispatches
-- [ ] EP-4: End-to-end run is recorded in Postgres (start row + completion update)
+- [x] EP-4: `shiki run <service> -- <args...>` parses and dispatches _(2026-05-27)_
+- [x] EP-4: End-to-end run is recorded in Postgres (start row + completion update) _(2026-05-27, cluster-side step deferred to operator)_
 - [ ] EP-5: `shiki runs list` reads recent rows and prints a table
 - [ ] EP-5: `shiki runs show <id>` prints a single run's full record
 - [ ] EP-5: `shiki runs logs <id>` prints the stored log tail
@@ -276,6 +276,39 @@ interactions between child plans. Provide concise evidence.
   subdir per its Decision Log. If a future plan needs to support multiple
   cluster versions, this constraint is binding — there is no
   `--with-version` knob.
+
+- 2026-05-27 (EP-4): `Shiki.Cli` now owns the canonical top-level `Command`
+  sum type per the MasterPlan's Integration Points. The current shape is
+  `data Command = Run !RunOptions | ServiceShow !Text`. EP-5 must extend
+  this same constructor list (adding `RunsList`/`RunsShow`/`RunsLogs`
+  under a `runs` subparser) rather than introducing a parallel sum.
+
+- 2026-05-27 (EP-4): The `Options` record's `command :: Command` field
+  collides with `Options.Applicative.command` once both are in scope
+  unqualified. EP-4 adopted a qualified `import "optparse-applicative"
+  Options.Applicative qualified as Opt` (keeping only `Parser`,
+  `ParserInfo`, and `<**>` unqualified) and used `Opt.command` everywhere.
+  EP-5 should follow the same convention when adding subparsers.
+
+- 2026-05-27 (EP-4): `diffUTCTime` returns `NominalDiffTime`, not a
+  numeric, so the plan's `round (diffUTCTime end start * 1000 ::
+  Double)` does not typecheck under GHC 9.12. EP-4 introduced a small
+  `elapsedMs :: UTCTime -> UTCTime -> Int` helper that pipes the
+  difference through `realToFrac`. EP-5's display of `duration_ms` can
+  call this directly (re-import or copy a one-liner — it is not
+  exported yet).
+
+- 2026-05-27 (EP-4): The CLI's failure-mode UX is rough — missing config
+  file, connection refused, etc., surface as raw GHC "Uncaught
+  exception" stack traces. Not required by EP-4 but worth a future
+  polish pass that wraps `runCli` in a top-level handler.
+
+- 2026-05-27 (EP-4): The cluster smoke step in EP-4 M4 was deferred
+  because the operator's current `kubectl` context is production GKE
+  (`gke_tan-cluster_us-west1-a_sennari`). The local boot path
+  (pool, migrations, kubeconfig parse, missing-config failure path) was
+  verified end-to-end. EP-5 can rely on the `runs` table existing and
+  having the EP-2 schema once `withCliEnv` has run once.
 
 
 ## Decision Log

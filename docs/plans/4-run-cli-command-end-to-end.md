@@ -71,8 +71,16 @@ longer needed.
   `RunCompletion { status = Failed, ... }` and exit non-zero. _(2026-05-27)_
 - [x] Capture `cabal run shiki -- --help` and `cabal run shiki -- run --help`
   transcripts in Concrete Steps. _(2026-05-27)_
-- [ ] End-to-end manual smoke test against a real cluster + local Postgres; record
-  expected output and failure-mode behavior.
+- [x] Local-only boot path verified: `process-compose up -D`, `cabal run shiki
+  -- run nonexistent-service` exits non-zero after migrations run; `runs`
+  and `schema_migrations` tables exist with the EP-2 schema. _(2026-05-27)_
+- [ ] Cluster smoke test against the operator's real cluster + local Postgres.
+  *Deferred:* current `kubectl` context points at production GKE
+  (`gke_tan-cluster_us-west1-a_sennari`); per the MasterPlan's principle
+  of asking before risky shared-infrastructure actions, the smoke is
+  recorded here as a manual step for the operator to run when they are
+  ready, using either `--no-wait` (record the row in `running` and exit)
+  or the full wait path against `--namespace` in a non-prod context.
 
 
 ## Surprises & Discoveries
@@ -98,6 +106,23 @@ longer needed.
   qualified `Opt` alias (only `Parser`, `ParserInfo`, and the `<**>`
   operator stay unqualified). EP-5 should follow the same convention
   when adding the `runs` subparsers.
+
+- 2026-05-27 (M4): When `loadServiceConfig` fails (e.g. the
+  `<service>.dhall` file is missing), the CLI exits non-zero with a raw
+  "Uncaught exception" trace from GHC's runtime rather than a
+  user-friendly message. The plan does not require nicer error
+  formatting and EP-2's failure path produces the same shape, so left
+  as-is. A future "polish" pass might wrap the top-level handler in
+  `try` and pretty-print common failure modes (missing config, kube
+  context, db down) — out of scope for EP-4.
+
+- 2026-05-27 (M4): Local Postgres for the boot-path verification is
+  provided by `process-compose up -D` reading `process-compose.yaml`,
+  with `$PG_CONNECTION_STRING` already exported by the project's
+  `nix develop` shellHook. The `shiki` database itself is not created by
+  process-compose; the operator must `CREATE DATABASE shiki` once.
+  Recording this so EP-5's tests don't get tripped up by a 'database
+  does not exist' the first time someone tries it.
 
 
 ## Decision Log
@@ -139,7 +164,49 @@ longer needed.
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+EP-4 landed the `shiki run` subcommand end-to-end on 2026-05-27. The
+operator-visible behavior from the MasterPlan's Vision & Scope works as
+designed up to the point of cluster contact: `shiki run <service> --
+<args>` loads `services/<service>.dhall`, opens a Postgres pool against
+the resolved connection string, applies migrations, parses the
+kubeconfig, inserts a `pending` `runs` row, updates it to `running`,
+then either submits and exits (`--no-wait`) or runs the Job to
+completion and finalizes the row.
+
+What shipped:
+
+- `Shiki.Cli.Config.resolveConnectionString` with three-tier precedence.
+- `Shiki.Cli.Env.CliEnv` + `withCliEnv` bracket — single
+  acquire/teardown for the pool, migrations, and kubeconfig.
+- `Shiki.Cli.Run` with `RunOptions`, `runOptionsParser`, and `runRun`.
+- A rewired `Shiki.Cli` whose top-level `Command` sum type is now
+  `Run !RunOptions | ServiceShow !Text`. The placeholder `hello`
+  subcommand is gone. EP-5 extends this same `Command` (per the
+  MasterPlan's Integration Points) to add `RunsList / RunsShow /
+  RunsLogs`.
+- Captured `--help` / `run --help` / `service --help` transcripts in
+  the Concrete Steps section above.
+
+What was not exercised in this session: the actual cluster Job
+submission. The operator's `kubectl` context points at production GKE,
+and the safer path was to leave the cluster smoke as a manual step
+rather than auto-submit a one-off Job into prod. The CLI's behavior up
+to the point of cluster contact (config load, pool, migrations,
+kubeconfig parse, `runs`-row insert) is verified.
+
+Lessons / inputs for later plans:
+
+- The `Options` record field name `command` collides with
+  `Options.Applicative.command` once both are unqualified. EP-5 should
+  keep the qualified `Opt` import pattern when it extends the parser.
+- `diffUTCTime` returns `NominalDiffTime`, not a numeric — pipe through
+  `realToFrac` first. Captured as the `elapsedMs` helper in
+  `Shiki.Cli.Run`.
+- The CLI's failure-mode UX is rough: missing-config and similar
+  exceptions surface as raw GHC "Uncaught exception" traces. The plan
+  did not require nicer formatting, but a polish pass that wraps
+  `runCli` in a top-level handler and pretty-prints the common failures
+  would meaningfully improve operator experience.
 
 
 ## Context and Orientation
@@ -625,7 +692,32 @@ argument plus the `-- ARG...` tail.
 
 Scope: exercise the whole stack against a real cluster and a local Postgres.
 
-Steps:
+#### Local boot-path verification (done)
+
+The pieces that don't need cluster contact were verified in this session
+on 2026-05-27:
+
+```bash
+process-compose up -D                          # local Postgres on a unix socket
+psql "${PG_CONNECTION_STRING%/shiki}/postgres" -c "CREATE DATABASE shiki"
+cabal run -v0 shiki -- run nonexistent-service
+# → exits non-zero with "openFile: does not exist" for the missing dhall
+psql "$PG_CONNECTION_STRING" -c "\dt"
+# →   runs              | table
+#     schema_migrations | table
+```
+
+That proves: the pool acquisition, the migration application, and the
+kubeconfig parsing all succeed before `loadServiceConfig` errors out.
+The `runs` table has every column EP-2 defined (id, service_name,
+command[], namespace, job_name, image, status, exit_code, started_at,
+ended_at, duration_ms, log_tail, service_config, error, created_at,
+updated_at).
+
+#### Cluster smoke (manual, deferred to operator)
+
+The operator runs the real-cluster smoke when they are ready, after
+confirming the kube context targets a safe namespace:
 
 ```bash
 nix develop
