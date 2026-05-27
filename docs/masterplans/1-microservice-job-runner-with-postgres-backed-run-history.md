@@ -218,6 +218,33 @@ interactions between child plans. Provide concise evidence.
   surface and may want to keep the same hiding pattern (or rename the local
   `Options` record) when it adds the `run` and `runs` subparsers.
 
+- 2026-05-27 (EP-2): `hasql-migration 0.3.1` on Hackage uses the hidden `Statement`
+  constructor and does not compile against `hasql 1.10`. The user's
+  `shinzui/hasql-migration` fork has been ported to `Hasql.Statement.unpreparable`
+  but expects the `ram` fork of `memory` (and the matching `crypton 1.1.2` build
+  that uses `ram`). EP-2 added all three local checkouts (`hasql-migration`,
+  `crypton`, `ram`) as `packages:` entries in `cabal.project`. EP-3, EP-4, and EP-5
+  inherit this configuration unchanged; no further coordination is needed unless
+  the forks diverge from Hackage further.
+
+- 2026-05-27 (EP-2): `cabal test` for any component that touches `hasql-pool` needs
+  the test executable linked with `-threaded` (hasql's `registerDelay`-based
+  timeouts require the threaded RTS). The `shiki-core-test` stanza now sets
+  `ghc-options: -threaded -rtsopts -with-rtsopts=-N`. EP-4 and EP-5 must do the
+  same on any new test binary that exercises the persistence layer.
+
+- 2026-05-27 (EP-2): `Paths_shiki_core` must appear in **both** `other-modules` and
+  `autogen-modules` for cabal 3.x to regenerate it on configure changes. EP-3
+  onward should follow the same pattern if it adds new data-files entries.
+
+- 2026-05-27 (EP-2): `ephemeral-pg 0.2.1.0`'s public API is `EphemeralPg.with ::
+  (Database -> IO a) -> IO (Either StartError a)` plus
+  `EphemeralPg.connectionString :: Database -> Text` — not the placeholder
+  `withCleanDatabase` referenced in EP-2's original draft. EP-4 will not need
+  `ephemeral-pg` directly (it talks to the user's local Postgres via
+  `$PG_CONNECTION_STRING`), but any further integration tests should use the
+  EP-2 `withTempPg` helper pattern as the reference shape.
+
 
 ## Decision Log
 
