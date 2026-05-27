@@ -36,6 +36,8 @@ let CommonEnv =
       , mkConfigEnv "OTEL_SDK_DISABLED"
       ]
 
+let AnalyzerBackend = ../shiki-core/dhall/AnalyzerBackend.dhall
+
 in  { name = "mls-service-v2"
     , defaultNamespace = "prod"
     , detectFromDeployment = "mls-service-v2-worker"
@@ -82,4 +84,5 @@ in  { name = "mls-service-v2"
         , memoryRequest = "512Mi"
         , memoryLimit = "4096Mi"
         }
+    , analyzer = AnalyzerBackend.Heuristic
     }

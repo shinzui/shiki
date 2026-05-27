@@ -13,6 +13,7 @@ module Shiki.Service.Config
   , EnvVar (..)
   , EnvSource (..)
   , Resources (..)
+  , AnalyzerBackend (..)
   ) where
 
 import Shiki.Prelude
@@ -42,7 +43,22 @@ data ServiceConfig = ServiceConfig
   , initContainers :: ![InitContainer]
   , env :: ![EnvVar]
   , resources :: !Resources
+  , analyzer :: !AnalyzerBackend
   }
+  deriving stock (Generic, Eq, Show)
+  deriving anyclass (FromJSON, ToJSON)
+
+-- | Which analyzer backend should be used for runs of this service. The
+--   constructors mirror "Shiki.Analysis.Backend.AnalyzerKind" verbatim so
+--   the Dhall union (see @shiki-core\/dhall\/AnalyzerBackend.dhall@) can
+--   line up generically, and so the two types convert with a single
+--   value-level rename. The duplication is deliberate: keeping the
+--   analyzer module out of "Shiki.Service.Config" preserves the
+--   one-way dependency arrow @Analysis -> Service@.
+data AnalyzerBackend
+  = Heuristic
+  | Baikai { model :: !Text }
+  | None
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
 

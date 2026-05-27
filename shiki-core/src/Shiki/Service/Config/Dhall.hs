@@ -14,7 +14,8 @@ module Shiki.Service.Config.Dhall
   ) where
 
 import Shiki.Service.Config
-  ( EnvSource
+  ( AnalyzerBackend
+  , EnvSource
   , EnvVar
   , InitContainer
   , Resources
@@ -41,3 +42,4 @@ deriving anyclass instance Dhall.FromDhall InitContainer
 deriving anyclass instance Dhall.FromDhall EnvVar
 deriving anyclass instance Dhall.FromDhall EnvSource
 deriving anyclass instance Dhall.FromDhall Resources
+deriving anyclass instance Dhall.FromDhall AnalyzerBackend

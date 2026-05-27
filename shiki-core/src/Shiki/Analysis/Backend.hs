@@ -9,11 +9,13 @@ module Shiki.Analysis.Backend
   , AnalyzerError (..)
   , summaryByteCap
   , runAnalyzer
+  , analyzerBackendToKind
   ) where
 
 import Shiki.Prelude
 
 import Shiki.Analysis.Heuristic (summarizeFailure)
+import Shiki.Service.Config qualified as Cfg
 
 -- | Which backend produces the summary. Carries the model id for the
 --   'Baikai' variant so dispatch is purely value-driven.
@@ -67,3 +69,13 @@ runAnalyzer kind input = case kind of
     pure (Left (AnalyzerBaikaiError "backend not yet wired (M7)"))
   None ->
     pure (Left AnalyzerBackendDisabled)
+
+-- | Bridge the Dhall-facing 'Shiki.Service.Config.AnalyzerBackend' type
+--   to the dispatch-facing 'AnalyzerKind'. The two types are kept
+--   separate so "Shiki.Service.Config" does not depend on the analysis
+--   module; this function is the canonical conversion.
+analyzerBackendToKind :: Cfg.AnalyzerBackend -> AnalyzerKind
+analyzerBackendToKind = \case
+  Cfg.Heuristic     -> Heuristic
+  Cfg.Baikai { Cfg.model = m } -> Baikai m
+  Cfg.None          -> None

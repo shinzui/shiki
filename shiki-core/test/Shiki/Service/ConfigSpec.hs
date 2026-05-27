@@ -2,7 +2,7 @@ module Shiki.Service.ConfigSpec (tests) where
 
 import Shiki.Prelude
 
-import Shiki.Service.Config (ServiceName (..))
+import Shiki.Service.Config (AnalyzerBackend (..), ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 
 import "directory" System.Directory (doesDirectoryExist, getCurrentDirectory)
@@ -56,4 +56,8 @@ tests =
               (ic ^. #name)
           [] ->
             fail "expected at least one init container"
+    , testCase "analyzer field decodes to Heuristic" $ do
+        path <- serviceConfigPath "mls-service-v2"
+        cfg <- loadServiceConfig path
+        assertEqual "analyzer" Heuristic (cfg ^. #analyzer)
     ]
