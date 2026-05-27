@@ -2,6 +2,18 @@ packages:
   shiki-core
   shiki-cli
 
+-- The Hackage `hasql-migration 0.3.1` still uses the old hidden `Statement`
+-- data constructor and does not compile against hasql 1.10. The user's local
+-- fork at shinzui/hasql-migration has already been ported to the smart
+-- constructor `Hasql.Statement.unpreparable`. That fork in turn expects the
+-- `ram` fork of `memory` (and the matching `crypton` build that uses `ram`),
+-- so pull all three from disk as a coherent unit until upstream merges
+-- equivalent changes.
+packages:
+  /Users/shinzui/Keikaku/hub/haskell/hasql-migration
+  /Users/shinzui/Keikaku/hub/haskell/crypton-project/crypton
+  /Users/shinzui/Keikaku/hub/haskell/ram-project/ram
+
 -- GHC is provided by the Nix devShell from `nix-haskell-flake` (currently
 -- pinned to ghc9124). Add a `with-compiler:` line here if you want
 -- cabal to fail loudly when the version drifts from the flake.

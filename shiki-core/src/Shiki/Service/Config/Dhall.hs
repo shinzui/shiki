@@ -13,8 +13,6 @@ module Shiki.Service.Config.Dhall
   ( loadServiceConfig
   ) where
 
-import Shiki.Prelude
-
 import Shiki.Service.Config
   ( EnvSource
   , EnvVar

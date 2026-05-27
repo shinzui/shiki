@@ -51,16 +51,16 @@ consumer side.
 - [x] Add `Shiki.Persistence.RunStatus` exporting the `RunStatus` ADT with text codec. _(2026-05-27)_
 - [x] Add `Shiki.Persistence.Run` exporting `RunRecord`, `NewRun`, `RunCompletion`, and
   hasql `Statement` values for insert, update-on-completion, and queries. _(2026-05-27)_
-- [ ] Add `Shiki.Persistence.Connection` exporting a thin wrapper around `Hasql.Pool` for
-  acquiring a pool from a connection string.
-- [ ] Add `Shiki.Persistence.Migration` exporting
+- [x] Add `Shiki.Persistence.Connection` exporting a thin wrapper around `Hasql.Pool` for
+  acquiring a pool from a connection string. _(2026-05-27)_
+- [x] Add `Shiki.Persistence.Migration` exporting
   `runMigrations :: Hasql.Pool.Pool -> IO ()` that loads every script from
-  `shiki-core/sql/migrations/` and applies it.
-- [ ] Wire `data-files: sql/migrations/*.sql` (so `Paths_shiki_core` can locate them at
-  runtime).
-- [ ] Add a tasty test that spins up an ephemeral Postgres, runs migrations, inserts a
-  `RunRecord`, completes it, lists it, and asserts on the persisted shape.
-- [ ] `cabal test shiki-core` clean; capture transcript in Concrete Steps.
+  `shiki-core/sql/migrations/` and applies it. _(2026-05-27)_
+- [x] Wire `data-files: sql/migrations/*.sql` (so `Paths_shiki_core` can locate them at
+  runtime). _(2026-05-27)_
+- [x] Add a tasty test that spins up an ephemeral Postgres, runs migrations, inserts a
+  `RunRecord`, completes it, lists it, and asserts on the persisted shape. _(2026-05-27)_
+- [x] `cabal test shiki-core` clean; capture transcript in Concrete Steps. _(2026-05-27)_
 
 
 ## Surprises & Discoveries
@@ -152,7 +152,53 @@ consumer side.
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+EP-2 landed on 2026-05-27. After this plan `cabal test shiki-core` includes the two new
+persistence assertions, an ephemeral PostgreSQL is provisioned per test run via
+`ephemeral-pg`, the migrations create the `runs` table from
+`shiki-core/sql/migrations/001-create-runs.sql`, and the typed hasql `Statement` values
+round-trip `RunRecord` values through insert / mark-running / complete / get / list.
+
+What was achieved:
+
+- `shiki-core/sql/migrations/001-create-runs.sql` defines the `runs` table with all
+  fifteen columns plus indexes on `(service_name, started_at DESC)` and `(status)`.
+- `Shiki.Persistence.RunStatus` provides the four-state ADT with `Text` codec.
+- `Shiki.Persistence.Run` exports `RunId`, `RunRecord`, `NewRun`, `RunCompletion` and
+  five preparable `Statement` values.
+- `Shiki.Persistence.Connection` wraps `Hasql.Pool` with a 5-connection pool keyed by a
+  `ConnectionString`.
+- `Shiki.Persistence.Migration` resolves `sql/migrations/` via `Paths_shiki_core` and
+  runs every script through `hasql-migration` inside a `Serializable` `Write`
+  transaction.
+- The integration test acquires a real Postgres via `EphemeralPg.with`, runs the
+  migrations, and asserts on the persisted `RunRecord` (status, exit code, duration,
+  log tail) for both `Succeeded` and `Failed` shapes.
+
+Lessons learned:
+
+- Three coordinated forks are needed to make hasql-migration build against hasql 1.10:
+  `shinzui/hasql-migration` (uses `unpreparable` instead of the hidden `Statement`
+  constructor), `kazu-yamamoto/crypton 1.1.2` from the user's local checkout (uses the
+  `ram` fork of `memory`), and `jappeace/ram 0.22.0`. cabal.project pulls all three from
+  disk. Once `tvh/hasql-migration` upstream catches up the local pin can be dropped.
+- `ephemeral-pg 0.2.1.0`'s public API is `EphemeralPg.with` + `EphemeralPg.connectionString`,
+  not the placeholder `withCleanDatabase` from the spec.
+- `cabal test shiki-core` needs the test executable to be linked with `-threaded`
+  because hasql uses `registerDelay` for its acquisition timeout. Without it, every
+  test that touches the pool fails with `registerDelay: requires -threaded`. Added
+  `ghc-options: -threaded -rtsopts -with-rtsopts=-N` to the test stanza.
+- `Paths_shiki_core` must be added to both `other-modules` and `autogen-modules` for
+  cabal 3.x; without `autogen-modules` cabal does not regenerate it on configure changes.
+
+What remains for downstream plans:
+
+- EP-4 (`shiki run`) acquires a pool via `acquirePool`, runs migrations on startup, and
+  threads the insert/mark-running/complete statements around its job runner.
+- EP-5 (`shiki runs ...`) uses `getRunStatement` and `listRecentRunsStatement` for the
+  read-side subcommands.
+- The 64 KiB log truncation policy is the *writer*'s responsibility (EP-4), not the
+  schema's — the column is `text` so it accepts anything; the cap is enforced
+  application-side before the `completeRunStatement` runs.
 
 
 ## Context and Orientation
@@ -850,18 +896,32 @@ After Milestone 4:
 cabal test shiki-core
 ```
 
-Expected (truncated):
+Observed:
 
 ```text
 shiki-core
   Shiki.Service.Config
-    loadServiceConfig parses mls-service-v2.dhall: OK
-    first init container is cloud-sql-proxy:      OK
+    loadServiceConfig parses mls-service-v2.dhall: OK (0.02s)
+    first init container is cloud-sql-proxy:       OK (0.02s)
   Shiki.Persistence.Run
-    insert / mark running / complete / list:      OK (1.34s)
-    Failed status round-trips:                    OK (0.42s)
+    insert / mark running / complete / list:       OK (0.89s)
+    Failed status round-trips:                     OK (0.89s)
 
-All 4 tests passed (1.76s)
+All 4 tests passed (0.89s)
+```
+
+Acceptance #4 — `migrationsDirectory` resolves to a real path on disk:
+
+```bash
+cabal repl shiki-core <<'EOF'
+import Shiki.Persistence.Migration
+migrationsDirectory >>= putStrLn
+:quit
+EOF
+```
+
+```text
+/Users/shinzui/Keikaku/bokuno/shiki/shiki-core/./sql/migrations
 ```
 
 

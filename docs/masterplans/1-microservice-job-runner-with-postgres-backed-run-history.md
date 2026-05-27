@@ -90,7 +90,7 @@ Alternatives considered:
 | # | Title | Path | Hard Deps | Soft Deps | Status |
 |---|-------|------|-----------|-----------|--------|
 | 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | Complete |
-| 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | In Progress |
+| 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | Complete |
 | 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | Not Started |
 | 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | Not Started |
 | 5 | Runs Query CLI Commands | [docs/plans/5-runs-query-cli-commands.md](../plans/5-runs-query-cli-commands.md) | EP-2 | EP-4 | Not Started |
@@ -178,8 +178,8 @@ of the entire initiative and must be updated whenever a child plan milestone is 
 
 - [x] EP-1: ServiceConfig record type and JSON/Dhall round-trip _(2026-05-27)_
 - [x] EP-1: Loader reads `services/<name>.dhall` and prints a `ServiceConfig` _(2026-05-27)_
-- [ ] EP-2: Migration tooling wired into `shiki-core` with `runs` table created
-- [ ] EP-2: `RunRecord` insert/update/query statements with tests against ephemeral Postgres
+- [x] EP-2: Migration tooling wired into `shiki-core` with `runs` table created _(2026-05-27)_
+- [x] EP-2: `RunRecord` insert/update/query statements with tests against ephemeral Postgres _(2026-05-27)_
 - [ ] EP-3: Load kubeconfig and list deployments in a namespace
 - [ ] EP-3: Introspect a Deployment and derive a `V1Job` from a `ServiceConfig`
 - [ ] EP-3: Submit Job, follow to completion, return `JobOutcome` with log tail
