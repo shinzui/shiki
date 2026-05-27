@@ -89,7 +89,7 @@ Alternatives considered:
 
 | # | Title | Path | Hard Deps | Soft Deps | Status |
 |---|-------|------|-----------|-----------|--------|
-| 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | Not Started |
+| 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | In Progress |
 | 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | Not Started |
 | 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | Not Started |
 | 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | Not Started |

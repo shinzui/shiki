@@ -5,6 +5,7 @@ title: "Service Configuration Model and Dhall Loader"
 kind: exec-plan
 created_at: 2026-05-27T04:46:51Z
 master_plan: "docs/masterplans/1-microservice-job-runner-with-postgres-backed-run-history.md"
+intention: intention_01ksn15jq4e0fvf6cysm7ezhm0
 ---
 
 
@@ -50,7 +51,7 @@ this record locally; any new field must be added here first via the MasterPlan's
 
 ## Progress
 
-- [ ] Extend `Shiki.Prelude` to match the project's custom-prelude standard.
+- [x] Extend `Shiki.Prelude` to match the project's custom-prelude standard. _(2026-05-27)_
 - [ ] Add `Shiki.Service.Config` exporting `ServiceConfig`, `InitContainer`, `EnvVar`,
   `EnvSource`, `Resources`, `ServiceName` (newtype).
 - [ ] Add `Shiki.Service.Config.Dhall` exporting `loadServiceConfig`.
@@ -62,7 +63,21 @@ this record locally; any new field must be added here first via the MasterPlan's
 
 ## Surprises & Discoveries
 
-(None yet.)
+- `Data.Aeson.Casing` is in the separate `aeson-casing` package and does **not** export
+  `camelTo2`; the standards doc (`haskell-jitsurei/core/custom-prelude.md` line 41) has a
+  small inaccuracy where it writes `import "aeson" Data.Aeson.Casing as X (camelTo2)`. The
+  symbol actually lives in `Data.Aeson` (re-exported from `Data.Aeson.Types`). The prelude
+  was adjusted to `import "aeson" Data.Aeson as X (..., camelTo2)` and the `aeson-casing`
+  dependency was dropped from `shiki-core.cabal` since nothing else in this plan needs it.
+  Evidence:
+
+  ```text
+  src/Shiki/Prelude.hs:35:47: error: [GHC-61689]
+      Module ‘Data.Aeson.Casing’ does not export ‘camelTo2’.
+  ```
+
+  Resolved by importing from `Data.Aeson` and dropping the unused dependency. See Decision
+  Log.
 
 
 ## Decision Log
@@ -105,6 +120,18 @@ this record locally; any new field must be added here first via the MasterPlan's
   Rationale: Matches the user's record-patterns convention (newtypes for domain IDs);
   prevents accidental confusion with namespace or container name strings.
   Date: 2026-05-26
+
+- Decision: Import `camelTo2` from `Data.Aeson` (its true home in the `aeson` package)
+  rather than `Data.Aeson.Casing`, and drop the `aeson-casing` dependency entirely from
+  `shiki-core.cabal`.
+  Rationale: The original plan and the underlying `haskell-jitsurei/core/custom-prelude.md`
+  standard direct the reader to `import "aeson" Data.Aeson.Casing as X (camelTo2)`, but
+  the `Data.Aeson.Casing` module is owned by the separate `aeson-casing` package and does
+  not export `camelTo2`. `aeson 2.2`'s own `Data.Aeson` re-exports `camelTo2` (verified in
+  `aeson/src/Data/Aeson.hs:142`). Nothing else in this MasterPlan needs `aeson-casing`'s
+  prefix-stripping helpers, so the dependency is removed rather than imported under a
+  different name.
+  Date: 2026-05-27
 
 
 ## Outcomes & Retrospective
