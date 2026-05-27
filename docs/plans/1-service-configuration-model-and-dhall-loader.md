@@ -54,9 +54,9 @@ this record locally; any new field must be added here first via the MasterPlan's
 - [x] Extend `Shiki.Prelude` to match the project's custom-prelude standard. _(2026-05-27)_
 - [x] Add `Shiki.Service.Config` exporting `ServiceConfig`, `InitContainer`, `EnvVar`,
   `EnvSource`, `Resources`, `ServiceName` (newtype). _(2026-05-27)_
-- [ ] Add `Shiki.Service.Config.Dhall` exporting `loadServiceConfig`.
-- [ ] Add `services/mls-service-v2.dhall` sample.
-- [ ] Add `shiki-core/test/Spec.hs` plus `shiki-core/test/Shiki/Service/ConfigSpec.hs`.
+- [x] Add `Shiki.Service.Config.Dhall` exporting `loadServiceConfig`. _(2026-05-27)_
+- [x] Add `services/mls-service-v2.dhall` sample. _(2026-05-27)_
+- [x] Add `shiki-core/test/Spec.hs` plus `shiki-core/test/Shiki/Service/ConfigSpec.hs`. _(2026-05-27)_
 - [ ] Extend `shiki-cli` with the `service show <name>` subcommand.
 - [ ] `cabal build all` and `cabal test all` clean; capture the transcripts in Concrete Steps.
 
@@ -120,6 +120,27 @@ this record locally; any new field must be added here first via the MasterPlan's
   Rationale: Matches the user's record-patterns convention (newtypes for domain IDs);
   prevents accidental confusion with namespace or container name strings.
   Date: 2026-05-26
+
+- Decision: Provide a manual `FromDhall ServiceName` instance (rather than `deriving
+  anyclass`) that decodes a bare Dhall `Text` into the newtype.
+  Rationale: Dhall's default `singletonConstructors = Smart` setting wraps newtypes with a
+  named selector in a record (`{ unServiceName : Text }`). The on-disk service files give
+  the name as a bare string literal (`name = "mls-service-v2"`), and rewriting them every
+  time a domain ID newtype is introduced is intrusive. A one-line `autoWith opts =
+  ServiceName <$> Dhall.autoWith opts` matches the human-friendly Dhall shape without
+  reaching for `Bare` globally (which would break other intentional newtype-as-record
+  encodings later).
+  Date: 2026-05-27
+
+- Decision: The test suite walks up from `cwd` looking for the `services/` directory rather
+  than using a hardcoded relative path.
+  Rationale: `cabal test shiki-core` sets cwd to `shiki-core/`, not the repo root, so
+  `services/mls-service-v2.dhall` resolves to a nonexistent path. Walking up to find a
+  directory containing `services/` keeps the test robust whether invoked from
+  `shiki-core/`, the repo root, or anywhere in between, and avoids depending on
+  `cabal-version: 3.14`'s `working-directory:` test-suite field which is newer than what
+  `shiki-core.cabal` currently declares.
+  Date: 2026-05-27
 
 - Decision: `EnvSource` keeps the record-syntax sum-type shape (`ConfigMap { key }`,
   `Secret { key }`, `Literal { value }`) and suppresses `-Wpartial-fields` at the module
