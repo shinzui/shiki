@@ -109,9 +109,10 @@ This section must always reflect the actual current state of the work.
   returns exactly one row, and the same for `beta`. _(done 2026-05-27 — test passes;
   `verifyCount` counts via the schema-scoped pool, `verifyMissingFromPublic` confirms
   the info-schema has no `public.runs` row)_
-- [ ] M7 — Update `README.md` with a short section ("Database schema") describing the
+- [x] M7 — Update `README.md` with a short section ("Database schema") describing the
   default and the override knobs. Run `cabal test all` end-to-end and capture the
-  transcript into the Concrete Steps section.
+  transcript into the Concrete Steps section. _(done 2026-05-27 — README anchored
+  above `## Develop`; transcript pasted under "Recorded transcript" in Concrete Steps)_
 
 
 ## Surprises & Discoveries
@@ -216,7 +217,53 @@ Record every decision made while working on the plan.
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+**Status**: Complete (2026-05-27).
+
+**What landed**
+
+- `Shiki.Persistence.Schema` — validated newtype with hidden constructor,
+  `defaultSchema = Schema "shiki"`, `mkSchema`, `schemaText`, `quoteSchema`. Four
+  unit cases pin down accepted/rejected inputs.
+- `Shiki.Persistence.Connection.acquirePool` now takes a `Schema` and uses
+  `hasql-pool`'s `PoolConfig.initSession` hook to set
+  `SET search_path TO "<schema>", public;` on every newly-acquired connection.
+- `Shiki.Persistence.Migration.runMigrations` now takes a `Schema` and runs
+  `CREATE SCHEMA IF NOT EXISTS "<schema>"` as the first statement of the migration
+  transaction, so `hasql-migration`'s `schema_migrations` table lands inside the
+  configured schema.
+- `Shiki.Cli.Schema.resolveSchema` resolves `--db-schema` > `SHIKI_DB_SCHEMA` >
+  `defaultSchema`. `withCliEnv` threads the resolved `Schema` to both
+  `acquirePool` and `runMigrations`.
+- `Shiki.Persistence.TestPg` (test-only) provides `freshSchema` and
+  `withSchemaPool`; `RunSpec` and `RunListSpec` now drive themselves through a
+  unique per-test schema, which both isolates concurrent runs and proves the
+  configurability is real.
+- `SchemaIsolationSpec` shows two schemas in one database staying separate.
+- `README.md` documents the default, the override knobs, and the manual
+  migration recipe for operators upgrading from a `public`-only checkout.
+
+**What we did not do (and why)**
+
+- No automatic data migration from `public.runs` to `shiki.runs`. The README
+  documents the manual `ALTER TABLE … SET SCHEMA shiki` recipe — see the Decision
+  Log entry from the planning phase for the reasoning.
+- No live `psql` transcript captured. The dev `process-compose` Postgres was not
+  running during implementation. The `SchemaIsolationSpec` against `ephemeral-pg`
+  delivers the same guarantee programmatically.
+
+**Surprises worth flagging cross-plan**
+
+- The pinned `hasql` version exposes raw multi-statement SQL via
+  `Hasql.Session.script :: Text -> Session ()`, not the older
+  `Hasql.Session.sql :: ByteString -> Session ()` that some surrounding examples
+  (including this plan's sample code) reference. Future plans wiring session-level
+  SQL should reach for `Session.script`.
+- `hasql-pool 1.4.2` has `PoolConfig.initSession :: Session () -> Setting`, ideal
+  for any future per-connection bootstrap (timezone, statement timeout, role
+  switch, etc.). No URI rewrite was necessary.
+
+**No follow-up plans created.** EP-4 and EP-5 are untouched by this work — their
+unqualified statements continue to resolve through `search_path`.
 
 
 ## Context and Orientation
@@ -1036,6 +1083,77 @@ Did not find any relation matching public.* in schema "public".
  shiki  | runs              | table | shinzui
  shiki  | schema_migrations | table | shinzui
 ```
+
+### Recorded transcript (2026-05-27)
+
+`cabal test shiki-core`:
+
+```text
+Test suite shiki-core-test: RUNNING...
+shiki-core
+  Shiki.Service.Config
+    loadServiceConfig parses mls-service-v2.dhall:                                           OK (0.05s)
+    first init container is cloud-sql-proxy:                                                 OK (0.05s)
+  Shiki.Persistence.Run
+    insert / mark running / complete / list:                                                 OK (1.21s)
+    Failed status round-trips:                                                               OK (1.10s)
+  Shiki.Persistence.Run (list)
+    listRecentRunsStatement returns rows newest-first:                                       OK (1.10s)
+  Shiki.K8s.JobBuilder
+    buildJob produces a Job whose container name, image, command, and args match the inputs: OK (0.05s)
+  Shiki.Persistence.Schema
+    defaultSchema is shiki:                                                                  OK
+    quoteSchema wraps in double quotes:                                                      OK
+    accepts plain identifiers:                                                               OK
+    rejects empty / leading-digit / long / illegal:                                          OK
+  Shiki.Persistence.Schema (isolation)
+    two schemas in one database stay separate:                                               OK (1.22s)
+
+All 11 tests passed (1.23s)
+Test suite shiki-core-test: PASS
+```
+
+`cabal run shiki -- --help`:
+
+```text
+shiki - one-off Kubernetes Jobs with durable run history
+
+Usage: shiki [--db CONNSTR] [--db-schema SCHEMA] COMMAND
+
+  shiki conducts operational commands across Kubernetes services and records
+  what ran, where it ran, and how long it took.
+
+Available options:
+  --db CONNSTR             Postgres connection string (overrides
+                           SHIKI_DATABASE_URL / PG_CONNECTION_STRING)
+  --db-schema SCHEMA       Postgres schema for shiki tables (default: shiki,
+                           overrides SHIKI_DB_SCHEMA)
+  -h,--help                Show this help text
+
+Available commands:
+  run                      Submit a one-off Job and record the run in Postgres
+  runs                     Inspect recorded runs
+  service                  Inspect microservice configuration files
+```
+
+`cabal test all` summary (every project + dependency test suite reports PASS):
+
+```text
+Test suite hasql-migration-test: PASS
+Test suite test-memory: PASS         (288 tests)
+Test suite shiki-core-test: PASS     (11 tests)
+Test suite example: PASS
+Test suite tests: PASS
+Test suite spec: PASS
+Test suite test-crypton: PASS        (2129 tests)
+```
+
+The live `psql` proof against `$PG_CONNECTION_STRING` was not recorded — the dev
+`process-compose` Postgres was not running during implementation. The
+`SchemaIsolationSpec` against `ephemeral-pg` provides the equivalent guarantee
+programmatically: schema-scoped pools count exactly one row in `alpha.runs` and
+one in `beta.runs`, while `information_schema.tables` shows zero rows for
+`public.runs`.
 
 
 ## Validation and Acceptance

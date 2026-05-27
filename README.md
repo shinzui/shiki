@@ -20,6 +20,25 @@ Both packages target **GHC `ghc9124`** with `default-language: GHC2024`
 and the same warning set + default extensions
 (`DeriveAnyClass`, `DuplicateRecordFields`, `OverloadedLabels`, `OverloadedStrings`).
 
+## Database schema
+
+`shiki` installs its tables into a dedicated PostgreSQL schema (`shiki` by default)
+so they do not pollute `public`. Override the schema name with `--db-schema=<name>`
+on any subcommand, or with `SHIKI_DB_SCHEMA=<name>` in the environment. The default
+behavior is unchanged for fresh databases. If you are upgrading from a checkout that
+wrote into `public`, either drop the dev database or move the existing tables
+manually with this `psql` recipe:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS shiki;
+ALTER TABLE public.runs              SET SCHEMA shiki;
+ALTER TABLE public.schema_migrations SET SCHEMA shiki;
+```
+
+Schema names must match `[A-Za-z_][A-Za-z0-9_]*` and fit within PostgreSQL's 63-byte
+identifier limit; invalid names exit with `shiki: invalid schema name: …` before any
+database work happens.
+
 ## Develop
 
 The project ships a Nix flake (`nix-haskell-flake`) that pins GHC and provides
