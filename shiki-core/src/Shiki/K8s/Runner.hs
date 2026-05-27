@@ -15,15 +15,14 @@ import Shiki.Prelude
 import Shiki.K8s.Client (ClientEnv (..))
 import Shiki.K8s.Introspection (DeploymentSnapshot, Namespace (..))
 import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
+import Shiki.K8s.Logs (fetchJobPodLogs)
 import Shiki.Service.Config (ServiceConfig)
 
 import "base" Control.Concurrent (threadDelay)
 import "base" Control.Exception (Exception, throwIO)
-import "text" Data.Text qualified as Text
 import "time" Data.Time.Clock (diffUTCTime)
 import "kubernetes-api" Kubernetes.OpenAPI qualified as K8s
 import "kubernetes-api" Kubernetes.OpenAPI.API.BatchV1 qualified as BatchV1
-import "kubernetes-api" Kubernetes.OpenAPI.API.CoreV1  qualified as CoreV1
 import "kubernetes-api" Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 
 -- | Final state observed for a Job. 'JobFailed' carries the
@@ -94,7 +93,8 @@ runJob env svc snap inputs pollSec timeoutSec = do
   submitJob env svc snap inputs
   phase     <- waitForCompletion env inputs startedAt pollSec timeoutSec
   endedAt   <- liftIO getCurrentTime
-  logs      <- fetchLogTail env inputs
+  logsE     <- fetchJobPodLogs env (inputs ^. #namespace) (inputs ^. #jobName)
+  let logTailNow = either (const Nothing) (Just . (^. #persistedTail)) logsE
   pure JobOutcome
     { jobName   = inputs ^. #jobName
     , namespace = unNamespace (inputs ^. #namespace)
@@ -102,7 +102,7 @@ runJob env svc snap inputs pollSec timeoutSec = do
     , exitCode  = exitCodeForPhase phase
     , startedAt = startedAt
     , endedAt   = endedAt
-    , logTail   = logs
+    , logTail   = logTailNow
     }
 
 exitCodeForPhase :: JobPhase -> Maybe Int
@@ -147,42 +147,3 @@ readJobStatus env inputs = do
     Left err -> throwIO (JobStatusReadFailed (inputs ^. #jobName) (show err))
     Right j  -> pure j
   pure (fromMaybe K8s.mkV1JobStatus (job ^. K8sLens.v1JobStatusL))
-
--- | Find the pod the Job created (label selector @job-name=<jobName>@),
---   read the last 200 lines of its log, truncate to 64 KiB. Returns
---   'Nothing' on any failure — the rest of the outcome is still valid
---   in that case.
-fetchLogTail :: ClientEnv -> JobInputs -> IO (Maybe Text)
-fetchLogTail env inputs = do
-  let listReq = CoreV1.listNamespacedPod
-                  (K8s.Accept K8s.MimeJSON)
-                  (K8s.Namespace (unNamespace (inputs ^. #namespace)))
-                `K8s.applyOptionalParam`
-                  K8s.LabelSelector ("job-name=" <> inputs ^. #jobName)
-  listResp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) listReq
-  case K8s.mimeResult listResp of
-    Left _    -> pure Nothing
-    Right pl  -> case pl ^. K8sLens.v1PodListItemsL of
-      [] -> pure Nothing
-      (pod : _) -> case pod ^. K8sLens.v1PodMetadataL >>= (^. K8sLens.v1ObjectMetaNameL) of
-        Nothing -> pure Nothing
-        Just nm -> fetchPodLog env (inputs ^. #namespace) nm
-
-fetchPodLog :: ClientEnv -> Namespace -> Text -> IO (Maybe Text)
-fetchPodLog env ns nm = do
-  let logReq = CoreV1.readNamespacedPodLog
-                 (K8s.Accept K8s.MimePlainText)
-                 (K8s.Name nm)
-                 (K8s.Namespace (unNamespace ns))
-               `K8s.applyOptionalParam` K8s.TailLines 200
-  logResp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) logReq
-  case K8s.mimeResult logResp of
-    Left _    -> pure Nothing
-    Right txt -> pure (Just (truncate64K txt))
-
--- | Cap the log tail at 64 KiB measured in characters, taking the end
---   of the string so the most recent output survives.
-truncate64K :: Text -> Text
-truncate64K t
-  | Text.length t <= 65536 = t
-  | otherwise              = Text.takeEnd 65536 t

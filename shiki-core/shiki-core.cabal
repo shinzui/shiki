@@ -48,6 +48,7 @@ library
     Shiki.K8s.Client
     Shiki.K8s.Introspection
     Shiki.K8s.JobBuilder
+    Shiki.K8s.Logs
     Shiki.K8s.Runner
     Shiki.Persistence.Connection
     Shiki.Persistence.Migration
