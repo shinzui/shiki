@@ -87,6 +87,15 @@ library
     time ^>=1.12,
     uuid ^>=1.3,
 
+executable shiki-run-once
+  import: common-options
+  main-is: RunOnce.hs
+  hs-source-dirs: example
+  build-depends:
+    base >=4.20 && <5,
+    shiki-core,
+    text ^>=2.1,
+
 test-suite shiki-core-test
   import: common-options
   type: exitcode-stdio-1.0
@@ -97,6 +106,7 @@ test-suite shiki-core-test
     -rtsopts
     -with-rtsopts=-N
   other-modules:
+    Shiki.K8s.JobBuilderSpec
     Shiki.Persistence.RunSpec
     Shiki.Service.ConfigSpec
 
@@ -108,6 +118,7 @@ test-suite shiki-core-test
     filepath ^>=1.5,
     hasql >=1.10,
     hasql-pool >=1.4,
+    kubernetes-api,
     shiki-core,
     tasty ^>=1.5,
     tasty-hunit ^>=0.10,

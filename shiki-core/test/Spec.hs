@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Shiki.K8s.JobBuilderSpec qualified as JobBuilderSpec
 import Shiki.Persistence.RunSpec qualified as RunSpec
 import Shiki.Service.ConfigSpec qualified as ConfigSpec
 
@@ -11,4 +12,5 @@ main =
     testGroup "shiki-core"
       [ ConfigSpec.tests
       , RunSpec.tests
+      , JobBuilderSpec.tests
       ]

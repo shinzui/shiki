@@ -91,7 +91,7 @@ Alternatives considered:
 |---|-------|------|-----------|-----------|--------|
 | 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | Complete |
 | 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | Complete |
-| 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | In Progress |
+| 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | Complete |
 | 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | Not Started |
 | 5 | Runs Query CLI Commands | [docs/plans/5-runs-query-cli-commands.md](../plans/5-runs-query-cli-commands.md) | EP-2 | EP-4 | Not Started |
 
@@ -180,9 +180,9 @@ of the entire initiative and must be updated whenever a child plan milestone is 
 - [x] EP-1: Loader reads `services/<name>.dhall` and prints a `ServiceConfig` _(2026-05-27)_
 - [x] EP-2: Migration tooling wired into `shiki-core` with `runs` table created _(2026-05-27)_
 - [x] EP-2: `RunRecord` insert/update/query statements with tests against ephemeral Postgres _(2026-05-27)_
-- [ ] EP-3: Load kubeconfig and list deployments in a namespace
-- [ ] EP-3: Introspect a Deployment and derive a `V1Job` from a `ServiceConfig`
-- [ ] EP-3: Submit Job, follow to completion, return `JobOutcome` with log tail
+- [x] EP-3: Load kubeconfig and list deployments in a namespace _(2026-05-27)_
+- [x] EP-3: Introspect a Deployment and derive a `V1Job` from a `ServiceConfig` _(2026-05-27)_
+- [x] EP-3: Submit Job, follow to completion, return `JobOutcome` with log tail _(2026-05-27)_
 - [ ] EP-4: `shiki run <service> -- <args...>` parses and dispatches
 - [ ] EP-4: End-to-end run is recorded in Postgres (start row + completion update)
 - [ ] EP-5: `shiki runs list` reads recent rows and prints a table
@@ -244,6 +244,37 @@ interactions between child plans. Provide concise evidence.
   `ephemeral-pg` directly (it talks to the user's local Postgres via
   `$PG_CONNECTION_STRING`), but any further integration tests should use the
   EP-2 `withTempPg` helper pattern as the reference shape.
+
+- 2026-05-27 (EP-3): The `crypton 1.1.2 + ram` fork chain introduced by EP-2
+  is invasive: `kubernetes-api-client` transitively pulls `jose-jwt` and
+  `hoauth2`, both of which import `Data.ByteArray` from upstream `memory`.
+  This is incompatible with the ram-based crypton — `HMAC SHA256`,
+  `Digest SHA256`, `Ed448.PublicKey`, etc. live in different ByteArrayAccess
+  classes on each side. EP-3 added two `source-repository-package` entries
+  to `cabal.project`: jose-jwt pinned to upstream master HEAD
+  (`9569789…`, which already swaps memory→ram), and `shinzui/hoauth2`
+  (`3fa57f9…`, a one-line cabal patch we created for the same swap).
+  Plus two allow-newer escape hatches (`dhall:http-client-tls`,
+  `hoauth2:crypton`). Future plans that add any package depending on
+  `memory` should audit transitively before assuming Hackage versions will
+  resolve.
+
+- 2026-05-27 (EP-3): The `kubernetes-api 134.0.1` (a.k.a. the 1.34 subdir of
+  `codedownio/kubernetes-api`) generated OpenAPI models do NOT derive
+  `Generic`. The prefixed field labels (`v1JobSpecBackoffLimit`, …) are
+  unique so plain record syntax works (`mkV1JobSpec tmpl { v1JobSpecX = … }`),
+  but `OverloadedLabels` via `generic-lens` does not. Use the `v1*L` lenses
+  from `Kubernetes.OpenAPI.ModelLens` (they use a parallel `Lens_'` type that
+  is shape-compatible with `Control.Lens.Lens'`, so `^.`/`.~`/`?~` work).
+  EP-4 should follow the same pattern when constructing or inspecting any
+  Kubernetes model values.
+
+- 2026-05-27 (EP-3): The `kubernetes-api` ecosystem ships one cabal package
+  per Kubernetes minor version (1.25–1.35), all named simply `kubernetes-api`.
+  Only one may be added to `cabal.project` at a time; EP-3 chose the 1.34
+  subdir per its Decision Log. If a future plan needs to support multiple
+  cluster versions, this constraint is binding — there is no
+  `--with-version` knob.
 
 
 ## Decision Log

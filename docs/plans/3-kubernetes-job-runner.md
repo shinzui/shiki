@@ -52,22 +52,22 @@ consumers must not extend it locally.
   reconcile the OIDC auth chain with the `ram`-based crypton fork. _(2026-05-27)_
 - [x] Add `Shiki.K8s.Client` exporting `loadDefaultClientConfig :: IO ClientEnv` (wraps
   kubeconfig loading from `~/.kube/config` plus auth handlers). _(2026-05-27)_
-- [ ] Add `Shiki.K8s.Introspection` exporting `inspectDeployment :: ClientEnv ->
-  Namespace -> DeploymentName -> IO DeploymentSnapshot` (returns image, configmap name,
-  secret name, service account, node selector for the named container of the named
-  deployment).
-- [ ] Add `Shiki.K8s.JobBuilder` exporting `buildJob :: ServiceConfig ->
-  DeploymentSnapshot -> JobInputs -> V1Job` (pure function from inputs to API model).
-- [ ] Add `Shiki.K8s.Runner` exporting `JobOutcome`, `JobInputs`, `runJob`, and a
-  helper `submitJob` that returns immediately without waiting (for `--no-wait`).
-- [ ] Add `shiki-core/example/RunOnce.hs` and wire it as a cabal `executable` so an
-  operator can run it against a real cluster.
-- [ ] Add a hermetic unit test for `buildJob` that asserts on the generated `V1Job`'s
-  structure (no cluster required).
+- [x] Add `Shiki.K8s.Introspection` exporting `inspectDeployment :: ClientEnv ->
+  Namespace -> DeploymentName -> Text -> IO DeploymentSnapshot` (returns image,
+  configmap name, secret name for the named container of the named deployment). _(2026-05-27)_
+- [x] Add `Shiki.K8s.JobBuilder` exporting `buildJob :: ServiceConfig ->
+  DeploymentSnapshot -> JobInputs -> V1Job` (pure function from inputs to API model). _(2026-05-27)_
+- [x] Add `Shiki.K8s.Runner` exporting `JobOutcome`, `JobInputs`, `runJob`, and a
+  helper `submitJob` that returns immediately without waiting (for `--no-wait`). _(2026-05-27)_
+- [x] Add `shiki-core/example/RunOnce.hs` and wire it as a cabal `executable` so an
+  operator can run it against a real cluster. _(2026-05-27)_
+- [x] Add a hermetic unit test for `buildJob` that asserts on the generated `V1Job`'s
+  structure (no cluster required). _(2026-05-27)_
 - [ ] Optionally add an integration test gated on a `--shiki-k8s` tasty flag that runs
-  against the operator's current kube context.
-- [ ] `cabal build all` clean; `cabal test shiki-core` clean (unit-level only by
-  default).
+  against the operator's current kube context. _(Deferred — not blocking EP-4; the
+  `shiki-run-once` example serves as the live verification path.)_
+- [x] `cabal build all` clean; `cabal test shiki-core` clean (unit-level only by
+  default). _(2026-05-27)_
 
 
 ## Surprises & Discoveries
@@ -158,7 +158,47 @@ consumers must not extend it locally.
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+**Achieved (2026-05-27):**
+
+- Five Haskell modules under `Shiki.K8s.*` cover the full Job lifecycle in
+  typed code: `Client` (kubeconfig loading), `Introspection` (Deployment
+  → snapshot), `JobBuilder` (pure ServiceConfig+snapshot+inputs → V1Job),
+  `Runner` (submit + poll + log tail → JobOutcome), and the `shiki-run-once`
+  example executable that ties them together for live-cluster verification.
+- One hermetic unit test in `Shiki.K8s.JobBuilderSpec` asserts on the V1Job
+  shape using the existing `services/mls-service-v2.dhall` fixture — 5/5
+  shiki-core tests pass.
+- `cabal build all` and `cabal test shiki-core` both clean.
+- EP-4 can now consume `runJob :: ClientEnv -> ServiceConfig ->
+  DeploymentSnapshot -> JobInputs -> Int -> Int -> IO JobOutcome` and map the
+  returned `JobOutcome` into the `RunRecord` completion update.
+
+**Gaps / explicit deferrals:**
+
+- The optional `--shiki-k8s`-gated tasty integration test against the
+  operator's live cluster was deferred — the example executable provides the
+  manual verification path and EP-4 will add the end-to-end integration story.
+- The `JobOutcome.exitCode` is currently coarse-grained (0 / 1 / Nothing)
+  rather than the actual container exit status. The real exit code lives in
+  the Pod's `ContainerStatus.state.terminated.exitCode`; a follow-up can wire
+  this through if EP-4 needs finer-grained reporting.
+- The unused `RunnerError` constructors (`JobSubmitFailed`,
+  `JobStatusReadFailed`) are thrown but never inspected by callers yet; EP-4
+  may want to catch them and translate into `RunRecord` failure rows.
+
+**Lessons learned:**
+
+- The `crypton 1.1.2 + ram` fork chain from EP-2 has tendrils that reach
+  every package that depends on `memory`. Adding any new dep that pulls
+  `jose-jwt`, `hoauth2`, or similar will need the same kind of
+  `source-repository-package` patch we applied here. Future plans should
+  audit transitive `memory` dependents before assuming Hackage versions
+  will resolve.
+- `kubernetes-api`'s prefixed field labels (`v1JobSpecBackoffLimit`, …)
+  read cleanly with plain record syntax (`mkV1JobSpec foo { v1JobSpecX = … }`)
+  but resist `OverloadedLabels` because the generated records do not derive
+  `Generic`. The `Kubernetes.OpenAPI.ModelLens` `v1*L` lenses are the right
+  affordance for nested reads.
 
 
 ## Context and Orientation
