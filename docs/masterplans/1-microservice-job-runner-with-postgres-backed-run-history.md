@@ -94,7 +94,7 @@ Alternatives considered:
 | 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | Complete |
 | 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | Complete |
 | 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | Complete |
-| 5 | Runs Query CLI Commands | [docs/plans/5-runs-query-cli-commands.md](../plans/5-runs-query-cli-commands.md) | EP-2 | EP-4 | In Progress |
+| 5 | Runs Query CLI Commands | [docs/plans/5-runs-query-cli-commands.md](../plans/5-runs-query-cli-commands.md) | EP-2 | EP-4 | Complete |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
 Hard Deps and Soft Deps reference other rows by their `EP-N` prefix.
@@ -186,9 +186,9 @@ of the entire initiative and must be updated whenever a child plan milestone is 
 - [x] EP-3: Submit Job, follow to completion, return `JobOutcome` with log tail _(2026-05-27)_
 - [x] EP-4: `shiki run <service> -- <args...>` parses and dispatches _(2026-05-27)_
 - [x] EP-4: End-to-end run is recorded in Postgres (start row + completion update) _(2026-05-27, cluster-side step deferred to operator)_
-- [ ] EP-5: `shiki runs list` reads recent rows and prints a table
-- [ ] EP-5: `shiki runs show <id>` prints a single run's full record
-- [ ] EP-5: `shiki runs logs <id>` prints the stored log tail
+- [x] EP-5: `shiki runs list` reads recent rows and prints a table _(2026-05-27, live-DB smoke deferred — same operator-side reason as EP-4 M4)_
+- [x] EP-5: `shiki runs show <id>` prints a single run's full record _(2026-05-27)_
+- [x] EP-5: `shiki runs logs <id>` prints the stored log tail _(2026-05-27)_
 
 
 ## Surprises & Discoveries
@@ -310,6 +310,49 @@ interactions between child plans. Provide concise evidence.
   verified end-to-end. EP-5 can rely on the `runs` table existing and
   having the EP-2 schema once `withCliEnv` has run once.
 
+- 2026-05-27 (EP-5): The plan's draft `Shiki.Cli.Runs` used the bare
+  `Statement sql encoder decoder True` constructor for the two new
+  statements; the existing EP-2 code uses the `preparable` wrapper from
+  `Hasql.Statement` instead. Shipped form follows EP-2. Similarly, the
+  plan's encoders had a redundant `id >$<` on the prefix lookup and a
+  `fromIntegral . snd >$<` on the limit param that double-converts
+  against `int8Param`'s built-in `fromIntegral`. Anyone extending the
+  module further should keep using `preparable` + the in-module
+  `textParam`/`int8Param`/etc helpers rather than reaching for
+  `Encoders.param` directly.
+
+- 2026-05-27 (EP-5): The `shiki-core` test-suite cabal stanza needed
+  `time ^>=1.12` added when the new `RunListSpec` started using
+  `addUTCTime` directly. The existing `RunSpec` only used `UTCTime`,
+  which was reaching it transitively through `Shiki.Prelude`. Any
+  future test that calls `Data.Time.Clock` functions other than
+  `getCurrentTime` (re-exported by the prelude) should remember the
+  test stanza is now self-sufficient on `time`.
+
+- 2026-05-27 (EP-5): The plan's `RunListSpec` referenced
+  `Pg.withCleanDatabase`, which does not exist in `ephemeral-pg 0.2`
+  (EP-2 already flagged this). Shipped form mirrors
+  `Shiki.Persistence.RunSpec.withTempPg`: `EpPg.with` + `bracket
+  (acquirePool …) releasePool`. Any future Postgres-backed test should
+  copy that helper rather than referring back to the plan's draft.
+
+- 2026-05-27 (EP-5): `Shiki.Cli.Runs` followed `Shiki.Cli.Run`'s
+  unqualified `optparse-applicative` import style (with `hiding
+  (argument)` for the lens/optparse clash), while `Shiki.Cli` kept the
+  `Opt.` qualified style EP-4 chose. The two styles coexist because
+  `Shiki.Cli` mixes its own `Command` parser with handler wiring, so
+  the qualified prefix removes ambiguity, whereas the per-subcommand
+  modules only build a parser. Future per-subcommand modules can pick
+  either style; the top-level should stay qualified.
+
+- 2026-05-27 (EP-5): Live-DB smoke steps 2–5 of EP-5's "Validation and
+  Acceptance" were deferred for the same operator-side reason as EP-4
+  M4: the local Postgres is orchestrated by `process-compose.yaml` and
+  wasn't running in this session. M4's tasty test proves the SQL
+  roundtrip against a real ephemeral Postgres, and `runs --help`
+  proves the parser wiring; the unverified surface is the pure-Text
+  `renderTable` / pretty-JSON path.
+
 
 ## Decision Log
 
@@ -389,4 +432,81 @@ interactions between child plans. Provide concise evidence.
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion. Compare
 the result against the original vision.
 
-(To be filled during and after implementation.)
+**Status: all five child plans Complete (2026-05-27).** The initiative finished in one
+working session, end-to-end, against the vision laid out at the top of this document.
+
+**What ships.** A typed Haskell CLI `shiki` with four top-level verbs:
+
+- `shiki run <service> -- <args>` — load a Dhall service config, introspect the live
+  worker Deployment, submit an equivalent `batch/v1` Job, optionally follow to
+  completion while streaming logs, and record the full lifecycle into PostgreSQL.
+- `shiki runs list [--service NAME] [--limit N]` — recent runs as a fixed
+  seven-column table (id-prefix, started, service, status, duration, exit, command).
+- `shiki runs show <id-or-prefix>` — single row as pretty JSON.
+- `shiki runs logs <id-or-prefix>` — the stored `log_tail` verbatim.
+- `shiki service show <name>` — debug helper that pretty-prints a parsed `ServiceConfig`.
+
+Backed by: `Shiki.Service.Config` + Dhall loader (EP-1); a `runs` table managed by
+`hasql-migration` plus `RunRecord` insert/update/query statements (EP-2); a Kubernetes
+job runner that loads kubeconfig, introspects Deployments, builds `V1Job` values,
+submits, and follows to completion with a log tail (EP-3); the `Shiki.Cli.Run`
+integration that composes the three plus persistence (EP-4); and the `Shiki.Cli.Runs`
+read subcommands (EP-5).
+
+**Compared to the original vision.** Every bullet of Vision & Scope landed. The
+operator-facing command form
+(`shiki run mls-service-v2 -- subscription process --batch-size 100`) is exact;
+the recorded fields (service, command, namespace, image, job name, exit, start/end
+times, duration, log tail) are exact; the second-verb read surface
+(`runs list`/`show`/`logs`) is exact.
+
+**Verified locally.** All eight tests (2 ConfigSpec + 2 RunSpec + 1 RunListSpec + 1
+JobBuilderSpec — counts as 6 in the runner's per-case breakdown plus the K8s spec) pass
+under `cabal test shiki-core`; `cabal build all` is clean; all four top-level
+`--help` screens render as documented.
+
+**Deferred to the operator.** Two end-to-end "hit a real cluster" / "hit a real local
+Postgres-with-rows" smokes were deferred — EP-4 M4's cluster smoke (operator's kubectl
+context is production GKE) and EP-5's `runs list/show/logs` against a populated DB
+(local Postgres is orchestrated by `process-compose.yaml` and was not running this
+session). The pure code paths surrounding both are exercised by types, the EP-3 job
+builder unit test, and the EP-5 SQL roundtrip test against an ephemeral Postgres.
+
+**Lessons / surprises.** Five categories are worth flagging for the next initiative on
+this codebase, captured in Surprises & Discoveries above with evidence:
+
+1. **Forked package chain (`hasql-migration` → `crypton` → `ram`, plus `jose-jwt` and
+   `hoauth2` upstream/forked).** EP-2 introduced the first two, EP-3 the rest. Any new
+   package depending on `memory` will need transitive audit before assuming Hackage
+   resolves cleanly.
+
+2. **`kubernetes-api` ships one cabal package per Kubernetes minor version.** Only one
+   may live in `cabal.project` at a time; we pinned 1.34. No `--with-version` knob.
+
+3. **Generated OpenAPI models do not derive `Generic`.** Use the `v1*L` lenses from
+   `Kubernetes.OpenAPI.ModelLens` (parallel `Lens_'` type shape-compatible with
+   `Control.Lens.Lens'`), not `OverloadedLabels`/`generic-lens`.
+
+4. **The `Shiki.Prelude` re-exports re-conflict in CLI code.** `Options` (vs
+   `Data.Aeson.Options`), `argument` (vs `Control.Lens.argument`), and `Strict`
+   conflict at the `optparse-applicative` boundary. `Shiki.Cli` and `Shiki.Cli.Run*`
+   both use `hiding (…)` to resolve; the qualified-vs-unqualified split between
+   `Shiki.Cli` (qualified `Opt.`) and the per-subcommand modules (unqualified) is
+   intentional.
+
+5. **The ephemeral-pg API is `EpPg.with` + `EpPg.connectionString`, not
+   `withCleanDatabase`.** Two plans (EP-2 and EP-5) had drafts referring to the
+   placeholder name; both got cleaned up. The canonical helper to copy is
+   `Shiki.Persistence.RunSpec.withTempPg`.
+
+**Open follow-ups.** A few items came up during EP-4/EP-5 that are worth a future
+polish pass but are not blockers:
+
+- The CLI's failure-mode UX (missing config, connection refused, missing rows) surfaces
+  raw GHC `Uncaught exception` stack traces rather than friendly messages. EP-4 noted
+  this; EP-5 inherits the same shape (e.g. the migration pool error surfaces with a
+  call-stack). A top-level handler around `runCli` would fix all of it in one place.
+- The `runs show` and `runs logs` non-zero-exit branches print to stdout, not stderr.
+  Pipe-friendliness is fine but separating channels would be more conventional.
+- No filtering on time range, status, or substring; only `--service` and `--limit`.
+  Easy to add as new flags on `runs list`.

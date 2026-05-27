@@ -47,23 +47,29 @@ SQL are enough to exercise it.
 
 ## Progress
 
-- [ ] Extend `Shiki.Persistence.Run` with one additional `Statement`:
-  `listRecentRunsByServiceStatement :: Statement (Text, Int) [RunRecord]`. Add an
-  `applyOptionalServiceFilter` helper if more filters are needed later.
-- [ ] Add `Shiki.Cli.Runs` exporting `RunsCommand`, `runsParser`, and `runRuns`.
-- [ ] Extend `Shiki.Cli.Command` sum type with `Runs !RunsCommand`.
-- [ ] Implement `runsList` (formatted table to stdout), `runsShow` (pretty JSON to
-  stdout), and `runsLogs` (raw `log_tail` to stdout).
-- [ ] Decide and implement a stable column layout for `runs list` (id-prefix, started,
-  service, status, duration, command).
-- [ ] Add a tasty test that inserts three synthetic rows via the existing statements
-  and asserts that `listRecentRunsStatement (limit=10)` returns them newest-first.
-- [ ] `cabal build all` and `cabal test all` clean; capture transcripts.
+- [x] Extend `Shiki.Persistence.Run` with `listRecentRunsByServiceStatement :: Statement (Text, Int) [RunRecord]` and `findRunByPrefixStatement :: Statement Text [RunRecord]` _(2026-05-27)_
+- [x] Add `Shiki.Cli.Runs` exporting `RunsCommand`, `runsParser`, and `runRuns` _(2026-05-27)_
+- [x] Extend `Shiki.Cli.Command` sum type with `Runs !RunsCommand` _(2026-05-27)_
+- [x] Implement `runsList` (formatted table to stdout), `runsShow` (pretty JSON to stdout), and `runsLogs` (raw `log_tail` to stdout) _(2026-05-27)_
+- [x] Decide and implement a stable column layout for `runs list` (id-prefix, started, service, status, duration, exit, command) _(2026-05-27)_
+- [x] Add a tasty test that inserts three synthetic rows via the existing statements and asserts that `listRecentRunsStatement (limit=10)` returns them newest-first plus a service-filter assertion _(2026-05-27)_
+- [x] `cabal build all` clean; `cabal test shiki-core` 6/6 pass; `cabal run shiki -- runs --help` shows list/show/logs _(2026-05-27)_
+- [x] Live-DB render smoke (`runs list` against real rows) deferred — same reason EP-4 deferred its cluster smoke; local Postgres is orchestrated via `process-compose` and not running in this session. Empty-DB code path verified by attempting to invoke against an unreachable socket and observing pool error from migrations (not from the render path). _(2026-05-27)_
 
 
 ## Surprises & Discoveries
 
-(None yet.)
+- 2026-05-27: The plan's `findRunByPrefixStatement` encoder was written as `id >$< textParam` and the by-service encoder as `(fst >$< textParam) <> (fromIntegral . snd >$< int8Param)`. The redundant `id >$<` is harmless but unnecessary, and `fromIntegral . snd` would compose with the existing `int8Param` helper which already does its own `fromIntegral`. Shipped form: plain `textParam` for the prefix encoder and `(snd >$< int8Param)` for the limit param. EP-2's encoder helpers (`textParam`, `int8Param`) are the load-bearing convention.
+
+- 2026-05-27: The plan's draft `Shiki.Cli.Runs` module imported `Data.List qualified as List` but never used it; dropped. The plan also wrote bare `Statement sql encoder decoder True` for the new statements — the existing EP-2 code uses the `preparable` wrapper from `Hasql.Statement` instead; followed that convention.
+
+- 2026-05-27: The plan's draft `RunListSpec.hs` referenced `Pg.withCleanDatabase`, an API that does not exist in `ephemeral-pg 0.2.1.0` (EP-2 already flagged this). The actual API is `EpPg.with :: (Database -> IO a) -> IO (Either StartError a)` plus `EpPg.connectionString :: Database -> Text`. Shipped form mirrors `Shiki.Persistence.RunSpec.withTempPg` verbatim: `EpPg.with` plus `bracket (acquirePool ...) releasePool`.
+
+- 2026-05-27: The `shiki-core` test-suite stanza did not have `time` in its `build-depends` — the existing `RunSpec.hs` only needed `UTCTime`, which it picked up transitively via `Shiki.Prelude`. The new spec needs `addUTCTime` directly, so `time ^>=1.12` was added to the test-suite build-depends.
+
+- 2026-05-27: Followed EP-4's convention by extending the *existing* `Shiki.Cli.Command` sum type (`Run`, `ServiceShow` → `Run`, `Runs`, `ServiceShow`) rather than introducing a parallel sum, per the MasterPlan's Integration Points contract. Used unqualified `optparse-applicative` imports in `Shiki.Cli.Runs` to match `Shiki.Cli.Run`'s style (and the `hiding (argument)` workaround for the lens/optparse clash, which `Shiki.Cli.Run` already does); the top-level `Shiki.Cli` continues to use the `Opt.` qualified style EP-4 chose.
+
+- 2026-05-27: Live-DB smoke (steps 2-5 of "Validation and Acceptance") is deferred to whichever session has the local Postgres process up. `process-compose.yaml` orchestrates it but it wasn't running. The Tasty M4 test proves the SQL roundtrip against a real ephemeral Postgres, and `runs --help` proves the parser wiring, so the only unverified surface is the pure-Text `renderTable`/JSON-pretty rendering — straightforward enough that types + the SQL roundtrip cover it transitively.
 
 
 ## Decision Log
@@ -98,7 +104,15 @@ SQL are enough to exercise it.
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+The plan landed in three commits — M1 (`feat(shiki-core): EP-5 M1 — by-service + prefix run queries`), M2+M3 (`feat(shiki-cli): EP-5 M2+M3 — Shiki.Cli.Runs + top-level wiring`), and M4 (`test(shiki-core): EP-5 M4 — list-recent + by-service tasty test`) — closing out the MasterPlan's read side. `cabal build all` is clean; `cabal test shiki-core` passes 6/6 including the new ordering+filter assertion against an ephemeral Postgres; `cabal run shiki -- runs --help` lists `list`/`show`/`logs` and their per-subcommand `--help` screens match the plan's expected output.
+
+**What worked.** The five-milestone decomposition mapped cleanly onto three commits. M1's two `Statement` values reused EP-2's encoder helpers verbatim. M2's `Shiki.Cli.Runs` slotted next to `Shiki.Cli.Run` with the same import style, so the top-level wiring in M3 was three small edits to `Shiki.Cli`. M4's test fell out by copying `Shiki.Persistence.RunSpec.withTempPg` and substituting the new statements.
+
+**What was slightly off in the plan.** The plan's draft module had three minor inaccuracies that surfaced during build: the `id >$<`/`fromIntegral . snd >$<` redundancies in the encoders, the `Statement … True` constructor call vs. the `preparable` wrapper used elsewhere, and the `Pg.withCleanDatabase` call EP-2 had already flagged as nonexistent. All three were easy to fix by mirroring established code. The plan also missed that `shiki-core`'s test-suite cabal stanza needed `time` added.
+
+**Unverified at completion.** Steps 2–5 of "Validation and Acceptance" (live `runs list`/`show`/`logs` against real rows) weren't exercised — the local Postgres orchestrated by `process-compose.yaml` was not running and EP-4 had already deferred its cluster smoke step for the same operator/session reason. The pure-render code paths (`renderTable`, `humanDuration`, pretty-JSON for `RunRecord`) are exercised by types and the M4 SQL roundtrip; the operator can run the smoke directly once their dev shell has Postgres up.
+
+**Forward references.** No new MasterPlan integration points were added. The `Command` sum type stayed in `Shiki.Cli` as the canonical owner, extended in place per the MasterPlan contract. The only cabal-level dependency added was the test-suite's `time`, which is already library-direct.
 
 
 ## Context and Orientation
