@@ -138,7 +138,7 @@ here, even if it requires splitting a partially completed task into two ("done" 
   `Baikai.Model`/`Context`/`Options` triple, call `Baikai.completeRequest`, print the
   assistant text, and exit 0. Vendor `register` calls land lazily before each
   `completeRequest`, mirroring `Shiki.Analysis.Baikai`.
-- [ ] M5 — Wire the subcommand. Extend `Shiki.Cli.Command` to add an `Agent
+- [x] M5 — Wire the subcommand. Extend `Shiki.Cli.Command` to add an `Agent
   AgentCommand` arm with an `AssistOptions` payload, add `agentParser` /
   `assistOptionsParser` in `Shiki.Cli`, and route into `runAssist :: CliEnv ->
   AgentModelConfig -> AssistOptions -> IO ()` from `Shiki.Cli.Agent`. Flag surface:

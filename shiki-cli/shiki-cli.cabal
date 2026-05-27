@@ -43,6 +43,7 @@ library
   hs-source-dirs: src
   exposed-modules:
     Shiki.Cli
+    Shiki.Cli.Agent
     Shiki.Cli.Agent.Config
     Shiki.Cli.Agent.Context
     Shiki.Cli.Agent.Launch

@@ -21,11 +21,13 @@ module Shiki.Cli
 
 import Shiki.Prelude hiding (Options, argument)
 
+import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
+import Shiki.Persistence.Schema qualified
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 
@@ -39,6 +41,7 @@ data Command
   = Run         !RunOptions
   | Runs        !RunsCommand
   | ServiceShow !Text
+  | Agent       !AgentCommand
   deriving stock (Generic, Eq, Show)
 
 data Options = Options
@@ -54,17 +57,24 @@ runCli = do
   case opts ^. #command of
     ServiceShow nm -> serviceShowHandler nm
     Run runOpts    ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \env ->
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \_ env ->
         runRun env runOpts
     Runs runsOpts  ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \env ->
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \_ env ->
         runRuns env runsOpts
+    Agent agentOpts ->
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \schema env ->
+        runAgent env schema agentOpts
 
-withDbEnv :: Maybe Text -> Maybe Text -> (CliEnv -> IO a) -> IO a
+withDbEnv
+  :: Maybe Text
+  -> Maybe Text
+  -> (Shiki.Persistence.Schema.Schema -> CliEnv -> IO a)
+  -> IO a
 withDbEnv mConn mSchema k = do
   cs     <- resolveConnectionString mConn
   schema <- resolveSchema mSchema
-  withCliEnv cs schema k
+  withCliEnv cs schema (k schema)
 
 serviceShowHandler :: Text -> IO ()
 serviceShowHandler nm = do
@@ -125,6 +135,12 @@ commandParser =
           ( Opt.info
               serviceSubparser
               (Opt.progDesc "Inspect microservice configuration files")
+          )
+        <> Opt.command
+          "agent"
+          ( Opt.info
+              (Agent <$> agentParser)
+              (Opt.progDesc "Agentic helpers for driving shiki")
           )
     )
 
