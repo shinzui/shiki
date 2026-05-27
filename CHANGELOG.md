@@ -10,3 +10,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Initial scaffold: `shiki-core` library and `shiki-cli` (executable `shiki`).
+- feat(shiki-cli): EP-8 — `shiki agent assist` opens an interactive AI session
+  preloaded with shiki context (services, recent runs, schema, cluster).
+  Provider/model configurable via `--provider`/`--model` or
+  `SHIKI_AGENT_PROVIDER`/`SHIKI_AGENT_MODEL`.

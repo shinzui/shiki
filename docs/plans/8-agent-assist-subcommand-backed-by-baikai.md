@@ -145,7 +145,7 @@ here, even if it requires splitting a partially completed task into two ("done" 
   `--provider`, `--model`, `--prompt`, `--service`, `--run`, `--debug`. Confirm
   `shiki --help` lists the new `agent` subcommand and `shiki agent assist --help`
   lists every flag.
-- [ ] M6 — README section, smoke transcript, and CHANGELOG entry. Add a new
+- [x] M6 — README section, smoke transcript, and CHANGELOG entry. Add a new
   "Agent assist" section to `README.md` documenting the flags, env vars, and a
   one-paragraph example. Record a real terminal transcript in this plan's Concrete
   Steps section showing `shiki agent assist --debug` against the dev DB.
@@ -227,7 +227,28 @@ Record every decision made while working on the plan.
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion.
 Compare the result against the original purpose.
 
-(To be filled during and after implementation.)
+- **Result vs. purpose.** `shiki agent assist` now exists end-to-end:
+  flags + env vars + default resolve into an `AgentModelConfig`, the
+  context gatherer reads `services/*.dhall` and the most recent runs,
+  the embedded template renders into a markdown system prompt, and the
+  dispatcher routes either to `launchClaudeInteractive` /
+  `launchCodexInteractive` for a real terminal session or to a one-shot
+  `Baikai.completeRequest` for the API providers. The debug transcript
+  in *Concrete Steps* above is the real output against the dev DB; the
+  `--provider bogus` error path satisfies the acceptance test for bad
+  spellings.
+- **Test coverage.** Four new specs (`ProviderSpec`, `ContextSpec`,
+  `PromptSpec`, `LaunchSpec`) covering 22 cases; `cabal test shiki-cli`
+  reports `All 22 tests passed`. The pre-existing `shiki-core`
+  test suite still passes unmodified (24 cases).
+- **Gap: cluster name placeholder.** The plan parks the cluster field
+  at `"unknown"` in M2; threading the real cluster context name through
+  `Shiki.K8s.Client` is left for a follow-up commit.
+- **Gap: TestPg sharing.** `Shiki.Persistence.TestPg` lives inside
+  `shiki-core`'s test suite (not its library), so the new
+  `Shiki.Cli.Agent.ContextSpec` inlines a small ephemeral-pg helper
+  instead of importing the shared one. A future refactor could promote
+  the harness into a test-only sub-library if a third package needs it.
 
 
 ## Context and Orientation
@@ -836,7 +857,9 @@ cabal install --install-method=copy --overwrite-policy=always --installdir=$HOME
 shiki agent assist --debug
 ```
 
-Expected (first ~15 lines, before the services/runs blocks):
+Captured during M6 against the local Postgres started by
+`pg_ctl start ...` (the project's `process-compose` wraps the same
+invocation). The full document follows verbatim:
 
 ```text
 # shiki agent assist
@@ -854,11 +877,59 @@ PostgreSQL.
 
 ## Services declared on disk
 
-- mls-service-v2 (namespace: default, analyzer: heuristic)
+- mls-service-v2 (namespace: prod, analyzer: heuristic)
+
+## Recent runs (most recent first, up to 20)
+
+(no runs yet)
+
+## Tools you may run
+
+The operator has scoped your subprocess access to:
+
+- `shiki run <service> [-- args...]` — submit a new one-off Job for the
+  named service and (without `--no-wait`) follow it to completion.
+- `shiki runs list [--service NAME] [--limit N]` — recent runs as a table.
+- `shiki runs show <id>` — one row as pretty JSON. Accepts an unambiguous
+  8-char prefix.
+- `shiki runs logs <id>` — the captured log tail for one run.
+- `shiki runs error <id>` — just the error_summary one-liner.
+- `shiki runs analyze <id> [--analyzer=heuristic|baikai:<model>|none]` —
+  re-run analysis over the stored log tail. The baikai backend requires
+  `ANTHROPIC_API_KEY` (for `anthropic_*` models) or `OPENAI_API_KEY` (for
+  `openai_*`) in the operator's environment.
+- `shiki service show <name>` — pretty-print one service config as JSON.
+- `kubectl get <resource> ...` and `kubectl logs <pod> ...` — for sanity
+  checks against the live cluster. Avoid mutating verbs.
+
+## How to help
+
+1. Confirm the operator's intent. If you are about to submit a job, restate
+   the service, namespace, and command-line arguments before running it.
+2. Drive shiki's own subcommands rather than re-implementing them. When the
+   operator asks "did the last run fail," call `shiki runs list --limit 5`
+   and read the row.
+3. When a run failed, fetch its `error_summary` with `shiki runs error <id>`.
+   If the summary is missing or looks unhelpful, suggest running
+   `shiki runs analyze <id> --analyzer=baikai:anthropic_claude_haiku_4_5`
+   to get a richer summary, and run it if the operator agrees.
+4. Pre-seeded hints from the operator (if any) follow. Treat them as the
+   opening message, not as commands you must execute immediately:
+
+## Operator hints
+
+(no hints)
 ```
 
-Paste the *real* output captured during M6 into this section, replacing the
-sample above.
+Step 2 confirmation: a bad provider exits non-zero with the expected
+stderr message, satisfying acceptance criterion 7:
+
+```text
+$ shiki agent assist --provider bogus
+shiki: unknown agent provider 'bogus'. Expected one of: claude-cli, codex-cli, anthropic, openai.
+$ echo $?
+1
+```
 
 Step 2: launch an interactive Claude Code session.
 

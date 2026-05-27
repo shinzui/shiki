@@ -125,6 +125,59 @@ successful Job's logs may incidentally contain `ERROR` or `Exception` strings
 that were caught and recovered from, so promoting them into `error_summary`
 would actively mislead the operator).
 
+## Agent assist
+
+`shiki agent assist` opens an interactive AI session preloaded with shiki's
+current view of the operator's local state: the working directory, the
+PostgreSQL schema, the cluster context, every `.dhall` file under `services/`,
+and the last twenty rows from the `runs` table. The agent then drives shiki's
+own subcommands (`shiki run`, `shiki runs list`, `shiki runs error`,
+`shiki runs analyze`, `shiki service show`) on the operator's behalf through a
+hard-coded allowed-tool list (`Bash(shiki *)`, `Bash(kubectl get *)`,
+`Bash(kubectl logs *)`, plus `Read` / `Glob` / `Grep` and a few read-only shell
+verbs).
+
+Four providers ship out of the box. The two CLI providers spawn a local
+subprocess and hand the terminal over to it; the two API providers issue a
+single non-interactive call and print the assistant's text:
+
+```bash
+shiki agent assist                                       # claude-cli (default)
+shiki agent assist --provider codex-cli                  # Codex CLI
+shiki agent assist --provider anthropic --model claude-sonnet-4-6
+shiki agent assist --provider openai    --model gpt-4o-mini
+shiki agent assist --debug                               # print the rendered system prompt and exit
+shiki agent assist --service mls-service-v2 \
+                   --prompt "the last run failed, help me re-run with --batch-size 100"
+```
+
+Pin defaults via environment variables — CLI flags still win, and a typo in
+either variable exits with `shiki: unknown agent provider '<x>'. ...` before
+any other work happens:
+
+```bash
+export SHIKI_AGENT_PROVIDER=claude-cli
+export SHIKI_AGENT_MODEL=claude-sonnet-4-6
+```
+
+Flags accepted by `shiki agent assist`:
+
+- `--provider PROVIDER` — `claude-cli`, `codex-cli`, `anthropic`, or `openai`.
+- `--model MODEL` — provider-specific model id (e.g.
+  `claude-sonnet-4-6`, `gpt-4o-mini`); CLI providers default to whatever
+  the local CLI uses.
+- `--prompt PROMPT` — the first user-role message sent to the model.
+- `--service NAME` — pre-seeds the system prompt with a hint pointing the
+  agent at one service.
+- `--run ID` — pre-seeds the system prompt with a hint pointing the agent
+  at a run id (8-char prefixes work, just like every other `runs` subcommand).
+- `--debug` — render and print the system prompt, then exit 0. Useful for
+  inspecting what the agent will see before launching a real session.
+
+The API providers (`anthropic`, `openai`) read `ANTHROPIC_API_KEY` and
+`OPENAI_API_KEY` from the environment the same way `shiki runs analyze
+--analyzer=baikai:...` does.
+
 ## Develop
 
 The project ships a Nix flake (`nix-haskell-flake`) that pins GHC and provides
