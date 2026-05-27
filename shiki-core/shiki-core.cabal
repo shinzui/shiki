@@ -110,6 +110,7 @@ test-suite shiki-core-test
     Shiki.K8s.JobBuilderSpec
     Shiki.Persistence.RunListSpec
     Shiki.Persistence.RunSpec
+    Shiki.Persistence.SchemaIsolationSpec
     Shiki.Persistence.SchemaSpec
     Shiki.Persistence.TestPg
     Shiki.Service.ConfigSpec

@@ -100,13 +100,15 @@ This section must always reflect the actual current state of the work.
   configurability is real and isolates concurrent test runs. _(done 2026-05-27 — new
   `Shiki.Persistence.TestPg` helper drives `RunSpec` + `RunListSpec` with a UUID-derived
   per-test schema; all 10 tests still green)_
-- [ ] M6 — Add an integration test
+- [x] M6 — Add an integration test
   `shiki-core/test/Shiki/Persistence/SchemaIsolationSpec.hs` that, against an
   ephemeral Postgres, runs migrations with `Schema "alpha"` and `Schema "beta"`
   against the same database, inserts one `NewRun` into each, and asserts that
   selecting from `public.runs` raises an `undefined_table` error while
   `information_schema.tables WHERE table_schema = 'alpha' AND table_name = 'runs'`
-  returns exactly one row, and the same for `beta`.
+  returns exactly one row, and the same for `beta`. _(done 2026-05-27 — test passes;
+  `verifyCount` counts via the schema-scoped pool, `verifyMissingFromPublic` confirms
+  the info-schema has no `public.runs` row)_
 - [ ] M7 — Update `README.md` with a short section ("Database schema") describing the
   default and the override knobs. Run `cabal test all` end-to-end and capture the
   transcript into the Concrete Steps section.

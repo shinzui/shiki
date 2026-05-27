@@ -3,6 +3,7 @@ module Main (main) where
 import Shiki.K8s.JobBuilderSpec qualified as JobBuilderSpec
 import Shiki.Persistence.RunListSpec qualified as RunListSpec
 import Shiki.Persistence.RunSpec qualified as RunSpec
+import Shiki.Persistence.SchemaIsolationSpec qualified as SchemaIsolationSpec
 import Shiki.Persistence.SchemaSpec qualified as SchemaSpec
 import Shiki.Service.ConfigSpec qualified as ConfigSpec
 
@@ -17,4 +18,5 @@ main =
       , RunListSpec.tests
       , JobBuilderSpec.tests
       , SchemaSpec.tests
+      , SchemaIsolationSpec.tests
       ]
