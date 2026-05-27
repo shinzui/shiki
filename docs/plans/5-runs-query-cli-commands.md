@@ -5,6 +5,7 @@ title: "Runs Query CLI Commands"
 kind: exec-plan
 created_at: 2026-05-27T04:46:54Z
 master_plan: "docs/masterplans/1-microservice-job-runner-with-postgres-backed-run-history.md"
+intention: intention_01ksn15jq4e0fvf6cysm7ezhm0
 ---
 
 

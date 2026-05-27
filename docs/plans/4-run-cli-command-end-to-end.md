@@ -5,6 +5,7 @@ title: "run CLI Command End to End"
 kind: exec-plan
 created_at: 2026-05-27T04:46:53Z
 master_plan: "docs/masterplans/1-microservice-job-runner-with-postgres-backed-run-history.md"
+intention: intention_01ksn15jq4e0fvf6cysm7ezhm0
 ---
 
 
@@ -57,9 +58,9 @@ longer needed.
 
 ## Progress
 
-- [ ] Add `Shiki.Cli.Config` exporting `resolveConnectionString`.
-- [ ] Add `Shiki.Cli.Env` exporting `CliEnv` and `withCliEnv` (acquires pool, runs
-  migrations, loads kubeconfig).
+- [x] Add `Shiki.Cli.Config` exporting `resolveConnectionString`. _(2026-05-27)_
+- [x] Add `Shiki.Cli.Env` exporting `CliEnv` and `withCliEnv` (acquires pool, runs
+  migrations, loads kubeconfig). _(2026-05-27)_
 - [ ] Add `Shiki.Cli.Run` exporting `RunOptions`, `runOptionsParser`, and `runRun`.
 - [ ] Extend `Shiki.Cli.Command` sum type with `Run RunOptions` constructor (the
   canonical type per the MasterPlan's Integration Points).

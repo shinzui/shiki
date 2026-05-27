@@ -40,6 +40,8 @@ library
   hs-source-dirs: src
   exposed-modules:
     Shiki.Cli
+    Shiki.Cli.Config
+    Shiki.Cli.Env
 
   build-depends:
     base >=4.20 && <5,
@@ -48,9 +50,12 @@ library
     aeson-pretty ^>=0.8,
     bytestring ^>=0.12,
     generic-lens,
+    hasql >=1.10,
+    hasql-pool >=1.4,
     lens ^>=5.3,
     optparse-applicative >=0.18,
     text ^>=2.1,
+    time ^>=1.12,
 
 executable shiki
   import: common-options
