@@ -20,6 +20,8 @@ module Shiki.Persistence.Run
   , completeRunStatement
   , getRunStatement
   , listRecentRunsStatement
+  , listRecentRunsByServiceStatement
+  , findRunByPrefixStatement
   ) where
 
 import Shiki.Prelude
@@ -191,6 +193,43 @@ listRecentRunsStatement = preparable sql encoder decoder
        LIMIT $1
       """
     encoder = int8Param
+    decoder = Decoders.rowList runRecordRow
+
+-- | List the most recent N runs for a single service, newest first.
+listRecentRunsByServiceStatement :: Statement (Text, Int) [RunRecord]
+listRecentRunsByServiceStatement = preparable sql encoder decoder
+  where
+    sql =
+      """
+      SELECT id, service_name, command, namespace, job_name,
+             image, status, exit_code, started_at, ended_at,
+             duration_ms, log_tail, service_config, error
+        FROM runs
+       WHERE service_name = $1
+    ORDER BY started_at DESC
+       LIMIT $2
+      """
+    encoder =
+      (fst >$< textParam)
+        <> (snd >$< int8Param)
+    decoder = Decoders.rowList runRecordRow
+
+-- | Find rows whose @id@ starts with the given prefix. Returns at most
+--   two rows so the caller can tell \"unique\" from \"ambiguous\" without
+--   pulling the whole table on degenerate input (e.g. an empty prefix).
+findRunByPrefixStatement :: Statement Text [RunRecord]
+findRunByPrefixStatement = preparable sql encoder decoder
+  where
+    sql =
+      """
+      SELECT id, service_name, command, namespace, job_name,
+             image, status, exit_code, started_at, ended_at,
+             duration_ms, log_tail, service_config, error
+        FROM runs
+       WHERE id::text LIKE $1 || '%'
+       LIMIT 2
+      """
+    encoder = textParam
     decoder = Decoders.rowList runRecordRow
 
 -- ── Internal parameter / row helpers ───────────────────────────────────────
