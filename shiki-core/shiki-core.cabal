@@ -1,7 +1,7 @@
 cabal-version: 3.4
 name: shiki-core
 version: 0.1.0.0
-synopsis: hiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took.
+synopsis: shiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took.
 description:
   Shiki is a CLI for conducting operational commands across Kubernetes services with a durable execution history. It helps operators run service-specific commands against the right cluster and environment, while recording each run in PostgreSQL with metadata such as the service, command, status, timing, and duration. The goal is to make ad hoc operational work safer, easier to audit, and easier to understand after the fact.
 

@@ -1,6 +1,12 @@
 # shiki
 
-> hiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took.
+> shiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took.
+
+The name comes from 指揮 (*shiki*) — Japanese for "command," "direction," or
+"conducting," used both for military command and for an orchestral conductor.
+指 means *to point / indicate*; 揮 means *to wave / direct*. Together they
+describe what this tool does: it directs operational commands at the right
+service in the right cluster, the way a conductor cues an orchestra.
 
 Shiki is a CLI for conducting operational commands across Kubernetes services with a durable execution history. It helps operators run service-specific commands against the right cluster and environment, while recording each run in PostgreSQL with metadata such as the service, command, status, timing, and duration. The goal is to make ad hoc operational work safer, easier to audit, and easier to understand after the fact.
 
