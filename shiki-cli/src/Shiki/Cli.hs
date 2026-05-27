@@ -25,6 +25,7 @@ import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
+import Shiki.Cli.Schema (resolveSchema)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 
@@ -42,6 +43,7 @@ data Command
 
 data Options = Options
   { dbConnStr :: !(Maybe Text)
+  , dbSchema  :: !(Maybe Text)
   , command   :: !Command
   }
   deriving stock (Generic, Eq, Show)
@@ -52,14 +54,17 @@ runCli = do
   case opts ^. #command of
     ServiceShow nm -> serviceShowHandler nm
     Run runOpts    ->
-      withDbEnv (opts ^. #dbConnStr) $ \env -> runRun env runOpts
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \env ->
+        runRun env runOpts
     Runs runsOpts  ->
-      withDbEnv (opts ^. #dbConnStr) $ \env -> runRuns env runsOpts
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \env ->
+        runRuns env runsOpts
 
-withDbEnv :: Maybe Text -> (CliEnv -> IO a) -> IO a
-withDbEnv mFlag k = do
-  cs <- resolveConnectionString mFlag
-  withCliEnv cs k
+withDbEnv :: Maybe Text -> Maybe Text -> (CliEnv -> IO a) -> IO a
+withDbEnv mConn mSchema k = do
+  cs     <- resolveConnectionString mConn
+  schema <- resolveSchema mSchema
+  withCliEnv cs schema k
 
 serviceShowHandler :: Text -> IO ()
 serviceShowHandler nm = do
@@ -89,6 +94,14 @@ optionsParser =
                   <> Opt.metavar "CONNSTR"
                   <> Opt.help
                       "Postgres connection string (overrides SHIKI_DATABASE_URL / PG_CONNECTION_STRING)"
+              )
+          )
+    <*> Opt.optional
+          ( Opt.strOption
+              ( Opt.long "db-schema"
+                  <> Opt.metavar "SCHEMA"
+                  <> Opt.help
+                      "Postgres schema for shiki tables (default: shiki, overrides SHIKI_DB_SCHEMA)"
               )
           )
     <*> commandParser

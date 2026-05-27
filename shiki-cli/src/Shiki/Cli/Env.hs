@@ -15,7 +15,7 @@ import Shiki.Prelude
 import Shiki.K8s.Client (ClientEnv, loadDefaultClientConfig)
 import Shiki.Persistence.Connection (ConnectionString, acquirePool, releasePool)
 import Shiki.Persistence.Migration (runMigrations)
-import Shiki.Persistence.Schema (defaultSchema)
+import Shiki.Persistence.Schema (Schema)
 
 import "base" Control.Exception (bracket)
 import "hasql-pool" Hasql.Pool qualified as Pool
@@ -31,9 +31,9 @@ data CliEnv = CliEnv
 --   release the pool on exit. The Kubernetes 'ClientEnv' owns an
 --   @http-client@ 'Network.HTTP.Client.Manager' that does not require
 --   explicit teardown.
-withCliEnv :: ConnectionString -> (CliEnv -> IO a) -> IO a
-withCliEnv cs action =
-  bracket (acquirePool cs defaultSchema) releasePool $ \p -> do
-    runMigrations p defaultSchema
+withCliEnv :: ConnectionString -> Schema -> (CliEnv -> IO a) -> IO a
+withCliEnv cs schema action =
+  bracket (acquirePool cs schema) releasePool $ \p -> do
+    runMigrations p schema
     cl <- loadDefaultClientConfig
     action CliEnv { pool = p, client = cl }

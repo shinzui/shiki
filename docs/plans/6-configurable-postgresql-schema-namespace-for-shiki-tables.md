@@ -87,13 +87,14 @@ This section must always reflect the actual current state of the work.
   `<schema>.runs`. _(done 2026-05-27 — `withCliEnv` threads `defaultSchema`; existing
   tasty suite stays green; live `psql` check deferred to M6's ephemeral-pg test since the
   dev Postgres is not running in this session)_
-- [ ] M4 — Surface the schema as a CLI flag and environment variable. Add
+- [x] M4 — Surface the schema as a CLI flag and environment variable. Add
   `Shiki.Cli.Schema` exporting `resolveSchema :: Maybe Text -> IO Schema`, with
   precedence `--db-schema` flag > `SHIKI_DB_SCHEMA` env > default `shiki`. Wire it
   through `Options` in `shiki-cli/src/Shiki/Cli.hs` and `CliEnv` in
   `shiki-cli/src/Shiki/Cli/Env.hs`. Threading the `Schema` through `withCliEnv` is
   enough; nothing else changes in the CLI handlers because table references stay
-  unqualified.
+  unqualified. _(done 2026-05-27 — `cabal run shiki -- --help` lists `--db-schema
+  SCHEMA` with the expected help text)_
 - [ ] M5 — Update the existing tasty suite so each test runs against a unique schema
   (e.g. `shiki_test_<random>`) instead of the default `shiki`. This proves the
   configurability is real and isolates concurrent test runs.
