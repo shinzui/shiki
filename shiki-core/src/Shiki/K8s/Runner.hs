@@ -12,10 +12,12 @@ module Shiki.K8s.Runner
 
 import Shiki.Prelude
 
+import Shiki.Analysis.Backend (AnalyzerKind (..), runAnalyzer)
+import Shiki.Analysis.Backend qualified as Analyzer
 import Shiki.K8s.Client (ClientEnv (..))
 import Shiki.K8s.Introspection (DeploymentSnapshot, Namespace (..))
 import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
-import Shiki.K8s.Logs (fetchJobPodLogs)
+import Shiki.K8s.Logs (FetchedLogs, fetchJobPodLogs)
 import Shiki.Service.Config (ServiceConfig)
 
 import "base" Control.Concurrent (threadDelay)
@@ -39,13 +41,15 @@ data JobPhase
 --   truncated log tail (200 lines, capped at 64 KiB) suitable for the
 --   @runs.log_tail@ column defined in EP-2.
 data JobOutcome = JobOutcome
-  { jobName   :: !Text
-  , namespace :: !Text
-  , phase     :: !JobPhase
-  , exitCode  :: !(Maybe Int)
-  , startedAt :: !UTCTime
-  , endedAt   :: !UTCTime
-  , logTail   :: !(Maybe Text)
+  { jobName            :: !Text
+  , namespace          :: !Text
+  , phase              :: !JobPhase
+  , exitCode           :: !(Maybe Int)
+  , startedAt          :: !UTCTime
+  , endedAt            :: !UTCTime
+  , logTail            :: !(Maybe Text)
+  , errorSummary       :: !(Maybe Text)
+  , errorSummarySource :: !Text
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -95,15 +99,37 @@ runJob env svc snap inputs pollSec timeoutSec = do
   endedAt   <- liftIO getCurrentTime
   logsE     <- fetchJobPodLogs env (inputs ^. #namespace) (inputs ^. #jobName)
   let logTailNow = either (const Nothing) (Just . (^. #persistedTail)) logsE
+  (errSummary, errSource) <- summarizeOnFailure phase logsE
   pure JobOutcome
-    { jobName   = inputs ^. #jobName
-    , namespace = unNamespace (inputs ^. #namespace)
-    , phase     = phase
-    , exitCode  = exitCodeForPhase phase
-    , startedAt = startedAt
-    , endedAt   = endedAt
-    , logTail   = logTailNow
+    { jobName            = inputs ^. #jobName
+    , namespace          = unNamespace (inputs ^. #namespace)
+    , phase              = phase
+    , exitCode           = exitCodeForPhase phase
+    , startedAt          = startedAt
+    , endedAt            = endedAt
+    , logTail            = logTailNow
+    , errorSummary       = errSummary
+    , errorSummarySource = errSource
     }
+
+-- | Run the inline 'Heuristic' analyzer over the wider analysis buffer
+--   when (and only when) the Job ended in failure. On success the column
+--   contract is \"NULL unless the run died\", so the summary stays
+--   'Nothing'. The default source is @\"heuristic\"@ regardless so the
+--   downstream NOT-NULL column always has a value.
+summarizeOnFailure
+  :: JobPhase
+  -> Either e FetchedLogs
+  -> IO (Maybe Text, Text)
+summarizeOnFailure phase logsE = case phase of
+  JobSucceeded -> pure (Nothing, "heuristic")
+  _ -> case logsE of
+    Left _   -> pure (Nothing, "heuristic")
+    Right fl -> do
+      r <- runAnalyzer Heuristic (fl ^. #analysisBuffer)
+      case r of
+        Right res -> pure (Analyzer.summary res, Analyzer.source res)
+        Left _    -> pure (Nothing, "heuristic")
 
 exitCodeForPhase :: JobPhase -> Maybe Int
 exitCodeForPhase = \case

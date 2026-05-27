@@ -233,8 +233,8 @@ finalizeOutcome env rid startedAt outcome = do
       , durationMs         = durationMs
       , logTail            = outcome ^. #logTail
       , errorMessage       = errMsg
-      , errorSummary       = Nothing
-      , errorSummarySource = "heuristic"
+      , errorSummary       = outcome ^. #errorSummary
+      , errorSummarySource = outcome ^. #errorSummarySource
       }
   TIO.putStrLn
     ( "run "
