@@ -127,7 +127,7 @@ here, even if it requires splitting a partially completed task into two ("done" 
   `file-embed`'s `embedStringFile` splice so the template is baked into the binary; no
   runtime file I/O. Add `file-embed` to `shiki-cli.cabal` build-depends and enable
   `TemplateHaskell` for the `Prompt` module.
-- [ ] M4 — Add the launcher.
+- [x] M4 — Add the launcher.
   `shiki-cli/src/Shiki/Cli/Agent/Launch.hs` exports
   `runAssistSession :: AgentModelConfig -> AssistOptions -> Text -> IO ExitCode`
   where `AssistOptions` carries the `debug`, `userPrompt`, and pre-seeding fields. The
