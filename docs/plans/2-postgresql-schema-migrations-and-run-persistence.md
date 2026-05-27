@@ -5,6 +5,7 @@ title: "PostgreSQL Schema Migrations and Run Persistence"
 kind: exec-plan
 created_at: 2026-05-27T04:46:52Z
 master_plan: "docs/masterplans/1-microservice-job-runner-with-postgres-backed-run-history.md"
+intention: intention_01ksn15jq4e0fvf6cysm7ezhm0
 ---
 
 
@@ -45,11 +46,11 @@ consumer side.
 
 ## Progress
 
-- [ ] Create `shiki-core/sql/migrations/` with the initial migration file
-  `001-create-runs.sql`.
-- [ ] Add `Shiki.Persistence.RunStatus` exporting the `RunStatus` ADT with text codec.
-- [ ] Add `Shiki.Persistence.Run` exporting `RunRecord`, `NewRun`, `RunCompletion`, and
-  hasql `Statement` values for insert, update-on-completion, and queries.
+- [x] Create `shiki-core/sql/migrations/` with the initial migration file
+  `001-create-runs.sql`. _(2026-05-27)_
+- [x] Add `Shiki.Persistence.RunStatus` exporting the `RunStatus` ADT with text codec. _(2026-05-27)_
+- [x] Add `Shiki.Persistence.Run` exporting `RunRecord`, `NewRun`, `RunCompletion`, and
+  hasql `Statement` values for insert, update-on-completion, and queries. _(2026-05-27)_
 - [ ] Add `Shiki.Persistence.Connection` exporting a thin wrapper around `Hasql.Pool` for
   acquiring a pool from a connection string.
 - [ ] Add `Shiki.Persistence.Migration` exporting
@@ -64,7 +65,27 @@ consumer side.
 
 ## Surprises & Discoveries
 
-(None yet.)
+- `hasql 1.10` no longer exports the `Statement` data constructor; only the type plus the
+  smart constructors `preparable` and `unpreparable` are public. The plan as written
+  references `Statement sql encoder decoder True`; the live API requires
+  `preparable sql encoder decoder` (preparable defaults to True for prepared-statement
+  caching, which is what the plan intended). All five statements were ported.
+
+- `hasql-pool 1.4` uses `Data.Time.Clock.DiffTime` for the timeout settings (not
+  `NominalDiffTime` as the plan describes) and exposes settings via
+  `Hasql.Pool.Config.{size,acquisitionTimeout,agingTimeout,idlenessTimeout,staticConnectionSettings}`
+  composed by `Hasql.Pool.Config.settings`. `staticConnectionSettings` takes a
+  `Hasql.Connection.Settings.Settings`, not a `ByteString` connection string; build one with
+  `Hasql.Connection.Settings.connectionString :: Text -> Settings`.
+
+- `hasql 1.10`'s `Decoders.enum :: Maybe Text -> Text -> (Text -> Maybe a) -> Value a` is
+  for actual Postgres enum types; since EP-2 stores status as a CHECK-constrained `text`
+  column, `Decoders.refine runStatusFromText Decoders.text` is the right primitive instead.
+
+- `ephemeral-pg 0.2.1.0` exports `EphemeralPg.with :: (Database -> IO a) -> IO (Either
+  StartError a)` and `EphemeralPg.connectionSettings :: Database -> Hasql.Connection.Settings.Settings`.
+  There is no `withCleanDatabase` (the plan's placeholder name). The test harness for M4
+  will use `EphemeralPg.with` and acquire a pool from `connectionSettings`.
 
 
 ## Decision Log
@@ -102,6 +123,31 @@ consumer side.
   cluster via `kubectl logs` until the Job is GC'd; 64 KiB is a sane default that fits
   Postgres TOAST comfortably and is large enough for typical operational tails.
   Date: 2026-05-26
+
+- Decision: Drop the `contravariant` dependency listed in the plan; `Data.Functor.Contravariant`
+  has lived in `base` since 4.12 and re-installing it from Hackage would force a synonym
+  resolution conflict against `base`.
+  Rationale: `(>$<)` and the `Contravariant` class come from `base`'s
+  `Data.Functor.Contravariant` directly. The plan's listing of `contravariant ^>= 1.5` is
+  a relic of older GHCs.
+  Date: 2026-05-27
+
+- Decision: Use `hasql.Statement.preparable` and `Decoders.refine` rather than the now
+  hidden `Statement` data constructor and the typed-enum `Decoders.enum`.
+  Rationale: The hasql 1.10 API explicitly hides the constructor and exposes
+  `preparable`/`unpreparable` smart constructors. `Decoders.enum` is reserved for first-class
+  Postgres enum types; the `runs.status` column is plain text. `refine` is the canonical
+  decoder for application-level validation of a stored text/value pair.
+  Date: 2026-05-27
+
+- Decision: Adjust version bounds to what the local toolchain (GHC 9.12.4) actually resolves:
+  `hasql >= 1.10`, `hasql-pool >= 1.4`, `hasql-transaction >= 1.2`. The plan's
+  `^>= 1.3` for hasql-pool excludes the 1.4.x series that is on Hackage and shipped via
+  nixpkgs.
+  Rationale: Building against the published ecosystem rather than the looser bounds
+  documented in the plan keeps the project in lockstep with what `cabal info` actually
+  resolves on this host.
+  Date: 2026-05-27
 
 
 ## Outcomes & Retrospective
