@@ -57,8 +57,8 @@ this record locally; any new field must be added here first via the MasterPlan's
 - [x] Add `Shiki.Service.Config.Dhall` exporting `loadServiceConfig`. _(2026-05-27)_
 - [x] Add `services/mls-service-v2.dhall` sample. _(2026-05-27)_
 - [x] Add `shiki-core/test/Spec.hs` plus `shiki-core/test/Shiki/Service/ConfigSpec.hs`. _(2026-05-27)_
-- [ ] Extend `shiki-cli` with the `service show <name>` subcommand.
-- [ ] `cabal build all` and `cabal test all` clean; capture the transcripts in Concrete Steps.
+- [x] Extend `shiki-cli` with the `service show <name>` subcommand. _(2026-05-27)_
+- [x] `cabal build all` and `cabal test all` clean; capture the transcripts in Concrete Steps. _(2026-05-27)_
 
 
 ## Surprises & Discoveries
@@ -167,7 +167,53 @@ this record locally; any new field must be added here first via the MasterPlan's
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+EP-1 landed on 2026-05-27. After this plan, `cabal run shiki -- service show
+mls-service-v2` parses `services/mls-service-v2.dhall` into a typed `ServiceConfig`
+and pretty-prints it as JSON, and `cabal test shiki-core` passes both structural
+assertions against the same file. The `Shiki.Prelude` module now matches the
+project's `core/custom-prelude.md` standard, with `PackageImports` qualifications
+on every re-export so later plans can rely on a single import line and a stable
+toolkit.
+
+What was achieved:
+
+- `Shiki.Prelude` extended to the project standard.
+- `Shiki.Service.Config` defines the typed record shape (`ServiceConfig`,
+  `InitContainer`, `EnvVar`, `EnvSource` sum, `Resources`, `ServiceName` newtype).
+- `Shiki.Service.Config.Dhall` loads a config from disk via `Dhall.inputFile
+  Dhall.auto` and exposes generic `FromDhall` instances for every record, plus a
+  hand-written `FromDhall ServiceName` that decodes a bare `Text`.
+- `services/mls-service-v2.dhall` is a working sample mirroring the
+  `run-oneoff-task.sh` script that this MasterPlan replaces.
+- `shiki service show <name>` and `shiki service show no-such-service` produce the
+  expected stdout/stderr behavior.
+
+Lessons learned:
+
+- The `core/custom-prelude.md` standard prescribes `import "aeson" Data.Aeson.Casing
+  as X (camelTo2)`, but `Data.Aeson.Casing` lives in the `aeson-casing` package and
+  does not export `camelTo2`. The fix is to import `camelTo2` directly from
+  `Data.Aeson` (its true home). Worth flagging when other projects adopt the same
+  standard; recorded in Decision Log.
+- Dhall's `singletonConstructors = Smart` default wraps newtypes with a named
+  selector in a record. For human-friendly config files where domain IDs are bare
+  strings, prefer a one-line manual `FromDhall` instance rather than reaching for
+  `Bare` globally.
+- `cabal test` runs from the package directory, not the repo root. Walking up to
+  find a sibling `services/` directory keeps tests robust regardless of how cabal
+  is invoked.
+- The starter `Shiki.Cli` did not yet handle the bare-`command` ambiguity with
+  `optparse-applicative` under `DuplicateRecordFields`. The rewrite in M4 fixed
+  this by qualifying `Options.Applicative.command` at use sites.
+
+What remains for downstream plans:
+
+- EP-3 (Kubernetes job runner) consumes `ServiceConfig` to build a `V1Job`.
+- EP-4 (`shiki run` end to end) loads `ServiceConfig` and threads it to the
+  runner alongside the writer from EP-2.
+- The `service show` subcommand is currently scoped to JSON output; future work
+  (not blocking) may swap in `dhall format` style pretty-printing or a YAML
+  representation if a stakeholder asks.
 
 
 ## Context and Orientation
@@ -774,34 +820,86 @@ After Milestone 4:
 cabal run shiki -- service show mls-service-v2
 ```
 
-Expected (truncated; key fields shown):
+Observed (truncated; aeson-pretty sorts keys alphabetically by default):
 
 ```text
 {
-    "name": "mls-service-v2",
+    "commandPath": "/app/mls-service-v2",
+    "containerName": "mls-service-v2",
     "defaultNamespace": "prod",
     "detectFromDeployment": "mls-service-v2-worker",
-    "containerName": "mls-service-v2",
-    "commandPath": "/app/mls-service-v2",
-    "serviceAccount": "mls-service-v2",
-    "initContainers": [
-        { "name": "cloud-sql-proxy", "image": "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.0", ... }
+    "env": [
+        {
+            "name": "PROJECT_ID",
+            "source": { "key": "PROJECT_ID", "tag": "ConfigMap" }
+        },
+        ...
+        {
+            "name": "PG_CONNECTION_STRING",
+            "source": {
+                "tag": "Literal",
+                "value": "postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@localhost:5432/$(DATABASE_NAME)"
+            }
+        },
+        ...
     ],
-    "env": [ ... ],
-    "resources": { ... }
+    "initContainers": [
+        {
+            "name": "cloud-sql-proxy",
+            "image": "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.0",
+            ...
+        }
+    ],
+    "name": "mls-service-v2",
+    "nodeSelector": { "iam.gke.io/gke-metadata-server-enabled": "true" },
+    "resources": { ... },
+    "serviceAccount": "mls-service-v2"
 }
 ```
+
+(The JSON encoding of `EnvSource` uses aeson's default tagged-object form, with a
+sibling `"tag"` key naming the constructor and the constructor's named fields flat.
+This is fine for the `shiki service show` smoke check; the real consumer is the
+Dhall loader, not JSON.)
 
 And:
 
 ```bash
-cabal run shiki -- service show no-such-service
+cabal run -v0 shiki -- service show no-such-service; echo "EXIT=$?"
 ```
 
-Expected (stderr, exit code non-zero):
+Observed (stderr message, exit code non-zero):
 
 ```text
-shiki: services/no-such-service.dhall: openFile: does not exist (No such file or directory)
+shiki: Uncaught exception ghc-internal:GHC.Internal.IO.Exception.IOException:
+
+services/no-such-service.dhall: openFile: does not exist (No such file or directory)
+
+HasCallStack backtrace:
+  ioError, called at libraries/ghc-internal/src/GHC/Internal/Foreign/C/Error.hs:291:5 in ghc-internal:GHC.Internal.Foreign.C.Error
+
+EXIT=1
+```
+
+Acceptance #5 check — every `as X` re-export uses an explicit `PackageImports` qualifier:
+
+```bash
+grep -n '^import "' shiki-core/src/Shiki/Prelude.hs
+```
+
+```text
+11:import "base" GHC.Generics as X (Generic)
+12:import "base" Control.Monad as X (void, when, unless, guard)
+13:import "base" Data.Maybe as X (fromMaybe, isJust, isNothing)
+14:import "base" Data.Proxy as X (Proxy (..))
+15:import "base" Control.Applicative as X ((<|>))
+16:import "base" Control.Monad.IO.Class as X (MonadIO, liftIO)
+17:import "base" Data.List.NonEmpty as X (NonEmpty (..))
+19:import "text" Data.Text as X (Text)
+21:import "aeson" Data.Aeson as X
+37:import "time" Data.Time as X (UTCTime, getCurrentTime)
+39:import "generic-lens" Data.Generics.Labels ()
+41:import "lens" Control.Lens
 ```
 
 

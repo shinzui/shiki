@@ -89,7 +89,7 @@ Alternatives considered:
 
 | # | Title | Path | Hard Deps | Soft Deps | Status |
 |---|-------|------|-----------|-----------|--------|
-| 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | In Progress |
+| 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | Complete |
 | 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | Not Started |
 | 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | Not Started |
 | 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | Not Started |
@@ -176,8 +176,8 @@ Track milestone-level progress across all child plans. Each entry names the chil
 its milestone; child plans own the granular checklists. This section is the at-a-glance view
 of the entire initiative and must be updated whenever a child plan milestone is checked off.
 
-- [ ] EP-1: ServiceConfig record type and JSON/Dhall round-trip
-- [ ] EP-1: Loader reads `services/<name>.dhall` and prints a `ServiceConfig`
+- [x] EP-1: ServiceConfig record type and JSON/Dhall round-trip _(2026-05-27)_
+- [x] EP-1: Loader reads `services/<name>.dhall` and prints a `ServiceConfig` _(2026-05-27)_
 - [ ] EP-2: Migration tooling wired into `shiki-core` with `runs` table created
 - [ ] EP-2: `RunRecord` insert/update/query statements with tests against ephemeral Postgres
 - [ ] EP-3: Load kubeconfig and list deployments in a namespace
@@ -195,7 +195,28 @@ of the entire initiative and must be updated whenever a child plan milestone is 
 Document cross-plan insights, dependency changes, scope adjustments, or unexpected
 interactions between child plans. Provide concise evidence.
 
-(None yet.)
+- 2026-05-27 (EP-1): The `core/custom-prelude.md` standard from
+  `shinzui/haskell-jitsurei` instructs `import "aeson" Data.Aeson.Casing as X
+  (camelTo2)`, but `Data.Aeson.Casing` is actually in the separate `aeson-casing`
+  package and does not export `camelTo2`. In `aeson 2.2` the symbol lives at
+  `Data.Aeson.camelTo2`. EP-1's `Shiki.Prelude` imports it from `Data.Aeson`
+  directly and drops the `aeson-casing` dependency. Later plans should keep using
+  this prelude convention; if they need `aesonPrefix`/`snakeCase` etc., they can
+  reintroduce `aeson-casing` on demand.
+
+- 2026-05-27 (EP-1): Dhall's `singletonConstructors = Smart` default expects a
+  Haskell newtype with a named selector to decode from a record (`{ unFoo :
+  Text }`). Service-config files express domain IDs as bare strings, so EP-1
+  ships a hand-written `FromDhall ServiceName` instance. EP-2's `RunId` and any
+  other newtypes that originate from Dhall will likely want the same one-line
+  pattern; EP-1's `Shiki.Service.Config.Dhall` is the reference example.
+
+- 2026-05-27 (EP-1): `Shiki.Prelude` re-exports both `Data.Aeson.Options` and
+  `Control.Lens.argument`, which collide with optparse-applicative's `Options`
+  type and `argument` combinator inside `Shiki.Cli`. EP-1 worked around this with
+  `import Shiki.Prelude hiding (Options, argument)`. EP-4 will revisit the CLI
+  surface and may want to keep the same hiding pattern (or rename the local
+  `Options` record) when it adds the `run` and `runs` subparsers.
 
 
 ## Decision Log

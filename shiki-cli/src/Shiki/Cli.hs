@@ -1,41 +1,52 @@
 -- | Top-level CLI entry point for shiki.
 --
---   This is a starter scaffold: it wires up `optparse-applicative` with a
---   single `hello` subcommand. Replace `runCommand` with your real
---   subcommand parser when you grow past the bootstrap.
+--   The current scaffold ships two subcommands:
+--
+--   * @shiki hello [--name NAME]@ — a placeholder greeting carried over from
+--     the initial project skeleton; later plans (EP-4) remove it.
+--   * @shiki service show NAME@ — load
+--     @services\/\<NAME\>.dhall@, decode it into a 'ServiceConfig', and
+--     pretty-print the result as JSON to stdout. This proves end-to-end
+--     that the typed configuration loader works without touching
+--     Kubernetes or PostgreSQL.
 module Shiki.Cli
   ( runCli
   ) where
 
-import Data.Foldable (traverse_)
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-import Options.Applicative
+import Shiki.Prelude hiding (Options, argument)
 
--- | A subcommand of the shiki CLI.
+import Shiki.Service.Config (ServiceConfig)
+import Shiki.Service.Config.Dhall (loadServiceConfig)
+
+import "aeson-pretty" Data.Aeson.Encode.Pretty qualified as AesonPretty
+import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
+import "text" Data.Text qualified as Text
+import "text" Data.Text.IO qualified as TIO
+import "optparse-applicative" Options.Applicative
+
 data Command
-  = Hello (Maybe T.Text)
-  deriving stock (Show, Eq)
+  = Hello !(Maybe Text)
+  | ServiceShow !Text
+  deriving stock (Eq, Show)
 
--- | Top-level CLI options, parsed from argv.
-data Options = Options
+newtype Options = Options
   { command :: Command
   }
-  deriving stock (Show, Eq)
+  deriving stock (Generic, Eq, Show)
 
--- | Parse argv and dispatch to the chosen subcommand.
 runCli :: IO ()
 runCli = do
   opts <- execParser parserInfo
-  runCommand opts.command
+  runCommand (opts ^. #command)
 
 parserInfo :: ParserInfo Options
 parserInfo =
   info
     (optionsParser <**> helper)
     ( fullDesc
-        <> progDesc "hiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."
-        <> header "shiki - hiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."
+        <> progDesc
+          "shiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."
+        <> header "shiki - one-off Kubernetes Jobs with durable run history"
     )
 
 optionsParser :: Parser Options
@@ -44,15 +55,40 @@ optionsParser = Options <$> commandParser
 commandParser :: Parser Command
 commandParser =
   hsubparser
-    ( command
-        "hello"
+    ( Options.Applicative.command "hello"
         ( info
-            (Hello <$> optional (strOption (long "name" <> metavar "NAME" <> help "Whom to greet")))
+            ( Hello
+                <$> optional
+                      (strOption (long "name" <> metavar "NAME" <> help "Whom to greet"))
+            )
             (progDesc "Print a greeting")
+        )
+        <> Options.Applicative.command
+          "service"
+          ( info
+              serviceCommand
+              (progDesc "Inspect microservice configuration files")
+          )
+    )
+
+serviceCommand :: Parser Command
+serviceCommand =
+  hsubparser
+    ( Options.Applicative.command
+        "show"
+        ( info
+            (ServiceShow <$> argument str (metavar "NAME"))
+            (progDesc "Pretty-print the parsed ServiceConfig for NAME")
         )
     )
 
 runCommand :: Command -> IO ()
 runCommand (Hello mName) =
-  let target = maybe (T.pack "shiki") id mName
-   in traverse_ TIO.putStrLn [T.pack "Hello, " <> target <> T.pack "!"]
+  TIO.putStrLn ("Hello, " <> fromMaybe "shiki" mName <> "!")
+runCommand (ServiceShow nm) = do
+  let path = "services/" <> Text.unpack nm <> ".dhall"
+  cfg <- loadServiceConfig path
+  printConfig cfg
+
+printConfig :: ServiceConfig -> IO ()
+printConfig = BL8.putStrLn . AesonPretty.encodePretty
