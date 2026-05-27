@@ -1,0 +1,8 @@
+{ `git.repoName` = "shiki"
+, `nix.postgresql` = "true"
+, `nix.process-compose` = "true"
+, `project.description` = "hiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."
+, `project.description-long` = "Shiki is a CLI for conducting operational commands across Kubernetes services with a durable execution history. It helps operators run service-specific commands against the right cluster and environment, while recording each run in PostgreSQL with metadata such as the service, command, status, timing, and duration. The goal is to make ad hoc operational work safer, easier to audit, and easier to understand after the fact."
+, `project.name` = "shiki"
+, `project.namespace` = "Shiki"
+}
