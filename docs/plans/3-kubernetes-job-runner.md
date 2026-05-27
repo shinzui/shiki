@@ -5,6 +5,7 @@ title: "Kubernetes Job Runner"
 kind: exec-plan
 created_at: 2026-05-27T04:46:53Z
 master_plan: "docs/masterplans/1-microservice-job-runner-with-postgres-backed-run-history.md"
+intention: intention_01ksn15jq4e0fvf6cysm7ezhm0
 ---
 
 
@@ -44,9 +45,11 @@ consumers must not extend it locally.
 
 ## Progress
 
-- [ ] Add the `kubernetes-api-1.34` and `kubernetes-api-client` dependencies via
-  `cabal.project` source-repository-package entries (they are not on Hackage as a single
-  unit — the `codedownio/kubernetes-api` repo bundles many version-specific packages).
+- [x] Add the `kubernetes-api-1.34` and `kubernetes-api-client` dependencies via
+  `cabal.project` packages entries (they are not on Hackage as a single
+  unit — the `codedownio/kubernetes-api` repo bundles many version-specific
+  packages) plus the upstream-jose-jwt and shinzui/hoauth2 forks needed to
+  reconcile the OIDC auth chain with the `ram`-based crypton fork. _(2026-05-27)_
 - [ ] Add `Shiki.K8s.Client` exporting `loadDefaultClientConfig :: IO ClientEnv` (wraps
   kubeconfig loading from `~/.kube/config` plus auth handlers).
 - [ ] Add `Shiki.K8s.Introspection` exporting `inspectDeployment :: ClientEnv ->
@@ -69,7 +72,43 @@ consumers must not extend it locally.
 
 ## Surprises & Discoveries
 
-(None yet.)
+- 2026-05-27 (Milestone 1): `kubernetes-api-client` transitively requires
+  `jose-jwt` and `hoauth2` (for OIDC auth handling). Both packages import
+  `Data.ByteArray` from upstream `memory`, but the project's local
+  `crypton 1.1.2` fork (added by EP-2 for hasql-migration) was rebuilt against
+  the `ram` fork of memory, so `HMAC SHA256`, `Digest SHA256`, `Ed448.PublicKey`
+  etc. live in `ram`'s `ByteArrayAccess` class — invisible to packages that use
+  `memory`'s. jose-jwt has an unreleased master commit (f93bd94) that swaps
+  memory for ram; hoauth2 has no upstream fix. Resolved by pinning jose-jwt to
+  the github master HEAD `9569789…` and forking hoauth2 to
+  `shinzui/hoauth2` (one-line cabal swap `memory ^>=0.18` →
+  `ram ^>=0.22`, commit `3fa57f9…`). Both pinned via
+  `source-repository-package` entries in `cabal.project`. Future plans (EP-4,
+  EP-5) inherit these pins automatically.
+
+- 2026-05-27 (Milestone 1): The `kubernetes-api` Hackage package has multiple
+  parallel cabal projects in the codedownio/kubernetes-api repo (one per
+  Kubernetes minor version 1.25–1.35), each named simply `kubernetes-api`.
+  We chose the 1.34 subdir per the plan's Decision Log; only one may be added
+  to `cabal.project` since they share the package name.
+
+- 2026-05-27 (Milestone 1): `dhall 1.42` caps `http-client-tls < 0.4` through
+  its manual `use-http-client-tls` flag (cannot be flipped without rebuilding
+  dhall from source with the flag off), but `kubernetes-api 134.0.1` wants
+  `http-client-tls 0.4.x`. Resolved with `allow-newer:
+  dhall:http-client-tls`. `hoauth2` similarly caps `crypton < 1.1` but
+  compiles fine against the 1.1.2 fork, so `allow-newer: hoauth2:crypton`
+  was added too. Plans that consume the prelude or the runner inherit both.
+
+- 2026-05-27 (Milestone 1): The kubernetes-api OpenAPI models (V1Job,
+  V1JobSpec, V1Container, …) do NOT derive `Generic`. The prefixed
+  field labels (`v1JobSpec`, `v1JobSpecBackoffLimit`, etc.) are unique so they
+  can be used with record syntax directly, but `OverloadedLabels` via
+  `generic-lens` does not work on them. Use the `v1*L` lenses from
+  `Kubernetes.OpenAPI.ModelLens` (e.g. `v1JobSpecL`, `v1JobSpecTemplateL`)
+  instead. The `ModelLens` package defines a parallel `Lens_'` type that is
+  shape-compatible with `Control.Lens.Lens'`, so `^.`/`&`/`.~`/`?~` etc. all
+  work as expected.
 
 
 ## Decision Log

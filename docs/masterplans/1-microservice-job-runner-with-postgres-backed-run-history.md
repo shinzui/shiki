@@ -91,7 +91,7 @@ Alternatives considered:
 |---|-------|------|-----------|-----------|--------|
 | 1 | Service Configuration Model and Dhall Loader | [docs/plans/1-service-configuration-model-and-dhall-loader.md](../plans/1-service-configuration-model-and-dhall-loader.md) | None | None | Complete |
 | 2 | PostgreSQL Schema Migrations and Run Persistence | [docs/plans/2-postgresql-schema-migrations-and-run-persistence.md](../plans/2-postgresql-schema-migrations-and-run-persistence.md) | None | None | Complete |
-| 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | Not Started |
+| 3 | Kubernetes Job Runner | [docs/plans/3-kubernetes-job-runner.md](../plans/3-kubernetes-job-runner.md) | EP-1 | None | In Progress |
 | 4 | run CLI Command End to End | [docs/plans/4-run-cli-command-end-to-end.md](../plans/4-run-cli-command-end-to-end.md) | EP-1, EP-2, EP-3 | None | Not Started |
 | 5 | Runs Query CLI Commands | [docs/plans/5-runs-query-cli-commands.md](../plans/5-runs-query-cli-commands.md) | EP-2 | EP-4 | Not Started |
 
