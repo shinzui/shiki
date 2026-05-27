@@ -1,14 +1,17 @@
 -- | Top-level CLI entry point for @shiki@.
 --
 --   Canonical owner of the top-level 'Command' sum type per the
---   MasterPlan's Integration Points; EP-4 adds 'Run' (the
---   user-visible @shiki run \<service\> -- \<args\>@ command), EP-5 will
---   add the @runs list / show / logs@ constructors to the same type.
+--   MasterPlan's Integration Points; EP-4 added 'Run' (the
+--   user-visible @shiki run \<service\> -- \<args\>@ command), EP-5
+--   adds 'Runs' for the @runs list / show / logs@ read subcommands.
 --
 --   Subcommands today:
 --
 --   * @shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...@
 --     — submit a one-off Kubernetes Job and record the run in Postgres.
+--   * @shiki runs list [--service NAME] [--limit N]@ — recent runs as a table.
+--   * @shiki runs show ID@ — one row as pretty JSON (prefix-matched).
+--   * @shiki runs logs ID@ — print the captured log tail verbatim.
 --   * @shiki service show NAME@ — pretty-print the parsed 'ServiceConfig'
 --     for NAME as JSON. Useful for debugging service config files
 --     without touching the database or the cluster.
@@ -21,6 +24,7 @@ import Shiki.Prelude hiding (Options, argument)
 import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
+import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 
@@ -32,6 +36,7 @@ import "optparse-applicative" Options.Applicative qualified as Opt
 
 data Command
   = Run         !RunOptions
+  | Runs        !RunsCommand
   | ServiceShow !Text
   deriving stock (Generic, Eq, Show)
 
@@ -48,6 +53,8 @@ runCli = do
     ServiceShow nm -> serviceShowHandler nm
     Run runOpts    ->
       withDbEnv (opts ^. #dbConnStr) $ \env -> runRun env runOpts
+    Runs runsOpts  ->
+      withDbEnv (opts ^. #dbConnStr) $ \env -> runRuns env runsOpts
 
 withDbEnv :: Maybe Text -> (CliEnv -> IO a) -> IO a
 withDbEnv mFlag k = do
@@ -94,6 +101,12 @@ commandParser =
             (Run <$> runOptionsParser)
             (Opt.progDesc "Submit a one-off Job and record the run in Postgres")
         )
+        <> Opt.command
+          "runs"
+          ( Opt.info
+              (Runs <$> runsParser)
+              (Opt.progDesc "Inspect recorded runs")
+          )
         <> Opt.command
           "service"
           ( Opt.info

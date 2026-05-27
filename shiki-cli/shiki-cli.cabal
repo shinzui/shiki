@@ -43,6 +43,7 @@ library
     Shiki.Cli.Config
     Shiki.Cli.Env
     Shiki.Cli.Run
+    Shiki.Cli.Runs
 
   build-depends:
     base >=4.20 && <5,
