@@ -40,10 +40,12 @@ library
   hs-source-dirs: src
   exposed-modules:
     Shiki.Prelude
+    Shiki.Service.Config
 
   build-depends:
     base >=4.20 && <5,
     aeson ^>=2.2,
+    containers ^>=0.7,
     generic-lens,
     lens ^>=5.3,
     mtl ^>=2.3,

@@ -52,8 +52,8 @@ this record locally; any new field must be added here first via the MasterPlan's
 ## Progress
 
 - [x] Extend `Shiki.Prelude` to match the project's custom-prelude standard. _(2026-05-27)_
-- [ ] Add `Shiki.Service.Config` exporting `ServiceConfig`, `InitContainer`, `EnvVar`,
-  `EnvSource`, `Resources`, `ServiceName` (newtype).
+- [x] Add `Shiki.Service.Config` exporting `ServiceConfig`, `InitContainer`, `EnvVar`,
+  `EnvSource`, `Resources`, `ServiceName` (newtype). _(2026-05-27)_
 - [ ] Add `Shiki.Service.Config.Dhall` exporting `loadServiceConfig`.
 - [ ] Add `services/mls-service-v2.dhall` sample.
 - [ ] Add `shiki-core/test/Spec.hs` plus `shiki-core/test/Shiki/Service/ConfigSpec.hs`.
@@ -120,6 +120,16 @@ this record locally; any new field must be added here first via the MasterPlan's
   Rationale: Matches the user's record-patterns convention (newtypes for domain IDs);
   prevents accidental confusion with namespace or container name strings.
   Date: 2026-05-26
+
+- Decision: `EnvSource` keeps the record-syntax sum-type shape (`ConfigMap { key }`,
+  `Secret { key }`, `Literal { value }`) and suppresses `-Wpartial-fields` at the module
+  level with `{-# OPTIONS_GHC -Wno-partial-fields #-}`.
+  Rationale: The Haskell shape must mirror the Dhall union shape one-for-one so that
+  `Dhall.auto`-derived `FromDhall` instances round-trip the sample config. Restructuring
+  into per-constructor newtypes would introduce a second indirection that diverges from
+  the Dhall side. The partial field selectors are not used in the codebase — pattern
+  matching is used throughout — so the warning is informational here, not a real risk.
+  Date: 2026-05-27
 
 - Decision: Import `camelTo2` from `Data.Aeson` (its true home in the `aeson` package)
   rather than `Data.Aeson.Casing`, and drop the `aeson-casing` dependency entirely from
