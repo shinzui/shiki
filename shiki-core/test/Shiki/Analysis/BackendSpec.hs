@@ -1,0 +1,41 @@
+module Shiki.Analysis.BackendSpec (tests) where
+
+import Shiki.Prelude
+
+import Shiki.Analysis.Backend
+  ( AnalyzerError (..)
+  , AnalyzerKind (..)
+  , runAnalyzer
+  )
+
+import "text" Data.Text qualified as Text
+import "tasty" Test.Tasty (TestTree, testGroup)
+import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+
+tests :: TestTree
+tests =
+  testGroup "Shiki.Analysis.Backend"
+    [ testCase "None returns Left AnalyzerBackendDisabled" $ do
+        r <- runAnalyzer None "irrelevant"
+        case r of
+          Left AnalyzerBackendDisabled -> pure ()
+          other -> fail ("expected AnalyzerBackendDisabled, got " <> show other)
+    , testCase "Heuristic on a Python traceback returns Right with source = \"heuristic\"" $ do
+        let logs =
+              Text.unlines
+                [ "Traceback (most recent call last):"
+                , "  File \"/app/main.py\", line 1, in <module>"
+                , "    raise RuntimeError('boom')"
+                , "RuntimeError: boom"
+                ]
+        r <- runAnalyzer Heuristic logs
+        case r of
+          Right res -> do
+            assertEqual "source" "heuristic" (res ^. #source)
+            case res ^. #summary of
+              Just t  -> assertBool
+                "summary mentions exception"
+                ("RuntimeError: boom" `Text.isInfixOf` t)
+              Nothing -> fail "expected Just summary"
+          Left e -> fail ("expected Right, got " <> show e)
+    ]

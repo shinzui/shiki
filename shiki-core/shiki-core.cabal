@@ -45,6 +45,8 @@ library
   hs-source-dirs: src
   exposed-modules:
     Shiki.Prelude
+    Shiki.Analysis.Backend
+    Shiki.Analysis.Heuristic
     Shiki.K8s.Client
     Shiki.K8s.Introspection
     Shiki.K8s.JobBuilder
@@ -108,6 +110,8 @@ test-suite shiki-core-test
     -rtsopts
     -with-rtsopts=-N
   other-modules:
+    Shiki.Analysis.BackendSpec
+    Shiki.Analysis.HeuristicSpec
     Shiki.K8s.JobBuilderSpec
     Shiki.Persistence.RunListSpec
     Shiki.Persistence.RunSpec

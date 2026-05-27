@@ -1,5 +1,7 @@
 module Main (main) where
 
+import Shiki.Analysis.BackendSpec qualified as BackendSpec
+import Shiki.Analysis.HeuristicSpec qualified as HeuristicSpec
 import Shiki.K8s.JobBuilderSpec qualified as JobBuilderSpec
 import Shiki.Persistence.RunListSpec qualified as RunListSpec
 import Shiki.Persistence.RunSpec qualified as RunSpec
@@ -19,4 +21,6 @@ main =
       , JobBuilderSpec.tests
       , SchemaSpec.tests
       , SchemaIsolationSpec.tests
+      , HeuristicSpec.tests
+      , BackendSpec.tests
       ]
