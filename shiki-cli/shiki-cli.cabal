@@ -40,6 +40,8 @@ library
   hs-source-dirs: src
   exposed-modules:
     Shiki.Cli
+    Shiki.Cli.Agent.Config
+    Shiki.Cli.Agent.Provider
     Shiki.Cli.Config
     Shiki.Cli.Env
     Shiki.Cli.Run
@@ -72,3 +74,22 @@ executable shiki
   build-depends:
     base >=4.20 && <5,
     shiki-cli,
+
+test-suite shiki-cli-test
+  import: common-options
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  ghc-options:
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+  other-modules:
+    Shiki.Cli.Agent.ProviderSpec
+
+  build-depends:
+    base >=4.20 && <5,
+    shiki-cli,
+    tasty ^>=1.5,
+    tasty-hunit ^>=0.10,
+    text ^>=2.1,
