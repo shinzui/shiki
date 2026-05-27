@@ -13,6 +13,9 @@ copyright: (c) 2026 Nadeem Bitar
 build-type: Simple
 extra-doc-files: ../CHANGELOG.md
 
+data-files:
+  data/prompts/*.md
+
 common common-options
   ghc-options:
     -Wall
@@ -42,6 +45,7 @@ library
     Shiki.Cli
     Shiki.Cli.Agent.Config
     Shiki.Cli.Agent.Context
+    Shiki.Cli.Agent.Prompt
     Shiki.Cli.Agent.Provider
     Shiki.Cli.Config
     Shiki.Cli.Env
@@ -56,6 +60,7 @@ library
     aeson-pretty ^>=0.8,
     bytestring ^>=0.12,
     directory ^>=1.3,
+    file-embed ^>=0.0.16,
     filepath ^>=1.5,
     generic-lens,
     hasql >=1.10,
@@ -89,6 +94,7 @@ test-suite shiki-cli-test
     -with-rtsopts=-N
   other-modules:
     Shiki.Cli.Agent.ContextSpec
+    Shiki.Cli.Agent.PromptSpec
     Shiki.Cli.Agent.ProviderSpec
 
   build-depends:

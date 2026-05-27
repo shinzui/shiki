@@ -118,7 +118,7 @@ here, even if it requires splitting a partially completed task into two ("done" 
   resolved Postgres schema from `CliEnv`). The Kubernetes side stays loose for now: a
   `cluster :: Text` field carries the textual cluster name read from the kube context
   (or `"unknown"` if introspection fails); no extra cluster RPCs are issued.
-- [ ] M3 — Embed the prompt template. Create
+- [x] M3 — Embed the prompt template. Create
   `shiki-cli/data/prompts/assist.md` (a plain markdown file with `{{cwd}}`,
   `{{services}}`, `{{recent_runs}}`, `{{schema}}`, `{{cluster}}`, `{{user_prompt}}`
   placeholders), wire it into `shiki-cli.cabal` via a `data-files:` stanza, and add
