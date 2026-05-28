@@ -1,0 +1,163 @@
+# Commands reference
+
+Every subcommand `shiki` exposes today, the flags it accepts, and the
+environment variables that affect it. For the conceptual walkthroughs see
+[Getting started](./getting-started.md), [Error analysis](./error-analysis.md),
+and [Agent assist](./agent-assist.md).
+
+## Global options
+
+All subcommands accept two global options. CLI flags always win over
+environment variables.
+
+| Flag           | Env var(s)                                          | Default  | Meaning                                                                                                                                                                                                                                                |
+|----------------|-----------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING`   | *(none)* | PostgreSQL connection string. If neither flag nor env var is set, shiki exits with `shiki: no Postgres connection string. Pass --db or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.` The `nix develop` shell hook exports `PG_CONNECTION_STRING`.    |
+| `--db-schema SCHEMA` | `SHIKI_DB_SCHEMA`                             | `shiki`  | PostgreSQL schema for shiki's tables. Must match `[A-Za-z_][A-Za-z0-9_]*` and be ≤ 63 bytes. An invalid name exits before any DB work happens.                                                                                                          |
+
+shiki applies any pending migrations on every invocation (after acquiring
+the pool, before running the subcommand handler). There is no separate
+`migrate` step.
+
+The `service` subcommand does **not** need a database — it parses a Dhall
+file and exits.
+
+## `shiki run`
+
+Submit a one-off Kubernetes Job mirroring a service's live worker
+Deployment and record the result.
+
+```
+shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...
+```
+
+| Argument / flag        | Default      | Meaning                                                                                                                                                              |
+|------------------------|--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SERVICE`              | *(required)* | Short name of the service; resolved to `<config-dir>/<SERVICE>.dhall`.                                                                                               |
+| `--namespace NS`, `-n` | `defaultNamespace` from the service Dhall | Override the namespace shiki introspects and submits into.                                                                                |
+| `--no-wait`            | off          | Submit the Job and exit immediately. shiki still writes the `pending` and `running` rows, but the row stays at `running` until something else completes it.          |
+| `--config-dir DIR`     | `services`   | Directory holding `<name>.dhall` files.                                                                                                                              |
+| `-- ARG...`            | *(empty)*    | Everything after `--` becomes the container's command-line arguments. The literal `--` prevents optparse from claiming subcommand flags like `--batch-size`.         |
+
+**Exit codes:**
+- `0` — the Job reached `Succeeded`.
+- non-zero — the Job failed, was killed by Kubernetes (timeout / backoff
+  limit), or submission itself threw. In every failure path shiki writes
+  a `failed` row before exiting.
+
+**Output:** one line on success (`run <id> Succeeded job=<job-name>`) or
+failure (`FAILED run <id>: <message>`). With `--no-wait`, prints
+`submitted job <job-name> (run <id>)`.
+
+The wait-path timeout is 96 hours (345 600 seconds) of polling at 5-second
+intervals. Jobs that exceed this exit as `JobTimedOut` and record
+`error = "timed out"`.
+
+## `shiki runs list`
+
+Recent runs as a fixed-width table, newest first.
+
+```
+shiki runs list [--service NAME] [--limit N]
+```
+
+| Flag                     | Default | Meaning                                                          |
+|--------------------------|---------|------------------------------------------------------------------|
+| `--service NAME`, `-s`   | *(off)* | Filter to one service.                                           |
+| `--limit N`, `-l`        | `20`    | Max rows.                                                        |
+
+Columns: `ID` (8-char prefix), `STARTED`, `SERVICE`, `STATUS`,
+`DURATION`, `EXIT`, `COMMAND`. An empty result prints
+`(no runs recorded yet)`.
+
+## `shiki runs show ID`
+
+Print one `runs` row as pretty JSON. `ID` may be the full UUID or any
+unambiguous 8+ character prefix. Empty match → `no run matching <id>` and
+exit 1; multiple matches → `ambiguous id prefix <id>` and exit 1.
+
+The JSON includes everything: command, namespace, image, status, exit
+code, timestamps, duration, the captured `logTail`, `errorMessage`,
+`errorSummary`, `errorSummarySource`, and a full copy of the
+`serviceConfig` that was used.
+
+## `shiki runs logs ID`
+
+Print just the captured log tail. Rows with no logs (no `log_tail`)
+print `(no log captured)`.
+
+The tail is captured at run-finalize time: shiki fetches up to 1 000
+lines / 256 KiB of the failing pod's logs into memory, persists the
+last 200 lines / 64 KiB into `runs.log_tail`, and discards the rest. The
+wider in-memory buffer is what the inline Heuristic analyzer looks at on
+the wait-path; the stored tail is what `shiki runs analyze` reads later.
+
+## `shiki runs error ID`
+
+Print just the one-line `error_summary`. Rows with no summary print
+`(no summary)`. Successful runs never have a summary by contract — see
+[Error analysis](./error-analysis.md) for why.
+
+## `shiki runs analyze`
+
+Re-run the analyzer over a stored run's `log_tail` and overwrite
+`error_summary` / `error_summary_source` on that row.
+
+```
+shiki runs analyze ID [--analyzer heuristic|baikai:<model-id>|none]
+```
+
+Backend resolution:
+
+1. `--analyzer ...` if passed.
+2. Otherwise the service's declared `analyzer` field from
+   `services/<service>.dhall`.
+3. Otherwise `Heuristic` (e.g. the Dhall file was deleted after the
+   original run).
+
+The Baikai backend reads `ANTHROPIC_API_KEY` for `anthropic_*` model ids
+and `OPENAI_API_KEY` for `openai_*` ids. `--analyzer none` exits with
+`shiki: analyzer disabled (backend = None)`.
+
+Rows with no captured logs print `(no logs captured; cannot analyze)`.
+
+## `shiki service show NAME`
+
+Pretty-print the parsed `ServiceConfig` for `services/<NAME>.dhall` as
+JSON. Touches neither the database nor the cluster — useful for
+sanity-checking a config change before running anything.
+
+This subcommand is exempt from the global `--db` / `--db-schema` options;
+they are still accepted but unused.
+
+## `shiki agent assist`
+
+Open an interactive AI session preloaded with shiki's view of the
+operator's local state. See [Agent assist](./agent-assist.md) for the
+full reference; the flag summary:
+
+```
+shiki agent assist [--provider PROVIDER] [--model MODEL]
+                   [--prompt PROMPT] [--service NAME] [--run ID]
+                   [--debug]
+```
+
+| Flag         | Env var                 | Default     |
+|--------------|-------------------------|-------------|
+| `--provider` | `SHIKI_AGENT_PROVIDER`  | `claude-cli`|
+| `--model`    | `SHIKI_AGENT_MODEL`     | provider-specific |
+
+A typo in either env var exits with
+`shiki: unknown agent provider '<x>'. Expected one of: claude-cli, codex-cli, anthropic, openai.`
+
+## Environment variable summary
+
+| Variable                  | Read by                | Notes                                                                  |
+|---------------------------|------------------------|------------------------------------------------------------------------|
+| `SHIKI_DATABASE_URL`      | every subcommand (except `service show`) | Postgres connection string; preferred over `PG_CONNECTION_STRING`.  |
+| `PG_CONNECTION_STRING`    | same                   | Fallback. Set by the `nix develop` shell hook to a project-local socket. |
+| `SHIKI_DB_SCHEMA`         | every subcommand       | Postgres schema for shiki's tables.                                    |
+| `SHIKI_AGENT_PROVIDER`    | `shiki agent assist`   | One of `claude-cli`, `codex-cli`, `anthropic`, `openai`.                |
+| `SHIKI_AGENT_MODEL`       | `shiki agent assist`   | Provider-specific model id.                                            |
+| `ANTHROPIC_API_KEY`       | `runs analyze --analyzer=baikai:anthropic_*`, `agent assist --provider=anthropic` | One-shot API path only; CLI providers use the local CLI's own auth.  |
+| `OPENAI_API_KEY`          | `runs analyze --analyzer=baikai:openai_*`, `agent assist --provider=openai` | Same.                                                                  |
