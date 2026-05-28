@@ -24,6 +24,7 @@ import Shiki.Prelude hiding (Options, argument)
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
+import Shiki.Cli.Help (HelpCommand, helpParser, runHelp)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
@@ -42,6 +43,7 @@ data Command
   | Runs        !RunsCommand
   | ServiceShow !Text
   | Agent       !AgentCommand
+  | Help        !HelpCommand
   deriving stock (Generic, Eq, Show)
 
 data Options = Options
@@ -56,6 +58,7 @@ runCli = do
   opts <- Opt.execParser parserInfo
   case opts ^. #command of
     ServiceShow nm -> serviceShowHandler nm
+    Help helpOpts  -> runHelp helpOpts
     Run runOpts    ->
       withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \_ env ->
         runRun env runOpts
@@ -141,6 +144,12 @@ commandParser =
           ( Opt.info
               (Agent <$> agentParser)
               (Opt.progDesc "Agentic helpers for driving shiki")
+          )
+        <> Opt.command
+          "help"
+          ( Opt.info
+              (Help <$> helpParser)
+              (Opt.progDesc "Show curated guides for shiki concepts")
           )
     )
 

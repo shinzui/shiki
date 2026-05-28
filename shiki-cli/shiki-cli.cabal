@@ -15,6 +15,7 @@ extra-doc-files: ../CHANGELOG.md
 
 data-files:
   data/prompts/*.md
+  data/help/*.md
 
 common common-options
   ghc-options:
@@ -51,6 +52,7 @@ library
     Shiki.Cli.Agent.Provider
     Shiki.Cli.Config
     Shiki.Cli.Env
+    Shiki.Cli.Help
     Shiki.Cli.Run
     Shiki.Cli.Runs
     Shiki.Cli.Schema
