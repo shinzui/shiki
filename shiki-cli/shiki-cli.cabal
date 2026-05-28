@@ -54,6 +54,7 @@ library
     Shiki.Cli.Env
     Shiki.Cli.Fzf
     Shiki.Cli.Fzf.Selector.Run
+    Shiki.Cli.Fzf.Selector.Service
     Shiki.Cli.Help
     Shiki.Cli.Run
     Shiki.Cli.Runs

@@ -24,6 +24,8 @@ import Shiki.Prelude hiding (Options, argument)
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
+import Shiki.Cli.Fzf (detectFzfConfig)
+import Shiki.Cli.Fzf.Selector.Service (resolveServiceName)
 import Shiki.Cli.Help (HelpCommand, helpParser, runHelp)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
@@ -31,6 +33,8 @@ import Shiki.Cli.Schema (resolveSchema)
 import Shiki.Persistence.Schema qualified
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
+
+import "base" System.Exit (exitFailure)
 
 import "aeson-pretty" Data.Aeson.Encode.Pretty qualified as AesonPretty
 import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
@@ -41,7 +45,7 @@ import "optparse-applicative" Options.Applicative qualified as Opt
 data Command
   = Run         !RunOptions
   | Runs        !RunsCommand
-  | ServiceShow !Text
+  | ServiceShow !(Maybe Text)
   | Agent       !AgentCommand
   | Help        !HelpCommand
   deriving stock (Generic, Eq, Show)
@@ -79,8 +83,16 @@ withDbEnv mConn mSchema k = do
   schema <- resolveSchema mSchema
   withCliEnv cs schema (k schema)
 
-serviceShowHandler :: Text -> IO ()
-serviceShowHandler nm = do
+serviceShowHandler :: Maybe Text -> IO ()
+serviceShowHandler (Just nm) = serviceShowOne nm
+serviceShowHandler Nothing   = do
+  fzfCfg <- detectFzfConfig
+  resolveServiceName fzfCfg >>= \case
+    Just nm -> serviceShowOne nm
+    Nothing -> exitFailure
+
+serviceShowOne :: Text -> IO ()
+serviceShowOne nm = do
   let path = "services/" <> Text.unpack nm <> ".dhall"
   cfg <- loadServiceConfig path
   printConfig cfg
@@ -158,7 +170,16 @@ serviceSubparser =
   Opt.hsubparser
     ( Opt.command "show"
         ( Opt.info
-            (ServiceShow <$> Opt.argument Opt.str (Opt.metavar "NAME"))
-            (Opt.progDesc "Pretty-print the parsed ServiceConfig for NAME")
+            ( ServiceShow
+                <$> Opt.optional
+                      ( Opt.argument
+                          Opt.str
+                          ( Opt.metavar "NAME"
+                              <> Opt.help
+                                "Service name (basename of services/<NAME>.dhall); opens an fzf picker if omitted"
+                          )
+                      )
+            )
+            (Opt.progDesc "Pretty-print the parsed ServiceConfig for NAME (uses fzf if omitted)")
         )
     )

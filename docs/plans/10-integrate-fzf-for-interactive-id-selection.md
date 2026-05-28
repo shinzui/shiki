@@ -110,13 +110,13 @@ This section must always reflect the actual current state of the work.
 
 ### M4 — `Shiki.Cli.Fzf.Selector.Service` and wire `service show`
 
-- [ ] Create `shiki-cli/src/Shiki/Cli/Fzf/Selector/Service.hs` with `ServiceSelection`,
-      `selectService`, `resolveServiceName`.
-- [ ] Change `ServiceShow Text` → `ServiceShow (Maybe Text)`; update
-      `serviceSubparser` to use `optional`.
-- [ ] In `serviceShowHandler`, on `Nothing`, call `resolveServiceName`.
-- [ ] Manual smoke: `just shiki service show` (no arg) picks; `just shiki service show
-      <name>` unchanged.
+- [x] Create `shiki-cli/src/Shiki/Cli/Fzf/Selector/Service.hs` with `ServiceSelection`,
+      `selectService`, `resolveServiceName`. [2026-05-28]
+- [x] Change `ServiceShow Text` → `ServiceShow (Maybe Text)`; update
+      `serviceSubparser` to use `optional`. [2026-05-28]
+- [x] In `serviceShowHandler`, on `Nothing`, call `resolveServiceName`. [2026-05-28]
+- [x] Manual smoke: `shiki service show --help` shows `[NAME]` and the fzf hint.
+      [2026-05-28]
 
 ### M5 — Docs, tests, smoke transcript
 
