@@ -86,12 +86,12 @@ This section must always reflect the actual current state of the work.
 
 ### M2 — `Shiki.Cli.Fzf.Selector.Run` and `resolveRunId`
 
-- [ ] Create `shiki-cli/src/Shiki/Cli/Fzf/Selector/Run.hs` with `RunSelection`,
-      `formatRunCandidate`, `defaultRunOpts`, `selectRun`, `resolveRunId`.
-- [ ] Add module to `exposed-modules`.
-- [ ] Unit test for `formatRunCandidate` (pure shape check) in
-      `shiki-cli/test/Shiki/Cli/Fzf/Selector/RunSpec.hs`; wire into `Spec.hs`.
-- [ ] `cabal test all` is green.
+- [x] Create `shiki-cli/src/Shiki/Cli/Fzf/Selector/Run.hs` with `RunSelection`,
+      `formatRunCandidate`, `defaultRunOpts`, `selectRun`, `resolveRunId`. [2026-05-28]
+- [x] Add module to `exposed-modules`. [2026-05-28]
+- [x] Unit test for `formatRunCandidate` (pure shape check) in
+      `shiki-cli/test/Shiki/Cli/Fzf/Selector/RunSpec.hs`; wire into `Spec.hs`. [2026-05-28]
+- [x] `cabal test all` is green. [2026-05-28]
 
 ### M3 — Wire fzf into `runs show / logs / error / analyze`
 

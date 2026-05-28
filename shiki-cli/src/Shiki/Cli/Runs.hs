@@ -6,6 +6,10 @@ module Shiki.Cli.Runs
   ( RunsCommand (..)
   , runsParser
   , runRuns
+
+    -- * Rendering helpers (re-used by selector modules)
+  , humanDuration
+  , renderRow
   ) where
 
 import Shiki.Prelude hiding (argument)

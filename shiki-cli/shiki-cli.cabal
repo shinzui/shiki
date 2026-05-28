@@ -53,6 +53,7 @@ library
     Shiki.Cli.Config
     Shiki.Cli.Env
     Shiki.Cli.Fzf
+    Shiki.Cli.Fzf.Selector.Run
     Shiki.Cli.Help
     Shiki.Cli.Run
     Shiki.Cli.Runs
@@ -108,6 +109,7 @@ test-suite shiki-cli-test
     Shiki.Cli.Agent.LaunchSpec
     Shiki.Cli.Agent.PromptSpec
     Shiki.Cli.Agent.ProviderSpec
+    Shiki.Cli.Fzf.Selector.RunSpec
     Shiki.Cli.HelpSpec
 
   build-depends:
