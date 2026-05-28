@@ -17,3 +17,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - feat(shiki-cli): EP-9 — `shiki help` and `shiki help <topic>` show curated
   topic guides embedded into the binary at compile time. Initial topics:
   services, runs, analyzers, agent, schema, env.
+- feat(shiki-cli): EP-10 — `shiki runs show / logs / error / analyze` now
+  accept the `ID` positional as optional; omitting it opens an `fzf` picker
+  populated from the 50 most recent recorded runs. `shiki service show`
+  accepts `NAME` as optional; omitting it opens an `fzf` picker populated
+  from `services/*.dhall`. When `fzf` is not on `PATH` (or no interactive
+  terminal is attached), shiki falls back to the existing "argument
+  required" error path.
+
+Smoke transcript (the box is fzf's TUI; the JSON is the existing
+`runs show` output for the chosen row):
+
+```text
+$ shiki runs show
+> 3f2c1a9d  2026-05-27 17:22:11  ingest  Succeeded  12s  exit=0  echo hello
+  51a40b22  2026-05-27 17:19:08  ingest  Succeeded  03s  exit=0  echo hi
+  2/2
+> run>
+
+{
+  "runId": "3f2c1a9d-…",
+  "serviceName": "ingest",
+  "status": "Succeeded",
+  …
+}
+```

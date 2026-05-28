@@ -22,6 +22,41 @@ the pool, before running the subcommand handler). There is no separate
 The `service` subcommand does **not** need a database — it parses a Dhall
 file and exits.
 
+## Interactive selection (fzf)
+
+The read-only subcommands that take a positional `ID` or `NAME` accept
+that argument as optional. When it is omitted, shiki opens a fuzzy
+picker via the local `fzf` binary, lists the candidates from the
+canonical source (PostgreSQL for runs, the `services/` directory for
+configs), and replaces the missing positional with whatever the
+operator picks. Precedence is **positional > fzf > error**; passing the
+positional always skips the picker.
+
+The picker is available when:
+
+1. `fzf` is on `PATH` (shiki probes once at startup with
+   `findExecutable`), and
+2. shiki has an interactive keyboard — either stdin is a terminal, or
+   `/dev/tty` can be opened.
+
+If neither holds, omitting the positional exits with
+`shiki: no run id given and fzf is not available` (or the equivalent
+service message) on stderr and exit code `1`. The non-interactive
+transcript-driven form (`shiki runs show <prefix>`) is unchanged.
+
+Hitting Esc inside the picker cancels without an error message and
+exits `1` (Unix convention for cancelled interactive input). Ctrl-C is
+delegated to fzf via `delegate_ctlc`, so it cancels the picker rather
+than killing shiki.
+
+The subcommands that honour this convention:
+
+- `shiki runs show [ID]` — picker shows the 50 most recent runs.
+- `shiki runs logs [ID]` — same picker.
+- `shiki runs error [ID]` — same picker.
+- `shiki runs analyze [ID]` — same picker, then runs the analyzer.
+- `shiki service show [NAME]` — picker over `services/*.dhall`.
+
 ## `shiki run`
 
 Submit a one-off Kubernetes Job mirroring a service's live worker
@@ -70,21 +105,25 @@ Columns: `ID` (8-char prefix), `STARTED`, `SERVICE`, `STATUS`,
 `DURATION`, `EXIT`, `COMMAND`. An empty result prints
 `(no runs recorded yet)`.
 
-## `shiki runs show ID`
+## `shiki runs show [ID]`
 
 Print one `runs` row as pretty JSON. `ID` may be the full UUID or any
 unambiguous 8+ character prefix. Empty match → `no run matching <id>` and
 exit 1; multiple matches → `ambiguous id prefix <id>` and exit 1.
+
+If `ID` is omitted, shiki opens an `fzf` picker over the 50 most recent
+runs; see [Interactive selection (fzf)](#interactive-selection-fzf).
 
 The JSON includes everything: command, namespace, image, status, exit
 code, timestamps, duration, the captured `logTail`, `errorMessage`,
 `errorSummary`, `errorSummarySource`, and a full copy of the
 `serviceConfig` that was used.
 
-## `shiki runs logs ID`
+## `shiki runs logs [ID]`
 
 Print just the captured log tail. Rows with no logs (no `log_tail`)
-print `(no log captured)`.
+print `(no log captured)`. `ID` is optional — omit it to pick from
+an `fzf` picker.
 
 The tail is captured at run-finalize time: shiki fetches up to 1 000
 lines / 256 KiB of the failing pod's logs into memory, persists the
@@ -92,11 +131,12 @@ last 200 lines / 64 KiB into `runs.log_tail`, and discards the rest. The
 wider in-memory buffer is what the inline Heuristic analyzer looks at on
 the wait-path; the stored tail is what `shiki runs analyze` reads later.
 
-## `shiki runs error ID`
+## `shiki runs error [ID]`
 
 Print just the one-line `error_summary`. Rows with no summary print
 `(no summary)`. Successful runs never have a summary by contract — see
-[Error analysis](./error-analysis.md) for why.
+[Error analysis](./error-analysis.md) for why. `ID` is optional — omit
+it to pick from an `fzf` picker.
 
 ## `shiki runs analyze`
 
@@ -104,8 +144,10 @@ Re-run the analyzer over a stored run's `log_tail` and overwrite
 `error_summary` / `error_summary_source` on that row.
 
 ```
-shiki runs analyze ID [--analyzer heuristic|baikai:<model-id>|none]
+shiki runs analyze [ID] [--analyzer heuristic|baikai:<model-id>|none]
 ```
+
+`ID` is optional — omit it to pick from an `fzf` picker.
 
 Backend resolution:
 
@@ -121,11 +163,15 @@ and `OPENAI_API_KEY` for `openai_*` ids. `--analyzer none` exits with
 
 Rows with no captured logs print `(no logs captured; cannot analyze)`.
 
-## `shiki service show NAME`
+## `shiki service show [NAME]`
 
 Pretty-print the parsed `ServiceConfig` for `services/<NAME>.dhall` as
 JSON. Touches neither the database nor the cluster — useful for
 sanity-checking a config change before running anything.
+
+`NAME` is optional — omit it to pick from an `fzf` picker over
+`services/*.dhall`. With no `.dhall` files present, shiki prints
+`(no service configs found in services/)` and exits 1.
 
 This subcommand is exempt from the global `--db` / `--db-schema` options;
 they are still accepted but unused.

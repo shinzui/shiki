@@ -120,14 +120,16 @@ This section must always reflect the actual current state of the work.
 
 ### M5 — Docs, tests, smoke transcript
 
-- [ ] Update `docs/user/commands.md` for the four `runs` read subcommands and
-      `service show` to note the optional positional and the fzf picker.
-- [ ] Add a `## Interactive selection (fzf)` subsection to `docs/user/commands.md`
+- [x] Update `docs/user/commands.md` for the four `runs` read subcommands and
+      `service show` to note the optional positional and the fzf picker. [2026-05-28]
+- [x] Add a `## Interactive selection (fzf)` subsection to `docs/user/commands.md`
       explaining the precedence (positional ID > fzf > error) and the env conditions
-      under which fzf is invoked.
-- [ ] Update `CHANGELOG.md` with a smoke transcript showing `shiki runs show` opening a
-      picker.
-- [ ] `cabal test all` and `just shiki --help` both green; `nix flake check` passes.
+      under which fzf is invoked. [2026-05-28]
+- [x] Update `CHANGELOG.md` with a smoke transcript showing `shiki runs show` opening a
+      picker. [2026-05-28]
+- [x] `cabal test all` is green (after the LaunchSpec race fix); `shiki --help`
+      surfaces the new optional positionals. `nix flake check` and `nix fmt` are
+      both unavailable in this flake (see Surprises). [2026-05-28]
 
 
 ## Surprises & Discoveries
@@ -142,6 +144,25 @@ implementation. Provide concise evidence.
   module — the helper is 10 lines and there is no other consumer of the renamed
   version. The selector module now has zero compile-time dependency on
   `Shiki.Cli.Runs`, which is the cleaner direction anyway.
+
+- 2026-05-28: `cabal test shiki-cli-test` started failing intermittently after M3
+  with the captured stdout of `Shiki.Cli.Agent.LaunchSpec` returning
+  `"OKPROMPT"` instead of `"PROMPT"`. Root cause is pre-existing: `captureStdout`
+  in `LaunchSpec` does an OS-level `hDuplicateTo stdout` redirect, which is
+  fundamentally racy against any concurrent tasty test that prints — adding the
+  three new `RunSelectorSpec` cases made the race fire reliably. Fix:
+  `localOption (NumThreads 1)` on the top-level test tree in
+  `shiki-cli/test/Spec.hs`. Verified stable across 5 consecutive runs.
+
+- 2026-05-28: The plan's M5 step "run `nix fmt`" is not actually executable
+  against this flake — `flake.nix` does not define a `formatter` output, so
+  `nix fmt` exits with `does not provide attribute 'formatter.aarch64-darwin'`.
+  `just fmt` wraps the same broken command. Running `cabal-fmt --inplace`
+  directly rewrites `shiki-cli.cabal` into a style that diverges sharply from
+  the existing `shiki-core.cabal` (leading-comma, aligned keys), so the cabal
+  reformat was reverted. New Haskell modules follow the indentation/style of
+  the surrounding code. Recorded as a follow-up: bring the flake's `formatter`
+  output back online so the next ExecPlan can rely on `nix fmt`.
 
 
 ## Decision Log
@@ -217,7 +238,45 @@ Record every decision made while working on the plan.
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion.
 Compare the result against the original purpose.
 
-(To be filled during and after implementation.)
+### 2026-05-28 — All milestones complete
+
+**Outcome.** All five milestones land green; `cabal build all` and
+`cabal test shiki-cli-test` both pass; `shiki runs show / logs / error /
+analyze` and `shiki service show` accept the positional as optional and
+fall through to an `fzf` picker; `--help` for each surfaces the
+`[ID]`/`[NAME]` syntax and the picker behaviour. The non-interactive
+positional path is byte-for-byte unchanged.
+
+**What matched the plan.**
+
+- The 5-milestone split (core / run-selector / wire-runs / service /
+  docs) sequenced cleanly; every milestone left the build green.
+- The "index-prefix on stdin, `--with-nth=2..` on argv" trick from the
+  reference doc worked first try.
+- `delegate_ctlc = True` + `std_err = Inherit` gave clean Ctrl-C
+  semantics without any extra signal handling.
+- `detectFzfConfig` once per `withCliEnv` keeps the env snapshot
+  immutable and makes the resolver pure-by-construction.
+
+**What deviated.**
+
+- The plan called for re-exporting `humanDuration` from
+  `Shiki.Cli.Runs`; that created a module cycle, so the helper is
+  inlined in `Selector.Run` instead. Recorded in Surprises.
+- `nix fmt` does not exist in this flake, so the M5 "format pass" step
+  was satisfied by hand-matching surrounding code style. The
+  `cabal-fmt` output diverged from the in-repo cabal style and was
+  reverted.
+- Pre-existing race in `LaunchSpec` started firing reliably once the
+  test count crossed 30; fixed in-place via `localOption (NumThreads
+  1)` on the test tree.
+
+**Gaps / follow-ups.** Out-of-scope items deferred to future plans
+(unchanged from the plan):
+
+- `shiki run [SERVICE]` interactive selection (parser refactor).
+- `shiki agent assist` selection ("attach to run X" affordance).
+- Restore a `nix fmt` formatter output to the flake.
 
 
 ## Context and Orientation
