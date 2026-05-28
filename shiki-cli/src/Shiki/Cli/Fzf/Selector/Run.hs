@@ -28,7 +28,6 @@ import Shiki.Cli.Fzf
   , withNoSort
   , withPrompt
   )
-import Shiki.Cli.Runs (humanDuration)
 import Shiki.Persistence.Run
   ( RunId (..)
   , RunRecord
@@ -85,7 +84,7 @@ formatRunCandidate r =
           )
       , r ^. #serviceName
       , runStatusToText (r ^. #status)
-      , maybe "-" humanDuration (r ^. #durationMs)
+      , maybe "-" formatDuration (r ^. #durationMs)
       , "exit=" <> maybe "-" (Text.pack . show) (r ^. #exitCode)
       , Text.intercalate " " (r ^. #command)
       ]
@@ -110,6 +109,23 @@ selectRun env
             FzfNoMatch             -> RunNoRows
             FzfCancelled           -> RunSelectionCancelled
             FzfError msg           -> RunSelectionError msg
+
+-- | Pretty-print a duration in milliseconds. Mirrors the formatter
+--   used by @runs list@; kept local so the selector module does not
+--   depend on "Shiki.Cli.Runs" (which would create a cycle).
+formatDuration :: Int -> Text
+formatDuration ms =
+  let secs    = ms `div` 1000
+      mins    = secs `div` 60
+      hours   = mins `div` 60
+      remMins = mins `mod` 60
+      remSecs = secs `mod` 60
+   in if hours > 0
+        then Text.pack (show hours <> "h" <> show remMins <> "m" <> show remSecs <> "s")
+        else
+          if mins > 0
+            then Text.pack (show mins <> "m" <> show remSecs <> "s")
+            else Text.pack (show secs <> "s")
 
 -- | The public entry point used by the @runs@ subcommand handlers.
 --   Returns the run id as 'Text' (the same shape the existing

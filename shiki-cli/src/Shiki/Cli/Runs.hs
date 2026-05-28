@@ -6,10 +6,6 @@ module Shiki.Cli.Runs
   ( RunsCommand (..)
   , runsParser
   , runRuns
-
-    -- * Rendering helpers (re-used by selector modules)
-  , humanDuration
-  , renderRow
   ) where
 
 import Shiki.Prelude hiding (argument)
@@ -22,6 +18,7 @@ import Shiki.Analysis.Backend
   , runAnalyzer
   )
 import Shiki.Cli.Env (CliEnv (..))
+import Shiki.Cli.Fzf.Selector.Run (resolveRunId)
 import Shiki.Persistence.Run
   ( RunId (..)
   , RunRecord
@@ -66,10 +63,10 @@ import "base" System.IO (hPutStrLn, stderr)
 
 data RunsCommand
   = RunsList !(Maybe Text) !Int
-  | RunsShow !Text
-  | RunsLogs !Text
-  | RunsError !Text
-  | RunsAnalyze !Text !(Maybe AnalyzerKind)
+  | RunsShow !(Maybe Text)
+  | RunsLogs !(Maybe Text)
+  | RunsError !(Maybe Text)
+  | RunsAnalyze !(Maybe Text) !(Maybe AnalyzerKind)
   deriving stock (Generic, Eq, Show)
 
 -- | Parser for the @runs@ family. The three subcommands intentionally
@@ -104,26 +101,26 @@ runsParser =
         <> Opt.command
           "show"
           ( info
-              (RunsShow <$> argument str (metavar "ID"))
-              (progDesc "Show one run by id (UUID or unambiguous prefix)")
+              (RunsShow <$> optional (argument str idArgHelp))
+              (progDesc "Show one run by id (UUID or unambiguous prefix; uses fzf if omitted)")
           )
         <> Opt.command
           "logs"
           ( info
-              (RunsLogs <$> argument str (metavar "ID"))
-              (progDesc "Print the captured log tail for a run")
+              (RunsLogs <$> optional (argument str idArgHelp))
+              (progDesc "Print the captured log tail for a run (uses fzf if omitted)")
           )
         <> Opt.command
           "error"
           ( info
-              (RunsError <$> argument str (metavar "ID"))
-              (progDesc "Print the captured error summary for a run")
+              (RunsError <$> optional (argument str idArgHelp))
+              (progDesc "Print the captured error summary for a run (uses fzf if omitted)")
           )
         <> Opt.command
           "analyze"
           ( info
               ( RunsAnalyze
-                  <$> argument str (metavar "ID")
+                  <$> optional (argument str idArgHelp)
                   <*> optional
                         ( option
                             analyzerKindReader
@@ -133,9 +130,12 @@ runsParser =
                             )
                         )
               )
-              (progDesc "Re-run analysis on a stored run's log tail")
+              (progDesc "Re-run analysis on a stored run's log tail (uses fzf if omitted)")
           )
     )
+
+idArgHelp :: Opt.Mod Opt.ArgumentFields Text
+idArgHelp = metavar "ID" <> help "Run id (UUID or unambiguous prefix); opens an fzf picker if omitted"
 
 analyzerKindReader :: Opt.ReadM AnalyzerKind
 analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
@@ -148,14 +148,27 @@ analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
           else Right (Baikai mid)
   _ -> Left "expected 'heuristic', 'none', or 'baikai:<model-id>'"
 
--- | Dispatch a parsed 'RunsCommand' to the right handler.
+-- | Dispatch a parsed 'RunsCommand' to the right handler. Read
+--   subcommands route through 'withResolved' so a missing positional
+--   ID opens an fzf picker (see 'Shiki.Cli.Fzf.Selector.Run').
 runRuns :: CliEnv -> RunsCommand -> IO ()
 runRuns env = \case
   RunsList mService limit       -> doList env mService limit
-  RunsShow idText               -> doShow env idText
-  RunsLogs idText               -> doLogs env idText
-  RunsError idText              -> doError env idText
-  RunsAnalyze idText override   -> doAnalyze env idText override
+  RunsShow mId                  -> withResolved env mId doShow
+  RunsLogs mId                  -> withResolved env mId doLogs
+  RunsError mId                 -> withResolved env mId doError
+  RunsAnalyze mId override      -> withResolved env mId (\e t -> doAnalyze e t override)
+
+-- | Resolve the optional positional through the run selector; if the
+--   resolver returns 'Nothing' (cancelled / no fzf / no rows / error)
+--   exit non-zero — any user-visible message has already been printed
+--   by 'resolveRunId'.
+withResolved :: CliEnv -> Maybe Text -> (CliEnv -> Text -> IO ()) -> IO ()
+withResolved env mIdText body = do
+  mResolved <- resolveRunId env mIdText
+  case mResolved of
+    Just t  -> body env t
+    Nothing -> exitFailure
 
 doList :: CliEnv -> Maybe Text -> Int -> IO ()
 doList env mService limit = do

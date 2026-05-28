@@ -95,17 +95,18 @@ This section must always reflect the actual current state of the work.
 
 ### M3 — Wire fzf into `runs show / logs / error / analyze`
 
-- [ ] Change `RunsCommand` constructors to take `Maybe Text` instead of `Text` for the
-      four read subcommands.
-- [ ] Update `runsParser` to use `optional (argument str …)` and tweak the help text to
-      include "(uses fzf if not provided)".
-- [ ] In `doShow / doLogs / doError / doAnalyze`, on `Nothing`, call `resolveRunId`; on
-      `Just t`, behave exactly as today.
-- [ ] When `resolveRunId` returns `RunCancelled` / `RunFzfUnavailable` / `RunNoMatch`,
-      print the matching message and exit 1 / 0 per the table in
-      "Validation and Acceptance".
-- [ ] Manual smoke: `just shiki runs show` (no arg) picks; `just shiki runs show <prefix>`
-      unchanged.
+- [x] Change `RunsCommand` constructors to take `Maybe Text` instead of `Text` for the
+      four read subcommands. [2026-05-28]
+- [x] Update `runsParser` to use `optional (argument str …)` and tweak the help text to
+      include "(uses fzf if not provided)". [2026-05-28]
+- [x] In `doShow / doLogs / doError / doAnalyze`, on `Nothing`, call `resolveRunId`; on
+      `Just t`, behave exactly as today. [2026-05-28] — implemented as a single
+      `withResolved` wrapper that the dispatcher routes the four read paths through.
+- [x] When `resolveRunId` returns `RunCancelled` / `RunFzfUnavailable` / `RunNoMatch`,
+      print the matching message and exit 1 per the table in
+      "Validation and Acceptance". [2026-05-28]
+- [x] Manual smoke: `shiki runs show --help` shows `[ID]` and the fzf hint;
+      `cabal build all` green. [2026-05-28]
 
 ### M4 — `Shiki.Cli.Fzf.Selector.Service` and wire `service show`
 
@@ -134,7 +135,13 @@ This section must always reflect the actual current state of the work.
 Document unexpected behaviors, bugs, optimizations, or insights discovered during
 implementation. Provide concise evidence.
 
-(None yet.)
+- 2026-05-28: First M3 attempt tried to re-export `humanDuration` from
+  `Shiki.Cli.Runs` for re-use by `Shiki.Cli.Fzf.Selector.Run`, but that produces a
+  module cycle (`Runs` → `Selector.Run` for `resolveRunId`, `Selector.Run` → `Runs`
+  for `humanDuration`). Resolution: inline a private `formatDuration` in the selector
+  module — the helper is 10 lines and there is no other consumer of the renamed
+  version. The selector module now has zero compile-time dependency on
+  `Shiki.Cli.Runs`, which is the cleaner direction anyway.
 
 
 ## Decision Log
