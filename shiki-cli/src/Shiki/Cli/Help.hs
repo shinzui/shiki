@@ -48,11 +48,31 @@ data HelpCommand
 
 helpTopics :: [HelpTopic]
 helpTopics =
-  [ HelpTopic "services" "Service configuration: services/*.dhall" servicesContent
+  [ HelpTopic "services"  "Service configuration: services/*.dhall" servicesContent
+  , HelpTopic "runs"      "Run lifecycle and the runs table"        runsContent
+  , HelpTopic "analyzers" "Failure analysis backends"               analyzersContent
+  , HelpTopic "agent"     "shiki agent assist"                      agentContent
+  , HelpTopic "schema"    "Postgres schema configuration"           schemaContent
+  , HelpTopic "env"       "Environment variables"                   envContent
   ]
 
 servicesContent :: Text
 servicesContent = $(embedStringFile "data/help/services.md")
+
+runsContent :: Text
+runsContent = $(embedStringFile "data/help/runs.md")
+
+analyzersContent :: Text
+analyzersContent = $(embedStringFile "data/help/analyzers.md")
+
+agentContent :: Text
+agentContent = $(embedStringFile "data/help/agent.md")
+
+schemaContent :: Text
+schemaContent = $(embedStringFile "data/help/schema.md")
+
+envContent :: Text
+envContent = $(embedStringFile "data/help/env.md")
 
 helpParser :: Parser HelpCommand
 helpParser =

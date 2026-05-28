@@ -87,12 +87,14 @@ here, even if it requires splitting a partially completed task into two ("done" 
   lists exactly one topic (`services`); `shiki help services` prints its content;
   `shiki help bogus` exits non-zero with the expected stderr message.
   Completed 2026-05-27. Build is clean; manual smoke matches the M1 acceptance.
-- [ ] M2 — Author the remaining five topic content files and register them.
+- [x] M2 — Author the remaining five topic content files and register them.
   `shiki-cli/data/help/runs.md`, `shiki-cli/data/help/analyzers.md`,
   `shiki-cli/data/help/agent.md`, `shiki-cli/data/help/schema.md`,
   `shiki-cli/data/help/env.md`. Add one `embedStringFile` binding per file and append
   each to the `helpTopics` registry. End-of-milestone state: `shiki help` lists six
   topics; each `shiki help <name>` prints its content; lookup is case-insensitive.
+  Completed 2026-05-27. All six topics are byte-identical to their source files
+  (verified via `diff` per acceptance #9).
 - [ ] M3 — Tasty specs, user-guide page, README index update, CHANGELOG entry. Add
   `shiki-cli/test/Shiki/Cli/HelpSpec.hs` covering parser branches, registry totality,
   case-insensitive lookup, and the unknown-topic error message. Create
