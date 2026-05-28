@@ -105,6 +105,7 @@ test-suite shiki-cli-test
     Shiki.Cli.Agent.LaunchSpec
     Shiki.Cli.Agent.PromptSpec
     Shiki.Cli.Agent.ProviderSpec
+    Shiki.Cli.HelpSpec
 
   build-depends:
     base >=4.20 && <5,
@@ -114,6 +115,7 @@ test-suite shiki-cli-test
     filepath ^>=1.5,
     hasql >=1.10,
     hasql-pool >=1.4,
+    optparse-applicative >=0.18,
     shiki-cli,
     shiki-core,
     tasty ^>=1.5,

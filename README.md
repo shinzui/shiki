@@ -26,6 +26,8 @@ shiki runs error <id-prefix>                 # one-line error summary
 shiki runs analyze <id-prefix> --analyzer=baikai:anthropic_claude_haiku_4_5
 shiki service show my-service                # inspect a parsed service config
 shiki agent assist --service my-service      # AI session preloaded with shiki state
+shiki help                                   # in-terminal index of curated topic guides
+shiki help services                          # full guide for one topic
 ```
 
 Each `shiki run`:
@@ -48,6 +50,8 @@ The user-facing guide lives under [`docs/user/`](./docs/user/README.md):
 
 - **[Getting started](./docs/user/getting-started.md)** — from `nix develop`
   to your first run.
+- **[Help command](./docs/user/help.md)** — in-terminal curated guides for
+  shiki concepts (`shiki help`, `shiki help <topic>`).
 - **[Commands](./docs/user/commands.md)** — every subcommand, flag, and
   environment variable.
 - **[Service configuration](./docs/user/service-config.md)** — what lives

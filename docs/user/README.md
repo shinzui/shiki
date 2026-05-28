@@ -9,6 +9,9 @@ durable run history in PostgreSQL.
 - **[Getting started](./getting-started.md)** — prerequisites, the dev shell,
   bringing up the local Postgres, your first service config, and your first
   `shiki run`.
+- **[Help command](./help.md)** — the in-terminal `shiki help` index and
+  topic reader; the fastest way to look up shiki concepts without leaving
+  the terminal.
 - **[Commands](./commands.md)** — every subcommand and flag, the global
   `--db` / `--db-schema` options, and the environment variables they read.
 - **[Service configuration](./service-config.md)** — what lives in a

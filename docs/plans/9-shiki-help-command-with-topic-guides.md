@@ -95,7 +95,7 @@ here, even if it requires splitting a partially completed task into two ("done" 
   topics; each `shiki help <name>` prints its content; lookup is case-insensitive.
   Completed 2026-05-27. All six topics are byte-identical to their source files
   (verified via `diff` per acceptance #9).
-- [ ] M3 — Tasty specs, user-guide page, README index update, CHANGELOG entry. Add
+- [x] M3 — Tasty specs, user-guide page, README index update, CHANGELOG entry. Add
   `shiki-cli/test/Shiki/Cli/HelpSpec.hs` covering parser branches, registry totality,
   case-insensitive lookup, and the unknown-topic error message. Create
   `docs/user/help.md` documenting the help command in the operator-guide style of its
@@ -103,6 +103,9 @@ here, even if it requires splitting a partially completed task into two ("done" 
   top-level `README.md`'s `## Documentation` list. Append a CHANGELOG line. Paste the
   verbatim `shiki help` and `shiki help services` transcripts into this plan's
   Concrete Steps section.
+  Completed 2026-05-27. HelpSpec ships six cases (registry totality, well-formed
+  topics, unique names, lowercase-ASCII name shape, and the two parser branches);
+  `cabal test shiki-cli` reports all 28 tests passing.
 
 
 ## Surprises & Discoveries
@@ -235,7 +238,36 @@ Record every decision made while working on the plan.
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion.
 Compare the result against the original purpose.
 
-(To be filled during and after implementation.)
+- **2026-05-27 — Completion.** All three milestones delivered against the original
+  purpose: `shiki help` is the in-terminal entry point for an operator who wants to
+  learn shiki without leaving the terminal, and the six initial topics
+  (`services`, `runs`, `analyzers`, `agent`, `schema`, `env`) ship inside the
+  binary via `file-embed` so there are no companion files. Case-insensitive,
+  whitespace-tolerant lookup works; unknown topics exit `1` with `Available: …` on
+  stderr; `shiki --help` lists the new `help` line.
+  - Surface: `Shiki.Cli.Help` exports `HelpTopic`, `HelpCommand`, `helpTopics`,
+    `helpParser`, `runHelp`. The registry is the single source of truth for both
+    the parser's `--help` listing and the `listTopics` printer.
+  - Tests: `shiki-cli-test` now reports 28 tests passing (was 22), including six
+    new cases under `Shiki.Cli.Help` (registry totality, well-formedness, name
+    uniqueness, lowercase-ASCII name shape, both parser branches).
+  - Byte fidelity: `shiki help <topic>` is byte-identical to its on-disk source
+    file for all six topics (verified with `diff`), satisfying acceptance #9.
+  - Docs: `docs/user/help.md` exists in operator-guide style and is bullet-linked
+    from both `docs/user/README.md` and the top-level `README.md`'s
+    `## Documentation` list. The top-level snippet block now includes
+    `shiki help` and `shiki help services`.
+  - Drift: the canonical-source policy (see Decision Log) means future updates to
+    `docs/user/<page>.md` should be mirrored into `shiki-cli/data/help/<topic>.md`;
+    there is no automation enforcing this yet, and a follow-up could be a lint
+    that compares the two heads — out of scope for this plan.
+  - Build caveat lived up to its warning: each topic edit in M2 required
+    `touch shiki-cli/src/Shiki/Cli/Help.hs` to force re-compilation, because
+    cabal does not track `embedStringFile` dependencies.
+  - Cabal note: the test-suite's `build-depends:` needed
+    `optparse-applicative >=0.18` added (HelpSpec uses `execParserPure`); the
+    library stanza already depended on it but the test stanza did not. Not
+    surfaced in the original plan; added during M3.
 
 
 ## Context and Orientation
@@ -1188,9 +1220,104 @@ makes this work.
 
 ### M3 smoke transcripts
 
-(To be captured during M3. Paste the verbatim output of `shiki help` and
-`shiki help services` here at the end of the milestone, plus the `cabal test shiki-cli`
-final line.)
+Captured 2026-05-27 from `nix develop --command cabal run -v0 shiki -- …`.
+
+```text
+$ shiki help
+HELP TOPICS
+
+  services   Service configuration: services/*.dhall
+  runs       Run lifecycle and the runs table
+  analyzers  Failure analysis backends
+  agent      shiki agent assist
+  schema     Postgres schema configuration
+  env        Environment variables
+
+Use 'shiki help <topic>' for details.
+```
+
+```text
+$ shiki help services
+SHIKI SERVICES
+
+
+A "service" in shiki is a Kubernetes workload that shiki can submit one-off
+Jobs against. Each service is described by one Dhall configuration file
+under the services/ directory at the operator's working directory:
+
+  services/
+    mls-service-v2.dhall
+    other-service.dhall
+
+
+SERVICE CONFIG FIELDS
+
+  name                  Logical service name. Must match the file name
+                        without the .dhall extension.
+
+  defaultNamespace      Kubernetes namespace used when no --namespace flag
+                        is given to 'shiki run'.
+
+  detectFromDeployment  Name of the live Deployment 'shiki run' introspects
+                        to pick up the current image digest, ConfigMap
+                        names, Secret names, etc. at submit time.
+
+  containerName         Which container inside that Deployment to mirror
+                        (e.g. the application container next to a
+                        cloud-sql-proxy sidecar).
+
+  commandPath           Path to the binary inside the container image;
+                        becomes the Job container's command[0]. Everything
+                        after '--' on the 'shiki run' command line is
+                        appended as ARGS.
+
+  serviceAccount        Kubernetes ServiceAccount attached to the Job pod.
+
+  nodeSelector          Optional pod nodeSelector map.
+
+  initContainers        Init containers attached to every run (e.g. a
+                        restartable cloud-sql-proxy).
+
+  env                   Environment variables; each is ConfigMap, Secret,
+                        or Literal-sourced.
+
+  resources             CPU and memory requests/limits for the main
+                        container.
+
+  analyzer              Default analyzer backend for failed runs. One of:
+                        Heuristic, Baikai { model = "<id>" }, None.
+                        'shiki run' always uses Heuristic; 'shiki runs
+                        analyze' honors this default unless --analyzer
+                        overrides it.
+
+
+INSPECTING A SERVICE
+
+Use 'shiki service show <name>' to pretty-print one service config as JSON
+without touching the cluster or the database:
+
+  shiki service show mls-service-v2
+
+
+ADDING A NEW SERVICE
+
+  1. Create services/<name>.dhall.
+  2. Set name = "<name>" (it must match the file name).
+  3. Fill in defaultNamespace, detectFromDeployment, containerName,
+     commandPath, serviceAccount, resources, env, and analyzer. The repo
+     ships services/mls-service-v2.dhall as a worked example.
+  4. Run 'shiki service show <name>' to verify the file parses.
+
+
+Full reference: docs/user/service-config.md
+See also: 'shiki help runs', 'shiki help analyzers'.
+```
+
+Final line of `cabal test shiki-cli`:
+
+```text
+All 28 tests passed (1.79s)
+```
 
 
 ## Validation and Acceptance
