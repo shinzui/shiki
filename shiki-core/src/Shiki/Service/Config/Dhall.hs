@@ -10,19 +10,20 @@
 --   alternative and record-field names, no @InterpretOptions@ overrides
 --   are needed.
 module Shiki.Service.Config.Dhall
-  ( loadServiceConfig
-  ) where
+  ( loadServiceConfig,
+  )
+where
 
 import Shiki.Service.Config
-  ( AnalyzerBackend
-  , EnvSource
-  , EnvVar
-  , InitContainer
-  , Resources
-  , ServiceConfig
-  , ServiceName (..)
+  ( AnalyzerBackend,
+    ContainerImageSource,
+    EnvSource,
+    EnvVar,
+    InitContainer,
+    Resources,
+    ServiceConfig,
+    ServiceName (..),
   )
-
 import "dhall" Dhall qualified
 
 loadServiceConfig :: FilePath -> IO ServiceConfig
@@ -38,8 +39,15 @@ instance Dhall.FromDhall ServiceName where
   autoWith opts = ServiceName <$> Dhall.autoWith opts
 
 deriving anyclass instance Dhall.FromDhall ServiceConfig
+
 deriving anyclass instance Dhall.FromDhall InitContainer
+
+deriving anyclass instance Dhall.FromDhall ContainerImageSource
+
 deriving anyclass instance Dhall.FromDhall EnvVar
+
 deriving anyclass instance Dhall.FromDhall EnvSource
+
 deriving anyclass instance Dhall.FromDhall Resources
+
 deriving anyclass instance Dhall.FromDhall AnalyzerBackend

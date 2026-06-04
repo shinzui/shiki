@@ -1,14 +1,13 @@
 module Shiki.K8s.JobBuilderSpec (tests) where
 
+import Shiki.K8s.Introspection (DeploymentSnapshot (..), EnvBinding (..), Namespace (..))
+import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
 import Shiki.Prelude
-
-import Shiki.K8s.Introspection (DeploymentSnapshot (..), Namespace (..))
-import Shiki.K8s.JobBuilder    (JobInputs (..), buildJob)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-
 import "base" GHC.Stack (HasCallStack)
+import "containers" Data.Map.Strict qualified as Map
 import "directory" System.Directory (doesDirectoryExist, getCurrentDirectory)
-import "filepath" System.FilePath ((</>), takeDirectory)
+import "filepath" System.FilePath (takeDirectory, (</>))
 import "kubernetes-api" Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 import "tasty" Test.Tasty (TestTree, testGroup)
 import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
@@ -19,7 +18,7 @@ import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 serviceConfigPath :: FilePath -> IO FilePath
 serviceConfigPath name = do
   start <- getCurrentDirectory
-  root  <- locate start
+  root <- locate start
   pure (root </> "services" </> name <> ".dhall")
   where
     locate dir = do
@@ -28,53 +27,74 @@ serviceConfigPath name = do
         then pure dir
         else
           let parent = takeDirectory dir
-          in  if parent == dir
+           in if parent == dir
                 then ioError (userError "no `services/` directory found above cwd")
                 else locate parent
 
 tests :: TestTree
-tests = testGroup "Shiki.K8s.JobBuilder"
-  [ testCase "buildJob produces a Job whose container name, image, command, and args match the inputs" $ do
-      path <- serviceConfigPath "mls-service-v2"
-      svc  <- loadServiceConfig path
-      let snap = DeploymentSnapshot
-            { image         = "gcr.io/example/mls-service-v2:abc"
-            , configMapName = "mls-cm"
-            , secretName    = "mls-sec"
-            }
-          inputs = JobInputs
-            { namespace = Namespace "prod"
-            , args      = ["subscription", "process"]
-            , jobName   = "mls-service-v2-oneoff-test"
-            }
-          job   = buildJob svc snap inputs
-          spec  = expectJust "spec"         (job ^. K8sLens.v1JobSpecL)
-          tmpl  = spec ^. K8sLens.v1JobSpecTemplateL
-          pspec = expectJust "podSpec"      (tmpl ^. K8sLens.v1PodTemplateSpecSpecL)
-          containers = pspec ^. K8sLens.v1PodSpecContainersL
+tests =
+  testGroup
+    "Shiki.K8s.JobBuilder"
+    [ testCase "buildJob produces a Job whose container name, image, command, and args match the inputs" $ do
+        path <- serviceConfigPath "mls-service-v2"
+        svc <- loadServiceConfig path
+        let snap =
+              DeploymentSnapshot
+                { image = "gcr.io/example/mls-service-v2:abc",
+                  configMapName = "mls-cm",
+                  secretName = "mls-sec",
+                  envByName =
+                    Map.fromList
+                      [ ("KAFKA_BROKERS", EnvConfigMapKeyRef "kafka-cm" "brokers"),
+                        ("KAFKA_EXTRA_PROPS", EnvLiteral "oauthbearer.config=/tmp/token")
+                      ],
+                  initImages = Map.fromList [("kafka-auth-server", "gcr.io/example/kafka-auth:abc")]
+                }
+            inputs =
+              JobInputs
+                { namespace = Namespace "prod",
+                  args = ["subscription", "process"],
+                  jobName = "mls-service-v2-oneoff-test"
+                }
+            job = buildJob svc snap inputs
+            spec = expectJust "spec" (job ^. K8sLens.v1JobSpecL)
+            tmpl = spec ^. K8sLens.v1JobSpecTemplateL
+            pspec = expectJust "podSpec" (tmpl ^. K8sLens.v1PodTemplateSpecSpecL)
+            containers = pspec ^. K8sLens.v1PodSpecContainersL
+            initContainers = fromMaybe [] (pspec ^. K8sLens.v1PodSpecInitContainersL)
 
-      assertEqual "metadata name"
-        (Just "mls-service-v2-oneoff-test")
-        (job ^. K8sLens.v1JobMetadataL >>= (^. K8sLens.v1ObjectMetaNameL))
+        assertEqual
+          "metadata name"
+          (Just "mls-service-v2-oneoff-test")
+          (job ^. K8sLens.v1JobMetadataL >>= (^. K8sLens.v1ObjectMetaNameL))
 
-      c <- case containers of
-        (c0 : _) -> pure c0
-        []       -> error "expected at least one container"
-      assertEqual "container count" 1 (length containers)
-      assertEqual "container name"  "mls-service-v2"                       (c ^. K8sLens.v1ContainerNameL)
-      assertEqual "image"           (Just "gcr.io/example/mls-service-v2:abc") (c ^. K8sLens.v1ContainerImageL)
-      assertEqual "command"         (Just ["/app/mls-service-v2"])         (c ^. K8sLens.v1ContainerCommandL)
-      assertEqual "args"            (Just ["subscription", "process"])     (c ^. K8sLens.v1ContainerArgsL)
-      assertBool  "has init containers"
-        (not (null (fromMaybe [] (pspec ^. K8sLens.v1PodSpecInitContainersL))))
-      assertEqual "backoffLimit"    (Just 0)    (spec ^. K8sLens.v1JobSpecBackoffLimitL)
-      assertEqual "ttlSecondsAfterFinished"
-        (Just 3600)
-        (spec ^. K8sLens.v1JobSpecTtlSecondsAfterFinishedL)
-      assertEqual "restart policy"  (Just "Never") (pspec ^. K8sLens.v1PodSpecRestartPolicyL)
-  ]
+        c <- case containers of
+          (c0 : _) -> pure c0
+          [] -> error "expected at least one container"
+        assertEqual "container count" 1 (length containers)
+        assertEqual "container name" "mls-service-v2" (c ^. K8sLens.v1ContainerNameL)
+        assertEqual "image" (Just "gcr.io/example/mls-service-v2:abc") (c ^. K8sLens.v1ContainerImageL)
+        assertEqual "command" (Just ["/app/mls-service-v2"]) (c ^. K8sLens.v1ContainerCommandL)
+        assertEqual "args" (Just ["subscription", "process"]) (c ^. K8sLens.v1ContainerArgsL)
+        assertBool "has init containers" (not (null initContainers))
+        assertBool
+          "has kafka auth init container"
+          ( any
+              ( \ic ->
+                  ic ^. K8sLens.v1ContainerNameL == "kafka-auth-server"
+                    && ic ^. K8sLens.v1ContainerImageL == Just "gcr.io/example/kafka-auth:abc"
+              )
+              initContainers
+          )
+        assertEqual "backoffLimit" (Just 0) (spec ^. K8sLens.v1JobSpecBackoffLimitL)
+        assertEqual
+          "ttlSecondsAfterFinished"
+          (Just 3600)
+          (spec ^. K8sLens.v1JobSpecTtlSecondsAfterFinishedL)
+        assertEqual "restart policy" (Just "Never") (pspec ^. K8sLens.v1PodSpecRestartPolicyL)
+    ]
 
-expectJust :: HasCallStack => String -> Maybe a -> a
+expectJust :: (HasCallStack) => String -> Maybe a -> a
 expectJust label = \case
-  Just x  -> x
+  Just x -> x
   Nothing -> error ("expected Just for " <> label)

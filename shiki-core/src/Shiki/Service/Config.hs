@@ -7,24 +7,25 @@
 --   resulting 'ServiceConfig' and combines it with a live Deployment
 --   snapshot to produce a @V1Job@.
 module Shiki.Service.Config
-  ( ServiceName (..)
-  , ServiceConfig (..)
-  , InitContainer (..)
-  , EnvVar (..)
-  , EnvSource (..)
-  , Resources (..)
-  , AnalyzerBackend (..)
-  ) where
+  ( ServiceName (..),
+    ServiceConfig (..),
+    InitContainer (..),
+    ContainerImageSource (..),
+    EnvVar (..),
+    EnvSource (..),
+    Resources (..),
+    AnalyzerBackend (..),
+  )
+where
 
 import Shiki.Prelude
-
 import "containers" Data.Map.Strict (Map)
 
 -- | The canonical short name of a microservice (e.g. @"mls-service-v2"@).
 --   Wrapped in a newtype so it cannot be confused with a Kubernetes
 --   namespace, container name, or any other free-form 'Text' identifier
 --   that appears alongside it.
-newtype ServiceName = ServiceName { unServiceName :: Text }
+newtype ServiceName = ServiceName {unServiceName :: Text}
   deriving stock (Generic, Eq, Ord, Show)
   deriving newtype (FromJSON, ToJSON)
 
@@ -33,17 +34,17 @@ newtype ServiceName = ServiceName { unServiceName :: Text }
 --   ConfigMap name, Secret name, etc.) are not modelled here; they are
 --   read from the live Deployment at run time.
 data ServiceConfig = ServiceConfig
-  { name :: !ServiceName
-  , defaultNamespace :: !Text
-  , detectFromDeployment :: !Text
-  , containerName :: !Text
-  , commandPath :: !Text
-  , serviceAccount :: !Text
-  , nodeSelector :: !(Map Text Text)
-  , initContainers :: ![InitContainer]
-  , env :: ![EnvVar]
-  , resources :: !Resources
-  , analyzer :: !AnalyzerBackend
+  { name :: !ServiceName,
+    defaultNamespace :: !Text,
+    detectFromDeployment :: !Text,
+    containerName :: !Text,
+    commandPath :: !Text,
+    serviceAccount :: !Text,
+    nodeSelector :: !(Map Text Text),
+    initContainers :: ![InitContainer],
+    env :: ![EnvVar],
+    resources :: !Resources,
+    analyzer :: !AnalyzerBackend
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -57,7 +58,7 @@ data ServiceConfig = ServiceConfig
 --   one-way dependency arrow @Analysis -> Service@.
 data AnalyzerBackend
   = Heuristic
-  | Baikai { model :: !Text }
+  | Baikai {model :: !Text}
   | None
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -65,39 +66,47 @@ data AnalyzerBackend
 -- | A single init container to attach to the Job pod. The canonical
 --   example is @cloud-sql-proxy@.
 data InitContainer = InitContainer
-  { name :: !Text
-  , image :: !Text
-  , args :: ![Text]
-  , env :: ![EnvVar]
-  , resources :: !Resources
-  , restartable :: !Bool
+  { name :: !Text,
+    image :: !ContainerImageSource,
+    args :: ![Text],
+    env :: ![EnvVar],
+    resources :: !Resources,
+    restartable :: !Bool
   }
+  deriving stock (Generic, Eq, Show)
+  deriving anyclass (FromJSON, ToJSON)
+
+-- | Where an init container image comes from.
+data ContainerImageSource
+  = StaticImage {value :: !Text}
+  | DeploymentInitImage {name :: !Text}
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
 
 -- | A single environment variable binding: a name plus the source it
 --   should be filled from.
 data EnvVar = EnvVar
-  { name :: !Text
-  , source :: !EnvSource
+  { name :: !Text,
+    source :: !EnvSource
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
 
 -- | Where the value of an 'EnvVar' comes from.
 data EnvSource
-  = ConfigMap { key :: !Text }
-  | Secret { key :: !Text }
-  | Literal { value :: !Text }
+  = ConfigMap {key :: !Text}
+  | Secret {key :: !Text}
+  | Literal {value :: !Text}
+  | DeploymentEnv {name :: !Text}
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
 
 -- | Resource requests and limits attached to a container.
 data Resources = Resources
-  { cpuRequest :: !Text
-  , cpuLimit :: !Text
-  , memoryRequest :: !Text
-  , memoryLimit :: !Text
+  { cpuRequest :: !Text,
+    cpuLimit :: !Text,
+    memoryRequest :: !Text,
+    memoryLimit :: !Text
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)

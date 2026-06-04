@@ -2,9 +2,13 @@ let EnvSource =
       < ConfigMap : { key : Text }
       | Secret : { key : Text }
       | Literal : { value : Text }
+      | DeploymentEnv : { name : Text }
       >
 
 let EnvVar = { name : Text, source : EnvSource }
+
+let ContainerImageSource =
+      < StaticImage : { value : Text } | DeploymentInitImage : { name : Text } >
 
 let mkConfigEnv =
       \(name : Text) ->
@@ -14,8 +18,14 @@ let mkSecretEnv =
       \(name : Text) ->
         { name = name, source = EnvSource.Secret { key = name } }
 
+let mkDeploymentEnv =
+      \(name : Text) ->
+        { name = name, source = EnvSource.DeploymentEnv { name = name } }
+
 let CommonEnv =
-      [ mkConfigEnv "PROJECT_ID"
+      [ mkDeploymentEnv "KAFKA_BROKERS"
+      , mkDeploymentEnv "KAFKA_EXTRA_PROPS"
+      , mkConfigEnv "PROJECT_ID"
       , mkConfigEnv "DATABASE_NAME"
       , mkConfigEnv "DATABASE_USER"
       , mkSecretEnv "DATABASE_PASSWORD"
@@ -34,6 +44,10 @@ let CommonEnv =
       , mkConfigEnv "OTEL_EXPORTER_OTLP_ENDPOINT"
       , mkSecretEnv "OTEL_EXPORTER_OTLP_HEADERS"
       , mkConfigEnv "OTEL_SDK_DISABLED"
+      , mkConfigEnv "DISABLED_SUBSCRIPTIONS"
+      , mkConfigEnv "ADMIN_APP_URL"
+      , mkSecretEnv "SLACK_TOKEN"
+      , mkConfigEnv "SLACK_MLS_ACTIVITY_CHANNEL"
       ]
 
 let AnalyzerBackend = ../shiki-core/dhall/AnalyzerBackend.dhall
@@ -48,7 +62,9 @@ in  { name = "mls-service-v2"
         toMap { `iam.gke.io/gke-metadata-server-enabled` = "true" }
     , initContainers =
         [ { name = "cloud-sql-proxy"
-          , image = "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.0"
+          , image =
+              ContainerImageSource.StaticImage
+                { value = "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.0" }
           , args = [ "\$(DATABASE_INSTANCE)?port=5432" ]
           , env =
               [ mkConfigEnv "DATABASE_INSTANCE"
@@ -73,6 +89,19 @@ in  { name = "mls-service-v2"
               , cpuLimit = "300m"
               , memoryRequest = "16Mi"
               , memoryLimit = "64Mi"
+              }
+          , restartable = True
+          }
+        , { name = "kafka-auth-server"
+          , image =
+              ContainerImageSource.DeploymentInitImage { name = "kafka-auth-server" }
+          , args = [] : List Text
+          , env = [] : List EnvVar
+          , resources =
+              { cpuRequest = "10m"
+              , cpuLimit = "100m"
+              , memoryRequest = "32Mi"
+              , memoryLimit = "128Mi"
               }
           , restartable = True
           }

@@ -35,6 +35,7 @@ let EnvSource =
       < ConfigMap : { key : Text }
       | Secret    : { key : Text }
       | Literal   : { value : Text }
+      | DeploymentEnv : { name : Text }
       >
 
 let EnvVar = { name : Text, source : EnvSource }
@@ -49,6 +50,10 @@ Three shapes:
 - `Literal { value = "true" }` — a baked-in string. Supports the
   Kubernetes `$(VAR)` interpolation syntax for referencing other env
   vars already on the container.
+- `DeploymentEnv { name = "KAFKA_BROKERS" }` — copy the named env var's
+  literal, ConfigMap source, or Secret source from the live Deployment.
+  This is useful when a service has a second ConfigMap/Secret that should
+  stay dynamic rather than being modelled as the primary app ConfigMap.
 
 The mls example uses helper builders to keep declarations terse:
 
@@ -64,7 +69,7 @@ let mkSecretEnv =
 
 ```dhall
 { name        : Text
-, image       : Text
+, image       : ContainerImageSource
 , args        : List Text
 , env         : List EnvVar
 , resources   : Resources
@@ -76,6 +81,17 @@ The canonical example is `cloud-sql-proxy`: GKE-side database proxy that
 needs to start before the application container and survive across
 restarts of the main container. Set `restartable = True` for that
 behavior; otherwise the init container runs once and exits.
+
+`ContainerImageSource` is:
+
+```dhall
+< StaticImage : { value : Text } | DeploymentInitImage : { name : Text } >
+```
+
+Use `StaticImage` for a fixed image such as `cloud-sql-proxy`. Use
+`DeploymentInitImage` to copy an init container image from the live
+Deployment, for example a sidecar whose image tag is controlled by the
+service deployment pipeline.
 
 ## `Resources`
 
