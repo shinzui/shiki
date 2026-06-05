@@ -61,10 +61,13 @@ This section must always reflect the actual current state of the work.
   a fake plugin script. _(done 2026-06-05; `runExecCredential`, `ExecCredentialStatus`,
   `ExecCredentialError`; fixtures `fake-exec-plugin{,-fail,-cert}.sh`; four runner tests green
   — token mint, `KUBERNETES_EXEC_INFO` visibility, non-zero-exit, cert-only rejection.)_
-- [ ] **M3** — Wire detection into `Shiki.K8s.Client.loadClientConfig`: when the selected
+- [x] **M3** — Wire detection into `Shiki.K8s.Client.loadClientConfig`: when the selected
   user has an `exec` block, mint the token and build the client by reusing the library `Config`
   + its TLS helpers (`addCACertData`/`addCACertFile`/`tlsValidation`) with `setTokenAuth`;
-  otherwise fall back to the existing `mkKubeClientConfig` path unchanged.
+  otherwise fall back to the existing `mkKubeClientConfig` path unchanged. _(done 2026-06-05;
+  `loadClientConfig` now branches on `KubeConfigFile`/`KubeConfigCluster`, with `mkFromLibrary`
+  (old body) and `mkFromToken` (library `Config` reuse). A `KubeConfigError` from the resolver
+  falls back to the library. `cabal build all` clean, all 30 tests pass, `shiki` links.)_
 - [ ] **M4** — Verify end-to-end against the live GKE `test` namespace with the operator's
   real exec-plugin kubeconfig; update shiki docs.
 
@@ -152,6 +155,17 @@ Record every decision made while working on the plan.
   exec detector and the source of the `KUBERNETES_EXEC_INFO` payload (cluster `server` + CA
   data), keeping those milestones unit-testable without the library types or a live cluster.
   Decoding one small YAML file twice per invocation is negligible.
+  Date: 2026-06-05
+
+- Decision: In M3, wrap the M1 resolver call in `try` and treat a `KubeConfigError`
+  (unresolvable context/cluster/user) as a signal to fall back to `mkFromLibrary` rather than
+  propagating it.
+  Rationale: shiki's minimal parser could, in principle, be stricter than the library on an
+  unusual but valid kubeconfig. Falling back preserves the plan's guarantee that non-exec users
+  "behave exactly as today" — the library's `mkKubeClientConfig` receives the same file and
+  resolves (or fails) identically. Only a successfully-resolved exec user takes the new path; a
+  malformed-YAML decode still throws (the library would fail on it too). This is not in the
+  original M3 pseudocode but is a low-cost robustness guard.
   Date: 2026-06-05
 
 

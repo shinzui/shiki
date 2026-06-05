@@ -3,32 +3,48 @@
 --   cluster. Centralised so callers do not have to know which kubeconfig
 --   path or which auth handler is in play.
 module Shiki.K8s.Client
-  ( ClientEnv (..)
-  , KubeConfigSource (..)
-  , loadDefaultClientConfig
-  , loadClientConfig
-  ) where
+  ( ClientEnv (..),
+    KubeConfigSource (..),
+    loadDefaultClientConfig,
+    loadClientConfig,
+  )
+where
 
+import Shiki.K8s.ExecCredential
+  ( KubeConfigError (..),
+    ResolvedContext (..),
+    readKubeConfigExecAuth,
+    runExecCredential,
+  )
 import Shiki.Prelude
-
+import "base" Control.Exception (try)
+import "base" System.Environment (lookupEnv)
+import "containers" Data.Map.Strict qualified as Map
+import "directory" System.Directory (getHomeDirectory)
+import "filepath" System.FilePath (takeDirectory, (</>))
+import "http-client" Network.HTTP.Client (Manager)
 import "kubernetes-api" Kubernetes.OpenAPI qualified as K8s
 import "kubernetes-api-client" Kubernetes.Client.Config
-  ( KubeConfigSource (..)
-  , mkKubeClientConfig
+  ( KubeConfigSource (..),
+    addCACertData,
+    addCACertFile,
+    defaultTLSClientParams,
+    mkKubeClientConfig,
+    newManager,
+    setMasterURI,
+    setTokenAuth,
+    tlsValidation,
   )
+import "kubernetes-api-client" Kubernetes.Client.KubeConfig qualified as KC
 import "stm" Control.Concurrent.STM (atomically, newTVar)
-import "containers" Data.Map.Strict qualified as Map
-import "base" System.Environment (lookupEnv)
-import "filepath" System.FilePath ((</>))
-import "directory" System.Directory (getHomeDirectory)
-import "http-client" Network.HTTP.Client (Manager)
+import "yaml" Data.Yaml qualified as Yaml
 
 -- | A bundle of the HTTP connection 'Manager' and the typed
 --   'K8s.KubernetesClientConfig' that every API call needs. Built once
 --   per CLI invocation by 'loadDefaultClientConfig'.
 data ClientEnv = ClientEnv
-  { httpManager  :: !Manager
-  , clientConfig :: !K8s.KubernetesClientConfig
+  { httpManager :: !Manager,
+    clientConfig :: !K8s.KubernetesClientConfig
   }
   deriving stock (Generic)
 
@@ -40,7 +56,7 @@ loadDefaultClientConfig :: IO ClientEnv
 loadDefaultClientConfig = do
   envPath <- lookupEnv "KUBECONFIG"
   path <- case envPath of
-    Just p  -> pure p
+    Just p -> pure p
     Nothing -> do
       home <- getHomeDirectory
       pure (home </> ".kube" </> "config")
@@ -48,8 +64,51 @@ loadDefaultClientConfig = do
 
 -- | Lower-level variant that takes an explicit 'KubeConfigSource'
 --   (file path or @KubeConfigCluster@ for in-cluster service-account auth).
+--
+--   For a file source we first ask 'Shiki.K8s.ExecCredential' whether the
+--   current context's user authenticates via an __exec credential plugin__
+--   (e.g. GKE's @gke-gcloud-auth-plugin@). If so — the case the upstream
+--   library cannot handle — we mint a bearer token by running the plugin and
+--   build the client from it. Otherwise (plain token, client-cert, OIDC, GCP,
+--   in-cluster, or a kubeconfig we cannot resolve) we defer to the library's
+--   'mkKubeClientConfig' exactly as before.
 loadClientConfig :: KubeConfigSource -> IO ClientEnv
-loadClientConfig src = do
+loadClientConfig src@(KubeConfigFile path) = do
+  resolved <- try (readKubeConfigExecAuth path Nothing)
+  case resolved of
+    -- Could not resolve a context/cluster/user — let the library try; it has
+    -- the same inputs and fails (or falls back) identically to today.
+    Left (KubeConfigError _) -> mkFromLibrary src
+    Right rc -> case resolvedExec rc of
+      Nothing -> mkFromLibrary src
+      Just execAuth -> do
+        token <- runExecCredential execAuth (resolvedCluster rc)
+        kubeCfg <- Yaml.decodeFileThrow path
+        mkFromToken kubeCfg (takeDirectory path) token
+loadClientConfig src@KubeConfigCluster = mkFromLibrary src
+
+-- | The original behavior: decode the kubeconfig and install whichever auth
+--   handler the library recognizes (token, client cert, GCP, OIDC), using a
+--   fresh OIDC cache.
+mkFromLibrary :: KubeConfigSource -> IO ClientEnv
+mkFromLibrary src = do
   oidcCache <- atomically (newTVar Map.empty)
   (mgr, cfg) <- mkKubeClientConfig oidcCache src
-  pure ClientEnv { httpManager = mgr, clientConfig = cfg }
+  pure ClientEnv {httpManager = mgr, clientConfig = cfg}
+
+-- | Build the client exactly as the library's own @mkKubeClientConfig@ does
+--   for the current context — same master URI and same TLS CA selection — but
+--   install a bearer-token auth handler from the exec-plugin token instead of
+--   running @applyAuthSettings@ (which has no exec handler). @kubeCfg@ is the
+--   library's @Config@; @dir@ is the kubeconfig's directory, against which a
+--   relative @certificate-authority@ file is resolved by 'addCACertFile'.
+mkFromToken :: KC.Config -> FilePath -> Text -> IO ClientEnv
+mkFromToken kubeCfg dir token = do
+  let masterURI = either (const "localhost:8080") KC.server (KC.getCluster kubeCfg)
+  base <- defaultTLSClientParams
+  withCAData <- addCACertData kubeCfg base
+  withCAFile <- addCACertFile kubeCfg dir withCAData
+  let tlsParams = tlsValidation kubeCfg withCAFile
+  mgr <- newManager tlsParams
+  cfg <- (setMasterURI masterURI . setTokenAuth token) <$> K8s.newConfig
+  pure ClientEnv {httpManager = mgr, clientConfig = cfg}
