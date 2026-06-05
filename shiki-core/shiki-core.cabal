@@ -41,6 +41,7 @@ library
     Shiki.Analysis.Baikai
     Shiki.Analysis.Heuristic
     Shiki.K8s.Client
+    Shiki.K8s.ExecCredential
     Shiki.K8s.Introspection
     Shiki.K8s.JobBuilder
     Shiki.K8s.Logs
@@ -78,12 +79,14 @@ library
     , kubernetes-api-client
     , lens                   ^>=5.3
     , mtl                    ^>=2.3
+    , process                ^>=1.6
     , random                 ^>=1.2
     , stm                    ^>=2.5
     , text                   ^>=2.1
     , time                   ^>=1.12
     , uuid                   ^>=1.3
     , vector
+    , yaml                   ^>=0.11
 
 executable shiki-run-once
   import:         common-options
@@ -103,6 +106,7 @@ test-suite shiki-core-test
   other-modules:
     Shiki.Analysis.BackendSpec
     Shiki.Analysis.HeuristicSpec
+    Shiki.K8s.ExecCredentialSpec
     Shiki.K8s.JobBuilderSpec
     Shiki.Persistence.ErrorSummaryColumnSpec
     Shiki.Persistence.RunListSpec
