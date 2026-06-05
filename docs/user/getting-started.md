@@ -12,9 +12,10 @@ You need three things on your machine:
   `pkg-config`, `zlib`, and PostgreSQL installed manually. The Nix flake
   pins the supported toolchain — use it if you can.
 - **`kubectl` context** pointed at the cluster you intend to drive. shiki
-  shells out to the same client config (`~/.kube/config` and friends), so
+  reads the same client config (`~/.kube/config`, or `KUBECONFIG` if set), so
   if `kubectl get deploy -n <ns> <name>` works, shiki can introspect that
-  Deployment.
+  Deployment. See [Authentication](#authentication) below for which kubeconfig
+  auth modes shiki supports — including GKE's `gke-gcloud-auth-plugin`.
 - **PostgreSQL** — either the local instance the flake wires up for you
   (see below), or any reachable Postgres you can pass via
   `SHIKI_DATABASE_URL`.
@@ -136,6 +137,48 @@ shiki runs error <id-prefix>       # one-line error summary, if any
 
 Every `runs` subcommand accepts the **8-character prefix** of the run id
 shown in `runs list` — typing the full UUID is rarely necessary.
+
+## Authentication
+
+shiki authenticates to the cluster with your existing kubeconfig — the file
+at `KUBECONFIG`, or `~/.kube/config` when that variable is unset. The current
+context's user determines how shiki proves who it is. shiki supports:
+
+- **Static bearer token** (`user.token` / `user.tokenFile`).
+- **Client certificate** (`user.client-certificate*` / `user.client-key*`).
+- **GCP auth provider** (`user.auth-provider: { name: gcp }`, the legacy flow).
+- **OIDC** (`user.auth-provider: { name: oidc }`).
+- **Exec credential plugins** — the `user.exec` stanza of the
+  `client.authentication.k8s.io` contract, which is how current GKE kubeconfigs
+  authenticate via **`gke-gcloud-auth-plugin`**.
+
+For an exec-plugin user, shiki runs the plugin the same way `kubectl` does:
+once per invocation it executes the configured `command` (passing
+`KUBERNETES_EXEC_INFO` when the stanza sets `provideClusterInfo: true`), reads
+the `ExecCredential` it prints, and uses the returned bearer token for every API
+call. So if `kubectl get deploy -n <ns> <name>` works against your GKE cluster,
+`shiki` works too — with your unmodified kubeconfig and no manual token juggling.
+
+This requires the plugin binary on your `PATH`. For GKE:
+
+```bash
+gcloud components install gke-gcloud-auth-plugin   # or your distro's package
+gke-gcloud-auth-plugin --version                   # should print a version
+```
+
+Notes and current limits:
+
+- shiki runs **non-interactively** (it may be invoked from CI or cron), so it
+  sets `spec.interactive = false`. A plugin configured with
+  `interactiveMode: Always` is refused with a clear error, since there is no
+  terminal to prompt on. GKE's default `IfAvailable` is fine.
+- shiki resolves a **fresh** credential on every invocation rather than caching
+  tokens on disk; it is a short-lived CLI making a handful of calls per process.
+  Any caching the plugin itself does (for example `gcloud`'s own token cache)
+  still applies.
+- The **client-certificate** form of an exec response
+  (`status.clientCertificateData` / `clientKeyData`) is not yet supported and is
+  rejected with an explicit message; GKE returns a token, which is supported.
 
 ## Where to next
 
