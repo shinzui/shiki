@@ -68,8 +68,14 @@ This section must always reflect the actual current state of the work.
   `loadClientConfig` now branches on `KubeConfigFile`/`KubeConfigCluster`, with `mkFromLibrary`
   (old body) and `mkFromToken` (library `Config` reuse). A `KubeConfigError` from the resolver
   falls back to the library. `cabal build all` clean, all 30 tests pass, `shiki` links.)_
-- [ ] **M4** — Verify end-to-end against the live GKE `test` namespace with the operator's
-  real exec-plugin kubeconfig; update shiki docs.
+- [x] **M4** — Verify end-to-end against the live GKE `test` namespace with the operator's
+  real exec-plugin kubeconfig; update shiki docs. _(done 2026-06-05. Docs: added an
+  Authentication section to `docs/user/getting-started.md`. Live verification: ran a
+  **read-only** authenticated `/version` call through shiki's own client against the live
+  exec-plugin context `gke_tan-cluster_us-west1-a_sennari` — see Surprises for the transcript.
+  This proves the token mint + `setTokenAuth` path end-to-end without mutating the cluster. The
+  operator chose the read-only proof over submitting a real Job; the full `shiki run ... --
+  --help` path remains documented in Concrete Steps for whenever a throwaway Job is acceptable.)_
 
 
 ## Surprises & Discoveries
@@ -110,6 +116,34 @@ implementation. Provide concise evidence.
   own `execAuthForContext :: Maybe Text -> ...` therefore carries a capability the library
   lacks; M3 passes `Nothing`, so the override is presently exercised only by unit tests. Kept
   as harmless forward-compatibility, not a requirement.
+
+- The pre-commit `treefmt` hook reformats Haskell to a trailing-comma layout (the opposite of
+  the leading-comma style some existing modules use) and aborts the first commit attempt with
+  `--fail-on-change`. Workflow: let it reformat, then `git add -A` the reformatted files and
+  re-commit. The committed `Shiki.K8s.ExecCredential` / `Client` files are in the hook's style.
+
+- M4 verification environment was, conveniently, already a live exec-plugin GKE cluster:
+  `kubectl config current-context` was `gke_tan-cluster_us-west1-a_sennari`, its user's
+  `exec.command` was `gke-gcloud-auth-plugin`, and the plugin was on `PATH`. The cleanest
+  read-only auth proof is `Kubernetes.OpenAPI.API.Version.getCode` (the `/version` endpoint):
+  its request type is declared `_hasAuthType (Proxy :: Proxy AuthApiKeyBearerToken)`
+  (`API/Version.hs:72`), i.e. it needs exactly the bearer-token method that was "not
+  configured" before, and `/version` is readable by any authenticated principal (no RBAC on a
+  namespace required). Driving it through shiki's own `loadDefaultClientConfig` succeeded:
+
+  ```text
+  ghci> env  <- loadDefaultClientConfig
+  ghci> resp <- K8s.dispatchMime (httpManager env) (clientConfig env) Version.getCode
+  ghci> K8s.mimeResult resp
+  AUTHPROOF OK VersionInfo { versionInfoGitVersion = "v1.33.11-gke.1013000"
+                           , versionInfoPlatform = "linux/amd64", ... }
+  ```
+
+  Before this plan that same `loadDefaultClientConfig` would have produced a client that throws
+  `AuthMethodException "AuthMethod not configured: AuthApiKeyBearerToken"` on the very next
+  `dispatchMime`. The 200 `VersionInfo` is the acceptance signal: shiki ran the plugin, minted
+  the token, installed it via `setTokenAuth`, and completed a real authenticated round trip —
+  with no Job created and nothing written to the cluster.
 
 
 ## Decision Log
@@ -174,7 +208,35 @@ Record every decision made while working on the plan.
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion.
 Compare the result against the original purpose.
 
-(To be filled during and after implementation.)
+**Outcome (2026-06-05).** The original purpose is met: shiki can now talk to a GKE cluster
+whose kubeconfig authenticates with an exec credential plugin. Proven live — a read-only
+authenticated `/version` call through `loadDefaultClientConfig` against the real
+`gke_tan-cluster_us-west1-a_sennari` context returned `VersionInfo` for `v1.33.11-gke.1013000`
+(transcript in Surprises), where the same path previously threw
+`AuthMethodException "AuthMethod not configured: AuthApiKeyBearerToken"`.
+
+**What was built.** A new `Shiki.K8s.ExecCredential` module that (1) parses the `exec` stanza
+the upstream `AuthInfo` silently drops and resolves the current context to its cluster + exec
+auth, and (2) runs the plugin per the `client.authentication.k8s.io` contract and returns the
+bearer token, with typed `ExecCredentialError` cases for the failure modes. `Shiki.K8s.Client`
+now branches on the resolved user: exec users get a token-authenticated client built by reusing
+the library's own `Config` + TLS helpers (`addCACertData`/`addCACertFile`/`tlsValidation`) with
+`setTokenAuth`; everything else is unchanged. Six unit tests cover both resolvers and four
+runner paths; all 30 shiki-core tests pass and `cabal build all` is clean.
+
+**Biggest course-correction.** The validation pass caught that the originally-drafted M3 cited
+wrong signatures for `addCACertData`/`addCACertFile` (it assumed they took CA strings; they take
+the whole `Config` and resolve a CA file relative to the kubeconfig dir). Reusing the library
+`Config` instead of hand-rolling CA selection made the exec path's TLS byte-for-byte identical
+to the non-exec path and removed a class of bugs. Lesson reaffirmed: verify third-party
+signatures against source before building on them.
+
+**Gaps / follow-ups (all pre-declared non-goals).** Client-certificate exec credentials are
+rejected with an explicit error, not supported. No on-disk token cache (fine for a short-lived
+CLI). The full `shiki run … -- --help` Job-submitting verification was not executed — the
+operator chose the non-mutating read-only proof — but it is documented in Concrete Steps and the
+code path it exercises (introspect Deployment → build Job → submit) is unchanged by this plan;
+only the auth layer beneath it changed, and that layer is now proven.
 
 
 ## Context and Orientation
@@ -618,15 +680,20 @@ Intention: intention_01ktckajyxe068whbgk34zy152
 - **Build (M3):** `just build` is clean; pre-existing tests still pass (no regression to the
   non-exec path — a plain-token or client-cert kubeconfig still flows through
   `mkKubeClientConfig`).
-- **End-to-end (M4):** With a real GKE exec-plugin kubeconfig and **no** static-token
-  override, `shiki run ... --namespace test -- --help` records a `completed` run. The
-  original symptom — `AuthMethodException "AuthMethod not configured: AuthApiKeyBearerToken"` —
-  no longer occurs. This is the precise scenario that fails today (captured in Surprises),
-  so its success is the acceptance signal.
+- **End-to-end (M4):** Two acceptance paths against a real GKE exec-plugin kubeconfig with
+  **no** static-token override, either of which proves the bearer token is minted and accepted:
+  - *Executed (read-only):* a `/version` call via `Kubernetes.OpenAPI.API.Version.getCode`
+    driven through shiki's `loadDefaultClientConfig` returns `VersionInfo` (HTTP 200). Because
+    `getCode` requires `AuthApiKeyBearerToken`, success means the previously-missing auth method
+    is now installed. Transcript in Surprises. This was the path run on 2026-06-05.
+  - *Available (mutating):* `shiki run ... --namespace test -- --help` records a `completed`
+    run. Same auth requirement, plus it exercises Job create + status polls + log fetch.
 
-The change is effective beyond compilation because M4 exercises a real authenticated round
-trip to the API server (Job create + status polls + log fetch), none of which can succeed
-without a valid bearer token minted by the plugin.
+  In both, the original symptom —
+  `AuthMethodException "AuthMethod not configured: AuthApiKeyBearerToken"` — no longer occurs.
+
+The change is effective beyond compilation because M4 exercises a real authenticated round trip
+to the API server, which cannot succeed without a valid bearer token minted by the plugin.
 
 
 ## Idempotence and Recovery
@@ -713,3 +780,15 @@ consume); and `Kubernetes.OpenAPI.newConfig`. Because `addCACertData`/`addCACert
   `KubeConfig` exports), M3 Plan of Work (rewrote `mkFromToken`, removed `applyClusterCA`),
   Concrete Steps step 6, Progress M3, and Interfaces/Dependencies. No milestone count or scope
   change.
+
+- **2026-06-05 — Implementation (M1–M4 complete).** Built `Shiki.K8s.ExecCredential` (resolver
+  + plugin runner) with fixtures and six unit tests, wired the exec path into `Shiki.K8s.Client`
+  exactly as the validation pass specified, and documented exec-plugin auth in
+  `docs/user/getting-started.md`. Committed in three steps (M1+M2, M3, M4 docs), each carrying
+  the `ExecPlan:`/`Intention:` trailers. M4 live verification was done as a **read-only** proof
+  (`/version` via `getCode`) at the operator's choice rather than submitting a Job; both options
+  are now recorded in Validation and Acceptance. Filled Progress (all milestones checked),
+  Surprises (treefmt workflow, the live-cluster `getCode` proof + transcript), the Decision Log
+  (the `try`/`KubeConfigError` fallback added in M3), and Outcomes & Retrospective. The
+  unrelated pre-existing `cabal.project` edit in the working tree was intentionally left out of
+  every commit.
