@@ -22,6 +22,11 @@ where
 
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Config (resolveConnectionString)
+import Shiki.Cli.ConfigInit
+  ( ConfigInitOptions (..),
+    defaultSchemaRef,
+    runConfigInit,
+  )
 import Shiki.Cli.ConfigShow (runConfigShow)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
 import Shiki.Cli.Fzf (detectFzfConfig)
@@ -52,6 +57,7 @@ data Command
 
 data ConfigCommand
   = ConfigShow
+  | ConfigInit !ConfigInitOptions
   deriving stock (Generic, Eq, Show)
 
 data Options = Options
@@ -70,6 +76,8 @@ runCli = do
     Help helpOpts -> runHelp helpOpts
     Config ConfigShow ->
       runConfigShow (opts ^. #envName)
+    Config (ConfigInit initOpts) ->
+      runConfigInit initOpts
     Run runOpts ->
       withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
         runRun env runOpts
@@ -178,7 +186,7 @@ commandParser =
           "config"
           ( Opt.info
               (Config <$> configSubparser)
-              (Opt.progDesc "Inspect project-local shiki.dhall configuration")
+              (Opt.progDesc "Initialize or inspect project-local shiki.dhall configuration")
           )
         <> Opt.command
           "help"
@@ -197,7 +205,38 @@ configSubparser =
             (pure ConfigShow)
             (Opt.progDesc "Show the resolved project configuration and active environment")
         )
+        <> Opt.command
+          "init"
+          ( Opt.info
+              (ConfigInit <$> configInitOptionsParser)
+              (Opt.progDesc "Create a portable project-local shiki.dhall")
+          )
     )
+
+configInitOptionsParser :: Parser ConfigInitOptions
+configInitOptionsParser =
+  ConfigInitOptions
+    <$> Opt.strOption
+      ( Opt.long "schema-ref"
+          <> Opt.metavar "REF"
+          <> Opt.value defaultSchemaRef
+          <> Opt.showDefault
+          <> Opt.help "Git tag or commit to use in the GitHub raw schema URL"
+      )
+    <*> Opt.strOption
+      ( Opt.long "output"
+          <> Opt.metavar "PATH"
+          <> Opt.value "shiki.dhall"
+          <> Opt.showDefault
+          <> Opt.help "Path to write"
+      )
+    <*> Opt.strOption
+      ( Opt.long "default-environment"
+          <> Opt.metavar "NAME"
+          <> Opt.value "staging"
+          <> Opt.showDefault
+          <> Opt.help "defaultEnvironment value for the generated config"
+      )
 
 serviceSubparser :: Parser Command
 serviceSubparser =

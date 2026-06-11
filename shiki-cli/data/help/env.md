@@ -4,6 +4,22 @@ SHIKI ENVIRONMENT VARIABLES
 CLI flags always win over environment variables and project-local
 defaults.
 
+PROJECT CONFIG
+
+  shiki config init --schema-ref <tag-or-commit>
+
+      Create a project-local shiki.dhall that imports the public schema
+      package from:
+
+        https://raw.githubusercontent.com/shinzui/shiki/<ref>/schema/package.dhall
+
+      The command refuses to overwrite an existing shiki.dhall.
+
+  shiki config show
+
+      Print the discovered config path, declared environments, selected
+      environment, and masked database URL without opening a database.
+
 
 DATABASE
 

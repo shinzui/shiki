@@ -15,10 +15,12 @@ copyright:          (c) 2026 Nadeem Bitar
 build-type:         Simple
 extra-doc-files:    ../CHANGELOG.md
 extra-source-files:
+  ../schema/*.dhall
   dhall/*.dhall
   sql/migrations/*.sql
 
 data-files:
+  ../schema/*.dhall
   dhall/*.dhall
   sql/migrations/*.sql
 

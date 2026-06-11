@@ -37,7 +37,7 @@ shiki applies any pending migrations on every invocation (after acquiring
 the pool, before running the subcommand handler). There is no separate
 `migrate` step.
 
-The `service` and `config show` subcommands do **not** need a database —
+The `service`, `config init`, and `config show` subcommands do **not** need a database —
 they parse Dhall files and exit.
 
 ## Interactive selection (fzf)
@@ -193,6 +193,24 @@ sanity-checking a config change before running anything.
 
 This subcommand is exempt from the global `--db`, `--db-schema`, and `--env`
 options; they are still accepted but unused.
+
+## `shiki config init`
+
+Create a project-local `shiki.dhall` that imports shiki's public schema package
+from GitHub.
+
+```
+shiki config init [--schema-ref REF] [--output PATH] [--default-environment NAME]
+```
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--schema-ref REF` | `main` | Git tag or commit used in `https://raw.githubusercontent.com/shinzui/shiki/<REF>/schema/package.dhall`. |
+| `--output PATH` | `shiki.dhall` | File to create. Existing files are not overwritten. |
+| `--default-environment NAME` | `staging` | Initial `defaultEnvironment` value in the generated file. |
+
+The generated placeholder environments are `staging` and `prod`. Replace their
+database URLs before using database-backed commands.
 
 ## `shiki config show`
 

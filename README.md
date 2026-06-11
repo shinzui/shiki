@@ -31,6 +31,7 @@ shiki runs error <id-prefix>                 # one-line error summary
 shiki runs analyze <id-prefix> --analyzer=baikai:anthropic_claude_haiku_4_5
 shiki service show my-service                # inspect a parsed service config
 shiki agent assist --service my-service      # AI session preloaded with shiki state
+shiki config init --schema-ref <tag-or-commit> # create project-local shiki.dhall
 shiki config show                            # inspect project-local shiki.dhall
 shiki help                                   # in-terminal index of curated topic guides
 shiki help services                          # full guide for one topic
@@ -101,10 +102,10 @@ cabal run shiki -- --help
 ```
 
 The shell hook exports `PG_CONNECTION_STRING` pointing at a project-local
-Postgres under `./db/`. For shared project environments, copy
-`shiki.dhall.example` to `shiki.dhall` and set each environment's
-`databaseUrl`; database-backed commands resolve connections as `--db`,
-then active `shiki.dhall` environment, then `SHIKI_DATABASE_URL`, then
+Postgres under `./db/`. For shared project environments, run
+`shiki config init --schema-ref <tag-or-commit>` and set each environment's
+`databaseUrl`; database-backed commands resolve connections as `--db`, then
+active `shiki.dhall` environment, then `SHIKI_DATABASE_URL`, then
 `PG_CONNECTION_STRING`. See [Getting started](./docs/user/getting-started.md)
 for the full local-Postgres bring-up.
 

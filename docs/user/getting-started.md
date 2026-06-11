@@ -52,7 +52,8 @@ Alternatively, point shiki at any Postgres you control by creating a project-loc
 `shiki.dhall` with named environments:
 
 ```bash
-cp shiki.dhall.example shiki.dhall
+shiki config init --schema-ref <tag-or-commit>
+$EDITOR shiki.dhall
 shiki config show
 shiki --env staging runs list
 ```

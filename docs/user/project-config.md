@@ -13,22 +13,26 @@ The file declares named shiki environments and one default environment. Each env
 currently carries a PostgreSQL connection string:
 
 ```dhall
-let Environment = ./shiki-core/dhall/Environment.dhall
+let Schema =
+      https://raw.githubusercontent.com/shinzui/shiki/main/schema/package.dhall
 
-let mkEnv = \(url : Text) -> { databaseUrl = url } : Environment
+let mkEnv = \(url : Text) -> { databaseUrl = url } : Schema.Environment
 
-in  { environments =
-        toMap
-          { staging = mkEnv "postgresql://shiki:changeme@db.staging.internal:5432/shiki"
-          , prod    = mkEnv "postgresql://shiki:changeme@db.prod.internal:5432/shiki"
-          }
-    , defaultEnvironment = "staging"
-    }
+in    { environments =
+          toMap
+            { staging = mkEnv "postgresql://shiki:changeme@db.staging.internal:5432/shiki"
+            , prod = mkEnv "postgresql://shiki:changeme@db.prod.internal:5432/shiki"
+            }
+      , defaultEnvironment = "staging"
+      }
+    : Schema.ProjectConfig
 ```
 
-The repository ships `shiki.dhall.example` as a copyable template. Local `shiki.dhall`
-files are ignored by git so real database URLs and machine-specific settings stay out of
-commits.
+Run `shiki config init --schema-ref <tag-or-commit>` to create a starter
+`shiki.dhall`. The generated file imports shiki's public schema package from
+GitHub, so it works from service repositories that do not contain a shiki
+source checkout. Local `shiki.dhall` files are ignored by git so real database
+URLs and machine-specific settings stay out of commits.
 
 Connection strings can also come from OS environment variables through Dhall imports:
 
@@ -91,6 +95,14 @@ shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI
 commands.
 
 ## Inspect Configuration
+
+Initialize a new project-local config:
+
+```bash
+shiki config init --schema-ref <tag-or-commit>
+```
+
+The command writes `shiki.dhall` and refuses to overwrite an existing file.
 
 Run:
 
