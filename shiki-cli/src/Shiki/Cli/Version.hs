@@ -31,8 +31,14 @@ nixGitHash = Nothing
 gitCommitShort :: Maybe Text
 gitCommitShort =
   case gitInfo of
-    Right gi -> Just (Text.take 7 (Text.pack (giHash gi)))
-    Left _ -> Text.take 7 <$> nixGitHash
+    Right gi -> nonEmptyShort (Text.pack (giHash gi)) <|> (nixGitHash >>= nonEmptyShort)
+    Left _ -> nixGitHash >>= nonEmptyShort
+  where
+    nonEmptyShort hashText =
+      let shortHash = Text.take 7 hashText
+       in if Text.null shortHash
+            then Nothing
+            else Just shortHash
 
 formatVersionWithGit :: Text -> Maybe Text -> Text
 formatVersionWithGit versionText mCommit =

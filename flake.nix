@@ -14,6 +14,30 @@
 
     pre-commit-hooks.url = "github:cachix/git-hooks.nix";
     pre-commit-hooks.inputs.nixpkgs.follows = "nixpkgs";
+
+    # ---- PROJECT-SPECIFIC INPUTS ----
+
+    # Shared Haskell patch management (registry overlay), grafted onto the
+    # haskell-nix-dev nixpkgs in flake.module.nix for the package build.
+    haskell-nix = {
+      url = "github:shinzui/haskell-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    kubernetes-api-src = {
+      url = "github:shinzui/kubernetes-api-project/2db0fd55d03424b3b2b7f733511b7b06b18752cd";
+      flake = false;
+    };
+
+    jose-jwt-src = {
+      url = "github:tekul/jose-jwt/95697890390f696cdcf43fbfe8d67f7262fd72bf";
+      flake = false;
+    };
+
+    hoauth2-src = {
+      url = "github:shinzui/hoauth2/3fa57f9ffe6baa6ed98d58919481ebb33f3f4d0d";
+      flake = false;
+    };
   };
 
   nixConfig = {

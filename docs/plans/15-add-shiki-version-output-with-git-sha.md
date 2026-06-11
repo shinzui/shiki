@@ -25,8 +25,8 @@ The implementation follows `/Users/shinzui/Keikaku/bokuno/haskell-jitsurei/cli/v
 - [x] Add a version module for `shiki-cli` that exposes the Cabal package version, optional short commit hash, and final display text. Completed 2026-06-11T20:45:37Z.
 - [x] Wire `shiki --version` into the top-level optparse-applicative parser without requiring a subcommand or database configuration. Completed 2026-06-11T20:45:37Z.
 - [x] Add parser/unit coverage for the version text and the top-level informational option. Completed 2026-06-11T20:45:37Z.
-- [ ] Extend the Nix package overlay so Nix builds pass `GIT_HASH` to GHC for the `shiki-cli` package.
-- [ ] Validate both build paths with Cabal and Nix commands and record the results in this plan.
+- [x] Extend the Nix package overlay so Nix builds pass `GIT_HASH` to GHC for the `shiki-cli` package. Completed 2026-06-11T21:00:54Z.
+- [x] Validate both build paths with Cabal and Nix commands and record the results in this plan. Completed 2026-06-11T21:02:56Z. `cabal build all`, `cabal test all`, `cabal run shiki -- --version`, `nix build .#shiki`, and `./result/bin/shiki --version` passed; `nix flake check` failed in an unrelated repository-wide treefmt check.
 
 
 ## Surprises & Discoveries
@@ -53,6 +53,24 @@ Undefined symbols for architecture arm64:
       _shikizmclizm0zi1zi0zi0zminplace_ShikiziCliziVersion_appVersion1_info in libHSshiki-cli-0.1.0.0-inplace.a(Version.o)
 ```
 
+- The first Nix-built binary printed `shiki v0.1.0.0` even though the evaluated derivation included `configureFlags = ["--ghc-option=-DGIT_HASH=\"dirty\""]`. Treating an empty Template Haskell hash as unavailable and then trying `GIT_HASH` fixed the Nix output. Evidence after the fix:
+
+```text
+$ ./result/bin/shiki --version
+shiki v0.1.0.0 (dirty)
+```
+
+- `nix flake check` did not pass because the repository-wide treefmt check wants to reformat unrelated Haskell files outside this version feature. The feature-specific Nix package build and binary behavior passed, so this plan does not include the broad formatter churn. Evidence:
+
+```text
+checks.aarch64-darwin.treefmt failed
+error: Cannot build '/nix/store/04zrd8xdzdmzjdpncvpzqxa4y172wmsy-treefmt-check.drv'.
+...
+> -    , testCase "first init container is cloud-sql-proxy" $ do
+> +          (cfg ^. #defaultNamespace),
+> +      testCase "first init container is cloud-sql-proxy" $ do
+```
+
 
 ## Decision Log
 
@@ -68,10 +86,16 @@ Undefined symbols for architecture arm64:
   Rationale: The current working tree already contains `flake.module.nix` and `nix/haskell-overlay.nix`, where `packages.default` and `packages.shiki` point at `haskellPackages.shiki-cli`. The version feature only needs to pass a CPP define through that existing `shiki-cli` derivation.
   Date: 2026-06-11
 
+- Decision: Treat an empty hash from `githash` as missing and fall back to the Nix-provided `GIT_HASH` value.
+  Rationale: In the Nix build, the derivation had the expected `--ghc-option=-DGIT_HASH="dirty"` flag, but the first binary still omitted the suffix. Trying the CPP fallback when the Template Haskell hash is empty preserves the Cabal behavior and makes the Nix behavior observable.
+  Date: 2026-06-11
+
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+Implemented `shiki --version` for both local Cabal builds and Nix builds. Cabal builds read the git commit through `githash` and produced output like `shiki v0.1.0.0 (ef61ae3)`. Nix builds receive `GIT_HASH` through the `shiki-cli` derivation and produced `shiki v0.1.0.0 (dirty)` for the current dirty working tree.
+
+The main implementation lesson is that Cabal's generated `Paths_shiki_cli` module must be declared in the library stanza when the library imports it directly. The main validation gap is repository-wide formatting: `nix flake check` fails in `checks.aarch64-darwin.treefmt` because treefmt wants to reformat unrelated files that this plan intentionally did not change.
 
 
 ## Context and Orientation
