@@ -9,6 +9,7 @@ import Shiki.Persistence.RunListSpec qualified as RunListSpec
 import Shiki.Persistence.RunSpec qualified as RunSpec
 import Shiki.Persistence.SchemaIsolationSpec qualified as SchemaIsolationSpec
 import Shiki.Persistence.SchemaSpec qualified as SchemaSpec
+import Shiki.Project.ConfigSpec qualified as ProjectConfigSpec
 import Shiki.Service.ConfigSpec qualified as ConfigSpec
 import "tasty" Test.Tasty (defaultMain, testGroup)
 
@@ -18,6 +19,7 @@ main =
     testGroup
       "shiki-core"
       [ ConfigSpec.tests,
+        ProjectConfigSpec.tests,
         RunSpec.tests,
         RunListSpec.tests,
         JobBuilderSpec.tests,

@@ -16,13 +16,13 @@
 --     for NAME as JSON. Useful for debugging service config files
 --     without touching the database or the cluster.
 module Shiki.Cli
-  ( runCli
-  ) where
-
-import Shiki.Prelude hiding (Options, argument)
+  ( runCli,
+  )
+where
 
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Config (resolveConnectionString)
+import Shiki.Cli.ConfigShow (runConfigShow)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
 import Shiki.Cli.Fzf (detectFzfConfig)
 import Shiki.Cli.Fzf.Selector.Service (resolveServiceName)
@@ -31,29 +31,34 @@ import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
 import Shiki.Persistence.Schema qualified
+import Shiki.Prelude hiding (Options, argument)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-
-import "base" System.Exit (exitFailure)
-
 import "aeson-pretty" Data.Aeson.Encode.Pretty qualified as AesonPretty
+import "base" System.Exit (exitFailure)
 import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
-import "text" Data.Text qualified as Text
 import "optparse-applicative" Options.Applicative (Parser, ParserInfo, (<**>))
 import "optparse-applicative" Options.Applicative qualified as Opt
+import "text" Data.Text qualified as Text
 
 data Command
-  = Run         !RunOptions
-  | Runs        !RunsCommand
+  = Run !RunOptions
+  | Runs !RunsCommand
   | ServiceShow !(Maybe Text)
-  | Agent       !AgentCommand
-  | Help        !HelpCommand
+  | Agent !AgentCommand
+  | Help !HelpCommand
+  | Config !ConfigCommand
+  deriving stock (Generic, Eq, Show)
+
+data ConfigCommand
+  = ConfigShow
   deriving stock (Generic, Eq, Show)
 
 data Options = Options
-  { dbConnStr :: !(Maybe Text)
-  , dbSchema  :: !(Maybe Text)
-  , command   :: !Command
+  { dbConnStr :: !(Maybe Text),
+    dbSchema :: !(Maybe Text),
+    envName :: !(Maybe Text),
+    command :: !Command
   }
   deriving stock (Generic, Eq, Show)
 
@@ -62,30 +67,32 @@ runCli = do
   opts <- Opt.execParser parserInfo
   case opts ^. #command of
     ServiceShow nm -> serviceShowHandler nm
-    Help helpOpts  -> runHelp helpOpts
-    Run runOpts    ->
+    Help helpOpts -> runHelp helpOpts
+    Config ConfigShow ->
+      runConfigShow (opts ^. #envName)
+    Run runOpts ->
       withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \_ env ->
         runRun env runOpts
-    Runs runsOpts  ->
+    Runs runsOpts ->
       withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \_ env ->
         runRuns env runsOpts
     Agent agentOpts ->
       withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \schema env ->
         runAgent env schema agentOpts
 
-withDbEnv
-  :: Maybe Text
-  -> Maybe Text
-  -> (Shiki.Persistence.Schema.Schema -> CliEnv -> IO a)
-  -> IO a
+withDbEnv ::
+  Maybe Text ->
+  Maybe Text ->
+  (Shiki.Persistence.Schema.Schema -> CliEnv -> IO a) ->
+  IO a
 withDbEnv mConn mSchema k = do
-  cs     <- resolveConnectionString mConn
+  cs <- resolveConnectionString mConn
   schema <- resolveSchema mSchema
   withCliEnv cs schema (k schema)
 
 serviceShowHandler :: Maybe Text -> IO ()
 serviceShowHandler (Just nm) = serviceShowOne nm
-serviceShowHandler Nothing   = do
+serviceShowHandler Nothing = do
   fzfCfg <- detectFzfConfig
   resolveServiceName fzfCfg >>= \case
     Just nm -> serviceShowOne nm
@@ -114,27 +121,36 @@ optionsParser :: Parser Options
 optionsParser =
   Options
     <$> Opt.optional
-          ( Opt.strOption
-              ( Opt.long "db"
-                  <> Opt.metavar "CONNSTR"
-                  <> Opt.help
-                      "Postgres connection string (overrides SHIKI_DATABASE_URL / PG_CONNECTION_STRING)"
-              )
+      ( Opt.strOption
+          ( Opt.long "db"
+              <> Opt.metavar "CONNSTR"
+              <> Opt.help
+                "Postgres connection string (overrides SHIKI_DATABASE_URL / PG_CONNECTION_STRING)"
           )
+      )
     <*> Opt.optional
-          ( Opt.strOption
-              ( Opt.long "db-schema"
-                  <> Opt.metavar "SCHEMA"
-                  <> Opt.help
-                      "Postgres schema for shiki tables (default: shiki, overrides SHIKI_DB_SCHEMA)"
-              )
+      ( Opt.strOption
+          ( Opt.long "db-schema"
+              <> Opt.metavar "SCHEMA"
+              <> Opt.help
+                "Postgres schema for shiki tables (default: shiki, overrides SHIKI_DB_SCHEMA)"
           )
+      )
+    <*> Opt.optional
+      ( Opt.strOption
+          ( Opt.long "env"
+              <> Opt.metavar "NAME"
+              <> Opt.help
+                "shiki environment from shiki.dhall (overrides SHIKI_ENV / defaultEnvironment)"
+          )
+      )
     <*> commandParser
 
 commandParser :: Parser Command
 commandParser =
   Opt.hsubparser
-    ( Opt.command "run"
+    ( Opt.command
+        "run"
         ( Opt.info
             (Run <$> runOptionsParser)
             (Opt.progDesc "Submit a one-off Job and record the run in Postgres")
@@ -158,6 +174,12 @@ commandParser =
               (Opt.progDesc "Agentic helpers for driving shiki")
           )
         <> Opt.command
+          "config"
+          ( Opt.info
+              (Config <$> configSubparser)
+              (Opt.progDesc "Inspect project-local shiki.dhall configuration")
+          )
+        <> Opt.command
           "help"
           ( Opt.info
               (Help <$> helpParser)
@@ -165,20 +187,32 @@ commandParser =
           )
     )
 
+configSubparser :: Parser ConfigCommand
+configSubparser =
+  Opt.hsubparser
+    ( Opt.command
+        "show"
+        ( Opt.info
+            (pure ConfigShow)
+            (Opt.progDesc "Show the resolved project configuration and active environment")
+        )
+    )
+
 serviceSubparser :: Parser Command
 serviceSubparser =
   Opt.hsubparser
-    ( Opt.command "show"
+    ( Opt.command
+        "show"
         ( Opt.info
             ( ServiceShow
                 <$> Opt.optional
-                      ( Opt.argument
-                          Opt.str
-                          ( Opt.metavar "NAME"
-                              <> Opt.help
-                                "Service name (basename of services/<NAME>.dhall); opens an fzf picker if omitted"
-                          )
+                  ( Opt.argument
+                      Opt.str
+                      ( Opt.metavar "NAME"
+                          <> Opt.help
+                            "Service name (basename of services/<NAME>.dhall); opens an fzf picker if omitted"
                       )
+                  )
             )
             (Opt.progDesc "Pretty-print the parsed ServiceConfig for NAME (uses fzf if omitted)")
         )

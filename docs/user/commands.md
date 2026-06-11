@@ -7,20 +7,21 @@ and [Agent assist](./agent-assist.md).
 
 ## Global options
 
-All subcommands accept two global options. CLI flags always win over
+All subcommands accept these global options. CLI flags always win over
 environment variables.
 
-| Flag           | Env var(s)                                          | Default  | Meaning                                                                                                                                                                                                                                                |
-|----------------|-----------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING`   | *(none)* | PostgreSQL connection string. If neither flag nor env var is set, shiki exits with `shiki: no Postgres connection string. Pass --db or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.` The `nix develop` shell hook exports `PG_CONNECTION_STRING`.    |
-| `--db-schema SCHEMA` | `SHIKI_DB_SCHEMA`                             | `shiki`  | PostgreSQL schema for shiki's tables. Must match `[A-Za-z_][A-Za-z0-9_]*` and be ≤ 63 bytes. An invalid name exits before any DB work happens.                                                                                                          |
+| Flag           | Env var(s)                                        | Default  | Meaning                                                                                                                                                                                                                                                |
+|----------------|---------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING` | *(none)* | PostgreSQL connection string. If neither flag nor env var is set, shiki exits with `shiki: no Postgres connection string. Pass --db or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.` The `nix develop` shell hook exports `PG_CONNECTION_STRING`.    |
+| `--db-schema SCHEMA` | `SHIKI_DB_SCHEMA`                           | `shiki`  | PostgreSQL schema for shiki's tables. Must match `[A-Za-z_][A-Za-z0-9_]*` and be ≤ 63 bytes. An invalid name exits before any DB work happens.                                                                                                          |
+| `--env NAME`   | `SHIKI_ENV`                                      | `defaultEnvironment` from `shiki.dhall` | Active project environment for project-local configuration. As of this release, it is used by `shiki config show`; database-routing support lands in the follow-up environment-routing work. |
 
 shiki applies any pending migrations on every invocation (after acquiring
 the pool, before running the subcommand handler). There is no separate
 `migrate` step.
 
-The `service` subcommand does **not** need a database — it parses a Dhall
-file and exits.
+The `service` and `config show` subcommands do **not** need a database —
+they parse Dhall files and exit.
 
 ## Interactive selection (fzf)
 
@@ -176,6 +177,20 @@ sanity-checking a config change before running anything.
 This subcommand is exempt from the global `--db` / `--db-schema` options;
 they are still accepted but unused.
 
+## `shiki config show`
+
+Inspect the project-local `shiki.dhall` file, if one is present in the current
+directory or any parent directory.
+
+```
+shiki config show [--env NAME]
+```
+
+Output includes the discovered file path, declared environments, default
+environment, active environment, and the active environment's database URL with
+the URI password masked. See [Project configuration](./project-config.md) for
+the file format and selection rules.
+
 ## `shiki agent assist`
 
 Open an interactive AI session preloaded with shiki's view of the
@@ -203,6 +218,7 @@ A typo in either env var exits with
 | `SHIKI_DATABASE_URL`      | every subcommand (except `service show`) | Postgres connection string; preferred over `PG_CONNECTION_STRING`.  |
 | `PG_CONNECTION_STRING`    | same                   | Fallback. Set by the `nix develop` shell hook to a project-local socket. |
 | `SHIKI_DB_SCHEMA`         | every subcommand       | Postgres schema for shiki's tables.                                    |
+| `SHIKI_ENV`               | `config show`          | Active project environment when `--env` is absent.                      |
 | `SHIKI_AGENT_PROVIDER`    | `shiki agent assist`   | One of `claude-cli`, `codex-cli`, `anthropic`, `openai`.                |
 | `SHIKI_AGENT_MODEL`       | `shiki agent assist`   | Provider-specific model id.                                            |
 | `ANTHROPIC_API_KEY`       | `runs analyze --analyzer=baikai:anthropic_*`, `agent assist --provider=anthropic` | One-shot API path only; CLI providers use the local CLI's own auth.  |

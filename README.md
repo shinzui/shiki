@@ -26,6 +26,7 @@ shiki runs error <id-prefix>                 # one-line error summary
 shiki runs analyze <id-prefix> --analyzer=baikai:anthropic_claude_haiku_4_5
 shiki service show my-service                # inspect a parsed service config
 shiki agent assist --service my-service      # AI session preloaded with shiki state
+shiki config show                            # inspect project-local shiki.dhall
 shiki help                                   # in-terminal index of curated topic guides
 shiki help services                          # full guide for one topic
 ```
@@ -54,6 +55,8 @@ The user-facing guide lives under [`docs/user/`](./docs/user/README.md):
   shiki concepts (`shiki help`, `shiki help <topic>`).
 - **[Commands](./docs/user/commands.md)** — every subcommand, flag, and
   environment variable.
+- **[Project configuration](./docs/user/project-config.md)** — project-local
+  `shiki.dhall`, named environments, and `shiki config show`.
 - **[Service configuration](./docs/user/service-config.md)** — what lives
   in a `services/<name>.dhall` file.
 - **[Database schema](./docs/user/schema.md)** — the `runs` table, the

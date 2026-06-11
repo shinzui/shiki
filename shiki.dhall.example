@@ -1,0 +1,23 @@
+{- Project-local shiki configuration.
+
+   Declares the shiki environments available in this checkout and which one
+   is the default. `shiki config show` prints the resolved configuration;
+   `shiki run --env <name> ...` (see docs/plans/13-route-run-storage-to-the-active-environment-database.md)
+   records runs into the named environment's database after that follow-up
+   work lands.
+
+   Connection strings may be inlined as shown, or sourced from OS environment
+   variables using Dhall's native import, e.g.:
+     databaseUrl = env:SHIKI_STAGING_DATABASE_URL as Text
+-}
+let Environment = ./shiki-core/dhall/Environment.dhall
+
+let mkEnv = \(url : Text) -> { databaseUrl = url } : Environment
+
+in  { environments =
+        toMap
+          { staging = mkEnv "postgresql://shiki:changeme@db.staging.internal:5432/shiki"
+          , prod    = mkEnv "postgresql://shiki:changeme@db.prod.internal:5432/shiki"
+          }
+    , defaultEnvironment = "staging"
+    }

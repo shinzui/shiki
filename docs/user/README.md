@@ -14,6 +14,8 @@ durable run history in PostgreSQL.
   the terminal.
 - **[Commands](./commands.md)** — every subcommand and flag, the global
   `--db` / `--db-schema` options, and the environment variables they read.
+- **[Project configuration](./project-config.md)** — project-local
+  `shiki.dhall`, named environments, and `shiki config show`.
 - **[Service configuration](./service-config.md)** — what lives in a
   `services/<name>.dhall` file, how shiki turns it into a Job, and how to
   inspect a parsed config with `shiki service show`.
