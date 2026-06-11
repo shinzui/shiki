@@ -13,9 +13,11 @@ durable run history in PostgreSQL.
   topic reader; the fastest way to look up shiki concepts without leaving
   the terminal.
 - **[Commands](./commands.md)** — every subcommand and flag, the global
-  `--db` / `--db-schema` options, and the environment variables they read.
+  `--db` / `--db-schema` / `--env` options, and the environment variables
+  they read.
 - **[Project configuration](./project-config.md)** — project-local
-  `shiki.dhall`, named environments, and `shiki config show`.
+  `shiki.dhall`, named environments, `shiki config show`, and
+  environment-aware database routing.
 - **[Service configuration](./service-config.md)** — what lives in a
   `services/<name>.dhall` file, how shiki turns it into a Job, and how to
   inspect a parsed config with `shiki service show`.

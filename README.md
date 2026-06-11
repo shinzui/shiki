@@ -15,6 +15,11 @@ in PostgreSQL with metadata such as the service, command, status, timing, and
 duration. The goal is to make ad hoc operational work safer, easier to audit,
 and easier to understand after the fact.
 
+Project-local `shiki.dhall` files declare named environments such as
+`staging` and `prod`. `shiki --env <name> run ...`, `shiki --env <name> runs
+...`, and `shiki --env <name> agent assist` use the selected environment's
+database URL unless `--db` is supplied as an explicit override.
+
 ## What it does
 
 ```bash
@@ -56,7 +61,8 @@ The user-facing guide lives under [`docs/user/`](./docs/user/README.md):
 - **[Commands](./docs/user/commands.md)** — every subcommand, flag, and
   environment variable.
 - **[Project configuration](./docs/user/project-config.md)** — project-local
-  `shiki.dhall`, named environments, and `shiki config show`.
+  `shiki.dhall`, named environments, `shiki config show`, and
+  environment-aware database routing.
 - **[Service configuration](./docs/user/service-config.md)** — what lives
   in a `services/<name>.dhall` file.
 - **[Database schema](./docs/user/schema.md)** — the `runs` table, the
@@ -95,9 +101,12 @@ cabal run shiki -- --help
 ```
 
 The shell hook exports `PG_CONNECTION_STRING` pointing at a project-local
-Postgres under `./db/`. See
-[Getting started](./docs/user/getting-started.md) for the full
-local-Postgres bring-up.
+Postgres under `./db/`. For shared project environments, copy
+`shiki.dhall.example` to `shiki.dhall` and set each environment's
+`databaseUrl`; database-backed commands resolve connections as `--db`,
+then active `shiki.dhall` environment, then `SHIKI_DATABASE_URL`, then
+`PG_CONNECTION_STRING`. See [Getting started](./docs/user/getting-started.md)
+for the full local-Postgres bring-up.
 
 ## License
 

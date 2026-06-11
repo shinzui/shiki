@@ -10,11 +10,28 @@ and [Agent assist](./agent-assist.md).
 All subcommands accept these global options. CLI flags always win over
 environment variables.
 
-| Flag           | Env var(s)                                        | Default  | Meaning                                                                                                                                                                                                                                                |
-|----------------|---------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING` | *(none)* | PostgreSQL connection string. If omitted, shiki uses the active environment's `databaseUrl` from `shiki.dhall`, then `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING`. If no source is available, shiki exits with `shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.` The `nix develop` shell hook exports `PG_CONNECTION_STRING`. |
-| `--db-schema SCHEMA` | `SHIKI_DB_SCHEMA`                           | `shiki`  | PostgreSQL schema for shiki's tables. Must match `[A-Za-z_][A-Za-z0-9_]*` and be ≤ 63 bytes. An invalid name exits before any DB work happens.                                                                                                          |
+| Flag           | Env var(s)                                        | Default  | Meaning                                                                                       |
+|----------------|---------------------------------------------------|----------|-----------------------------------------------------------------------------------------------|
+| `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING` | *(none)* | PostgreSQL connection string. Explicit override for the active project environment database.   |
+| `--db-schema SCHEMA` | `SHIKI_DB_SCHEMA`                           | `shiki`  | PostgreSQL schema for shiki's tables. Must match `[A-Za-z_][A-Za-z0-9_]*` and be ≤ 63 bytes. |
 | `--env NAME`   | `SHIKI_ENV`                                      | `defaultEnvironment` from `shiki.dhall` | Active project environment for project-local configuration and database routing. |
+
+Database subcommands resolve their connection string in this order:
+
+1. `--db CONNSTR`
+2. The active environment's `databaseUrl` from `shiki.dhall`
+3. `SHIKI_DATABASE_URL`
+4. `PG_CONNECTION_STRING`
+
+If no source is available, shiki exits with:
+
+```text
+shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.
+```
+
+The `nix develop` shell hook exports `PG_CONNECTION_STRING` for the local
+dev database. `--db-schema` is independent from database selection: it picks
+the schema inside whichever database the precedence above selected.
 
 shiki applies any pending migrations on every invocation (after acquiring
 the pool, before running the subcommand handler). There is no separate
@@ -174,8 +191,8 @@ sanity-checking a config change before running anything.
 `services/*.dhall`. With no `.dhall` files present, shiki prints
 `(no service configs found in services/)` and exits 1.
 
-This subcommand is exempt from the global `--db` / `--db-schema` options;
-they are still accepted but unused.
+This subcommand is exempt from the global `--db`, `--db-schema`, and `--env`
+options; they are still accepted but unused.
 
 ## `shiki config show`
 
@@ -188,8 +205,9 @@ shiki config show [--env NAME]
 
 Output includes the discovered file path, declared environments, default
 environment, active environment, and the active environment's database URL with
-the URI password masked. See [Project configuration](./project-config.md) for
-the file format and selection rules.
+the URI password masked. It does not connect to Postgres. See
+[Project configuration](./project-config.md) for the file format and selection
+rules.
 
 ## `shiki agent assist`
 

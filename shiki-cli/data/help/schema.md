@@ -4,6 +4,10 @@ SHIKI POSTGRES SCHEMA
 shiki installs its tables into a dedicated PostgreSQL schema (default
 name: 'shiki') so they do not pollute 'public'.
 
+The database itself is selected separately: --db, then the active
+shiki.dhall environment databaseUrl, then SHIKI_DATABASE_URL, then
+PG_CONNECTION_STRING.
+
 
 TABLES
 

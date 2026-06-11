@@ -47,6 +47,49 @@ The active shiki environment is resolved in this order:
 This selection controls which environment `shiki config show` displays and which database
 `run`, `runs`, and `agent` use when `--db` is not supplied.
 
+For example:
+
+```bash
+shiki --env staging run my-service -- backfill --limit 100
+shiki --env staging runs list
+shiki --env prod agent assist --service my-service
+```
+
+Each command above uses the selected environment's `databaseUrl`. `shiki run`
+writes new rows there, `shiki runs` reads rows from there, and
+`shiki agent assist` gathers recent runs from there before it starts the
+assistant session.
+
+## Database Connection Precedence
+
+Database-backed commands choose their connection string in this order:
+
+1. `--db CONNSTR`
+2. The active environment's `databaseUrl` from `shiki.dhall`
+3. `SHIKI_DATABASE_URL`
+4. `PG_CONNECTION_STRING`
+
+Use `--db` for a one-off override:
+
+```bash
+shiki --env staging --db postgresql://localhost/shiki runs list
+```
+
+In that example, `--env staging` still selects the active project environment
+for configuration, but `--db` wins for the actual database connection.
+
+If the active environment has no usable database URL and neither fallback
+environment variable is set, shiki exits before opening a pool:
+
+```text
+shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.
+```
+
+`PG_CONNECTION_STRING` is the final fallback because the repository's
+`nix develop` shell hook exports it for the project-local Postgres. Prefer
+`shiki.dhall` for named project environments that should be shared across
+commands.
+
 ## Inspect Configuration
 
 Run:

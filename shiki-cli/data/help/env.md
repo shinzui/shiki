@@ -1,21 +1,31 @@
 SHIKI ENVIRONMENT VARIABLES
 
 
-CLI flags always win over environment variables. When no flag is set,
-shiki reads the listed variable; if it is unset or empty, the hard-coded
-default applies.
+CLI flags always win over environment variables and project-local
+defaults.
 
 
 DATABASE
 
-  SHIKI_DATABASE_URL      Postgres connection string. Read by every
-                          subcommand that touches the database (run,
-                          runs, agent). Falls back to:
+  Database-backed subcommands (run, runs, agent) resolve their
+  connection string in this order:
 
-  PG_CONNECTION_STRING    Compatibility alias for SHIKI_DATABASE_URL.
+    1. --db CONNSTR
+    2. active shiki.dhall environment databaseUrl
+    3. SHIKI_DATABASE_URL
+    4. PG_CONNECTION_STRING
+
+  SHIKI_DATABASE_URL      Legacy Postgres connection string fallback.
+
+  PG_CONNECTION_STRING    Final fallback. The nix develop shell hook
+                          exports this for the project-local database.
 
   SHIKI_DB_SCHEMA         Postgres schema name. Default: 'shiki'.
                           Override per-invocation with --db-schema=NAME.
+
+  SHIKI_ENV               Active project environment when --env is not
+                          supplied. If unset, shiki uses
+                          defaultEnvironment from shiki.dhall.
 
 
 AGENT ASSIST

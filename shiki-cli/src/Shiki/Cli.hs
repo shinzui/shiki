@@ -126,7 +126,7 @@ optionsParser =
           ( Opt.long "db"
               <> Opt.metavar "CONNSTR"
               <> Opt.help
-                "Postgres connection string (overrides SHIKI_DATABASE_URL / PG_CONNECTION_STRING)"
+                "Postgres connection string (overrides shiki.dhall and env fallbacks)"
           )
       )
     <*> Opt.optional

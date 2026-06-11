@@ -17,8 +17,8 @@ You need three things on your machine:
   Deployment. See [Authentication](#authentication) below for which kubeconfig
   auth modes shiki supports — including GKE's `gke-gcloud-auth-plugin`.
 - **PostgreSQL** — either the local instance the flake wires up for you
-  (see below), or any reachable Postgres you can pass via
-  `SHIKI_DATABASE_URL`.
+  (see below), or any reachable Postgres you can put in `shiki.dhall`,
+  pass with `--db`, or export via `SHIKI_DATABASE_URL`.
 
 ## 2. Enter the dev shell
 
@@ -49,11 +49,18 @@ process-compose up      # foreground; Ctrl-C to stop
 ```
 
 Alternatively, point shiki at any Postgres you control by creating a project-local
-`shiki.dhall` with named environments, or by exporting `SHIKI_DATABASE_URL` /
-`PG_CONNECTION_STRING`. The connection precedence is `--db`, then the active environment's
-`databaseUrl` from `shiki.dhall`, then `SHIKI_DATABASE_URL`, then
-`PG_CONNECTION_STRING`. shiki **applies its own migrations on every invocation**, so you do
-not need to run a separate migration step.
+`shiki.dhall` with named environments:
+
+```bash
+cp shiki.dhall.example shiki.dhall
+shiki config show
+shiki --env staging runs list
+```
+
+Database commands use this connection precedence: `--db`, then the active
+environment's `databaseUrl` from `shiki.dhall`, then `SHIKI_DATABASE_URL`,
+then `PG_CONNECTION_STRING`. shiki **applies its own migrations on every
+invocation**, so you do not need to run a separate migration step.
 
 The default schema is `shiki`. Override it per-invocation with
 `--db-schema <name>` or persistently with `SHIKI_DB_SCHEMA`. See
