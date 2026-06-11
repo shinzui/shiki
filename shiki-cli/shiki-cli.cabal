@@ -55,7 +55,10 @@ library
     Shiki.Cli.Run
     Shiki.Cli.Runs
     Shiki.Cli.Schema
+    Shiki.Cli.Version
 
+  autogen-modules: Paths_shiki_cli
+  other-modules:   Paths_shiki_cli
   build-depends:
     , aeson                 ^>=2.2
     , aeson-pretty          ^>=0.8
@@ -69,6 +72,7 @@ library
     , file-embed            ^>=0.0.16
     , filepath              ^>=1.5
     , generic-lens
+    , githash               ^>=0.1
     , hasql                 >=1.10
     , hasql-pool            >=1.4
     , lens                  ^>=5.3
@@ -104,6 +108,7 @@ test-suite shiki-cli-test
     Shiki.Cli.Fzf.Selector.RunSpec
     Shiki.Cli.HelpSpec
     Shiki.Cli.ProjectSpec
+    Shiki.Cli.VersionSpec
 
   build-depends:
     , aeson                 ^>=2.2

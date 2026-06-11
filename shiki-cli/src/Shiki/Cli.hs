@@ -17,6 +17,7 @@
 --     without touching the database or the cluster.
 module Shiki.Cli
   ( runCli,
+    parserInfo,
   )
 where
 
@@ -35,6 +36,7 @@ import Shiki.Cli.Help (HelpCommand, helpParser, runHelp)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
+import Shiki.Cli.Version (appVersionWithGit)
 import Shiki.Persistence.Schema qualified
 import Shiki.Prelude hiding (Options, argument)
 import Shiki.Service.Config (ServiceConfig)
@@ -119,12 +121,18 @@ printConfig = BL8.putStrLn . AesonPretty.encodePretty
 parserInfo :: ParserInfo Options
 parserInfo =
   Opt.info
-    (optionsParser <**> Opt.helper)
+    (optionsParser <**> Opt.helper <**> versionOption)
     ( Opt.fullDesc
         <> Opt.progDesc
           "shiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."
         <> Opt.header "shiki - one-off Kubernetes Jobs with durable run history"
     )
+
+versionOption :: Parser (a -> a)
+versionOption =
+  Opt.infoOption
+    (Text.unpack appVersionWithGit)
+    (Opt.long "version" <> Opt.help "Show version information")
 
 optionsParser :: Parser Options
 optionsParser =

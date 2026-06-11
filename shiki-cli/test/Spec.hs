@@ -9,6 +9,7 @@ import Shiki.Cli.EnvRoutingSpec qualified as EnvRoutingSpec
 import Shiki.Cli.Fzf.Selector.RunSpec qualified as RunSelectorSpec
 import Shiki.Cli.HelpSpec qualified as HelpSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
+import Shiki.Cli.VersionSpec qualified as VersionSpec
 import "tasty" Test.Tasty (defaultMain, localOption, testGroup)
 import "tasty" Test.Tasty.Runners (NumThreads (..))
 
@@ -30,6 +31,7 @@ main =
           ConfigInitSpec.tests,
           EnvRoutingSpec.tests,
           HelpSpec.tests,
+          VersionSpec.tests,
           RunSelectorSpec.tests,
           ProjectSpec.tests
         ]
