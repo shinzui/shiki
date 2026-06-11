@@ -4,6 +4,7 @@ import Shiki.Cli.Agent.ContextSpec qualified as ContextSpec
 import Shiki.Cli.Agent.LaunchSpec qualified as LaunchSpec
 import Shiki.Cli.Agent.PromptSpec qualified as PromptSpec
 import Shiki.Cli.Agent.ProviderSpec qualified as ProviderSpec
+import Shiki.Cli.EnvRoutingSpec qualified as EnvRoutingSpec
 import Shiki.Cli.Fzf.Selector.RunSpec qualified as RunSelectorSpec
 import Shiki.Cli.HelpSpec qualified as HelpSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
@@ -25,6 +26,7 @@ main =
           ContextSpec.tests,
           PromptSpec.tests,
           LaunchSpec.tests,
+          EnvRoutingSpec.tests,
           HelpSpec.tests,
           RunSelectorSpec.tests,
           ProjectSpec.tests

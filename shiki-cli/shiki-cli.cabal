@@ -98,6 +98,7 @@ test-suite shiki-cli-test
     Shiki.Cli.Agent.LaunchSpec
     Shiki.Cli.Agent.PromptSpec
     Shiki.Cli.Agent.ProviderSpec
+    Shiki.Cli.EnvRoutingSpec
     Shiki.Cli.Fzf.Selector.RunSpec
     Shiki.Cli.HelpSpec
     Shiki.Cli.ProjectSpec

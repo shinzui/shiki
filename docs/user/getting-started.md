@@ -48,10 +48,12 @@ Postgres and creates the `shiki` database. From inside the dev shell:
 process-compose up      # foreground; Ctrl-C to stop
 ```
 
-Alternatively, point shiki at any Postgres you control by exporting
-`SHIKI_DATABASE_URL` (highest precedence after `--db`) or
-`PG_CONNECTION_STRING`. shiki **applies its own migrations on every
-invocation**, so you do not need to run a separate migration step.
+Alternatively, point shiki at any Postgres you control by creating a project-local
+`shiki.dhall` with named environments, or by exporting `SHIKI_DATABASE_URL` /
+`PG_CONNECTION_STRING`. The connection precedence is `--db`, then the active environment's
+`databaseUrl` from `shiki.dhall`, then `SHIKI_DATABASE_URL`, then
+`PG_CONNECTION_STRING`. shiki **applies its own migrations on every invocation**, so you do
+not need to run a separate migration step.
 
 The default schema is `shiki`. Override it per-invocation with
 `--db-schema <name>` or persistently with `SHIKI_DB_SCHEMA`. See

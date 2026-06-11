@@ -129,7 +129,7 @@ database-per-service plan.
 | # | Title | Path | Hard Deps | Soft Deps | Status |
 |---|-------|------|-----------|-----------|--------|
 | 12 | Project-local shiki.dhall configuration foundation | docs/plans/12-project-local-shiki-dhall-configuration-foundation.md | None | None | Complete |
-| 13 | Route run storage to the active environment database | docs/plans/13-route-run-storage-to-the-active-environment-database.md | EP-12 | None | Not Started |
+| 13 | Route run storage to the active environment database | docs/plans/13-route-run-storage-to-the-active-environment-database.md | EP-12 | None | Complete |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
 Hard Deps and Soft Deps reference other rows by their # prefix (e.g., EP-12, EP-13).
@@ -232,11 +232,11 @@ the milestone.
   default, active environment, and masked active database URL; global `--env` flag added.
 - [x] EP-12 M4: Documentation (`docs/user/`) and tracked `shiki.dhall.example` committed;
   local `shiki.dhall` ignored.
-- [ ] EP-13 M1: `resolveConnectionString` extended to consult the active environment's URL
+- [x] EP-13 M1: `resolveConnectionString` extended to consult the active environment's URL
   with the agreed precedence; `withDbEnv` threads `--env` through `run`/`runs`/`agent`.
-- [ ] EP-13 M2: End-to-end test proving a run is recorded into and read back from the
+- [x] EP-13 M2: End-to-end test proving a run is recorded into and read back from the
   environment-selected database; legacy fall-through test (no `shiki.dhall`) passes.
-- [ ] EP-13 M3: Documentation updates reflecting environment-aware connection precedence.
+- [x] EP-13 M3: Documentation updates reflecting environment-aware connection precedence.
 
 
 ## Surprises & Discoveries
@@ -258,6 +258,13 @@ interactions between child plans. Provide concise evidence.
   Evidence: `.gitignore` contains `shiki.dhall`; `dhall resolve --file shiki.dhall.example`
   succeeds. EP-13 documentation should refer to copying the example or creating a local
   ignored `shiki.dhall`.
+
+- Discovery: EP-13's automated routing test uses two `ephemeral-pg` instances to model the
+  staging and prod environment databases. This avoids test-only database-creation SQL while
+  still proving true database-level separation through two distinct libpq connection
+  strings.
+  Evidence: `Shiki.Cli.EnvRouting` inserts a run through the staging connection and lists
+  one row from staging and zero rows from prod.
 
 
 ## Decision Log
@@ -311,14 +318,28 @@ interactions between child plans. Provide concise evidence.
   workflow and keeps EP-13's runtime routing target (`shiki.dhall`) unchanged.
   Date: 2026-06-11
 
+- Decision: Complete EP-13 using two temporary Postgres instances for the environment
+  routing test.
+  Rationale: The test needs to prove per-environment database isolation, not just schema
+  isolation. Two `ephemeral-pg` instances provide distinct database connection strings and
+  keep setup idempotent.
+  Date: 2026-06-11
+
 
 ## Outcomes & Retrospective
 
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion.
 Compare the result against the original vision.
 
-EP-12 is complete as of 2026-06-11. The reusable project-local configuration foundation is
-implemented, tested, and documented without changing live database routing. Validation:
-`cabal test shiki-core`, `cabal test shiki-cli`, and `cabal test all` all exited 0; manual
-`shiki config show` checks covered no-config, default, `--env`, and `SHIKI_ENV` cases with
-masked database URLs.
+The MasterPlan is complete as of 2026-06-11. EP-12 delivered the reusable project-local
+configuration foundation (`shiki.dhall` discovery, Dhall/Haskell types, active environment
+resolution, and `shiki config show`). EP-13 wired that foundation into the live database
+connection path for `run`, `runs`, and `agent` with precedence `--db` → active environment
+`databaseUrl` → `SHIKI_DATABASE_URL` → `PG_CONNECTION_STRING`.
+
+Validation: `cabal test shiki-core`, `cabal test shiki-cli`, and `cabal test all` exited 0
+during EP-12; EP-13 then passed `cabal build all`, `cabal test shiki-cli`, and
+`cabal test all`. Manual `shiki config show` checks covered no-config, default, `--env`,
+and `SHIKI_ENV` cases with masked database URLs. Automated `Shiki.Cli.EnvRouting` checks
+covered staging/prod database separation, legacy fallback, missing-source failure, and the
+explicit `--db` override.

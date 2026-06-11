@@ -12,9 +12,9 @@ environment variables.
 
 | Flag           | Env var(s)                                        | Default  | Meaning                                                                                                                                                                                                                                                |
 |----------------|---------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING` | *(none)* | PostgreSQL connection string. If neither flag nor env var is set, shiki exits with `shiki: no Postgres connection string. Pass --db or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.` The `nix develop` shell hook exports `PG_CONNECTION_STRING`.    |
+| `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING` | *(none)* | PostgreSQL connection string. If omitted, shiki uses the active environment's `databaseUrl` from `shiki.dhall`, then `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING`. If no source is available, shiki exits with `shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.` The `nix develop` shell hook exports `PG_CONNECTION_STRING`. |
 | `--db-schema SCHEMA` | `SHIKI_DB_SCHEMA`                           | `shiki`  | PostgreSQL schema for shiki's tables. Must match `[A-Za-z_][A-Za-z0-9_]*` and be ≤ 63 bytes. An invalid name exits before any DB work happens.                                                                                                          |
-| `--env NAME`   | `SHIKI_ENV`                                      | `defaultEnvironment` from `shiki.dhall` | Active project environment for project-local configuration. As of this release, it is used by `shiki config show`; database-routing support lands in the follow-up environment-routing work. |
+| `--env NAME`   | `SHIKI_ENV`                                      | `defaultEnvironment` from `shiki.dhall` | Active project environment for project-local configuration and database routing. |
 
 shiki applies any pending migrations on every invocation (after acquiring
 the pool, before running the subcommand handler). There is no separate
@@ -215,10 +215,10 @@ A typo in either env var exits with
 
 | Variable                  | Read by                | Notes                                                                  |
 |---------------------------|------------------------|------------------------------------------------------------------------|
-| `SHIKI_DATABASE_URL`      | every subcommand (except `service show`) | Postgres connection string; preferred over `PG_CONNECTION_STRING`.  |
-| `PG_CONNECTION_STRING`    | same                   | Fallback. Set by the `nix develop` shell hook to a project-local socket. |
+| `SHIKI_DATABASE_URL`      | every database subcommand | Postgres connection string fallback after `--db` and active `shiki.dhall` environment URL. |
+| `PG_CONNECTION_STRING`    | same                   | Final fallback. Set by the `nix develop` shell hook to a project-local socket. |
 | `SHIKI_DB_SCHEMA`         | every subcommand       | Postgres schema for shiki's tables.                                    |
-| `SHIKI_ENV`               | `config show`          | Active project environment when `--env` is absent.                      |
+| `SHIKI_ENV`               | `config show`, `run`, `runs`, `agent` | Active project environment when `--env` is absent.                      |
 | `SHIKI_AGENT_PROVIDER`    | `shiki agent assist`   | One of `claude-cli`, `codex-cli`, `anthropic`, `openai`.                |
 | `SHIKI_AGENT_MODEL`       | `shiki agent assist`   | Provider-specific model id.                                            |
 | `ANTHROPIC_API_KEY`       | `runs analyze --analyzer=baikai:anthropic_*`, `agent assist --provider=anthropic` | One-shot API path only; CLI providers use the local CLI's own auth.  |

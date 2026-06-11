@@ -4,9 +4,8 @@
 and `shiki` discovers it by walking up from the current working directory until it finds
 the first file named `shiki.dhall`.
 
-This foundation currently powers `shiki config show`. A follow-up change,
-`docs/plans/13-route-run-storage-to-the-active-environment-database.md`, wires the same
-environment selection into `shiki run`, `shiki runs`, and `shiki agent`.
+This file powers `shiki config show` and database routing for `shiki run`, `shiki runs`,
+and `shiki agent`.
 
 ## File Format
 
@@ -45,9 +44,8 @@ The active shiki environment is resolved in this order:
 2. `SHIKI_ENV`
 3. `defaultEnvironment` in `shiki.dhall`
 
-For now, this selection is visible through `shiki config show` and does not change the
-database used by `run`, `runs`, or `agent` until the follow-up environment-routing work is
-implemented.
+This selection controls which environment `shiki config show` displays and which database
+`run`, `runs`, and `agent` use when `--db` is not supplied.
 
 ## Inspect Configuration
 

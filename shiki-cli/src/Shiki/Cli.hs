@@ -71,22 +71,23 @@ runCli = do
     Config ConfigShow ->
       runConfigShow (opts ^. #envName)
     Run runOpts ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \_ env ->
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
         runRun env runOpts
     Runs runsOpts ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \_ env ->
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
         runRuns env runsOpts
     Agent agentOpts ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) $ \schema env ->
+      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \schema env ->
         runAgent env schema agentOpts
 
 withDbEnv ::
   Maybe Text ->
   Maybe Text ->
+  Maybe Text ->
   (Shiki.Persistence.Schema.Schema -> CliEnv -> IO a) ->
   IO a
-withDbEnv mConn mSchema k = do
-  cs <- resolveConnectionString mConn
+withDbEnv mConn mSchema mEnv k = do
+  cs <- resolveConnectionString mConn mEnv
   schema <- resolveSchema mSchema
   withCliEnv cs schema (k schema)
 

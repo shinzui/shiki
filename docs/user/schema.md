@@ -3,6 +3,9 @@
 shiki keeps its tables in a dedicated PostgreSQL schema (`shiki` by
 default) so they do not pollute `public`. Migrations are applied
 automatically on every CLI invocation against the configured schema.
+The database that receives those migrations is selected by the normal connection
+precedence: `--db`, then the active environment's `databaseUrl` from `shiki.dhall`, then
+`SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING`.
 
 ## The `runs` table
 

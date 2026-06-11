@@ -81,14 +81,14 @@ MasterPlan, runs continue to be distinguished within a database by the existing
 
 Use a checklist to summarize granular steps. Every stopping point must be documented here.
 
-- [ ] M1: Environment-aware connection resolution and threading (see Milestone 1).
-  - [ ] Extend `resolveConnectionString` to consult the active environment URL.
-  - [ ] Thread `--env` (`opts ^. #envName`) through `withDbEnv` for `run`/`runs`/`agent`.
-- [ ] M2: End-to-end + fall-through tests (see Milestone 2).
-  - [ ] Test: a run recorded under `--env staging` lands in the staging database and is
+- [x] M1: Environment-aware connection resolution and threading (see Milestone 1). Completed 2026-06-11.
+  - [x] Extend `resolveConnectionString` to consult the active environment URL.
+  - [x] Thread `--env` (`opts ^. #envName`) through `withDbEnv` for `run`/`runs`/`agent`.
+- [x] M2: End-to-end + fall-through tests (see Milestone 2). Completed 2026-06-11.
+  - [x] Test: a run recorded under `--env staging` lands in the staging database and is
     readable back; a `prod` run is isolated from it.
-  - [ ] Test: with no `shiki.dhall`, resolution falls back to `SHIKI_DATABASE_URL`.
-- [ ] M3: Documentation of the new connection precedence (see Milestone 3).
+  - [x] Test: with no `shiki.dhall`, resolution falls back to `SHIKI_DATABASE_URL`.
+- [x] M3: Documentation of the new connection precedence (see Milestone 3). Completed 2026-06-11.
 
 
 ## Surprises & Discoveries
@@ -96,7 +96,16 @@ Use a checklist to summarize granular steps. Every stopping point must be docume
 Document unexpected behaviors, bugs, optimizations, or insights discovered during
 implementation. Provide concise evidence.
 
-(None yet.)
+- Discovery: The environment-routing test uses two real `ephemeral-pg` instances, one for
+  `staging` and one for `prod`, instead of creating two databases inside one server.
+  Evidence: `Shiki.Cli.EnvRouting` resolves two distinct libpq connection strings from a
+  temporary `shiki.dhall`, inserts a run through the staging pool, then observes one row in
+  staging and zero rows in prod.
+
+- Discovery: In this workspace, `cabal test all` also runs local dependency test suites
+  such as `crypton`, so the output is large. It completed successfully after the shiki
+  routing suite passed.
+  Evidence: `cabal test all` exited 0 on 2026-06-11.
 
 
 ## Decision Log
@@ -115,12 +124,28 @@ implementation. Provide concise evidence.
   when the operator already specified `--db`.
   Date: 2026-06-11
 
+- Decision: Use two `ephemeral-pg` instances in `Shiki.Cli.EnvRoutingSpec` as the staging
+  and prod stores.
+  Rationale: This proves database-level separation without introducing ad hoc database
+  creation SQL into the test. Each temporary server exposes a normal libpq connection
+  string, matching the production shape consumed by `resolveConnectionString`.
+  Date: 2026-06-11
+
 
 ## Outcomes & Retrospective
 
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion.
 
-(To be filled during and after implementation.)
+Completed EP-13 on 2026-06-11. The live connection resolver now uses precedence
+`--db` flag → active environment `databaseUrl` from `shiki.dhall` →
+`SHIKI_DATABASE_URL` → `PG_CONNECTION_STRING`, and `run`, `runs`, and `agent` thread the
+global `--env` selector into that resolver. The change preserves the explicit `--db`
+override and legacy env-var fallback. Documentation now describes the new precedence and
+clarifies that schema selection remains orthogonal to database selection.
+
+Validation passed with `cabal build all`, `cabal test shiki-cli`, and `cabal test all`.
+The new `Shiki.Cli.EnvRouting` suite proves staging/prod database separation, legacy
+fallback, missing-source failure, and `--db` override behavior.
 
 
 ## Context and Orientation
@@ -512,6 +537,46 @@ cabal run shiki -- runs list --env prod
 
 read from different stores (after recording a run into one). Update this section with the
 actual transcripts as you implement.
+
+Observed 2026-06-11 after implementation:
+
+```text
+$ grep -n "resolveActiveEnvironment" shiki-cli/src/Shiki/Cli/Project.hs
+13:    resolveActiveEnvironmentName,
+14:    resolveActiveEnvironment,
+50:resolveActiveEnvironmentName ::
+53:resolveActiveEnvironmentName cfg mFlag =
+67:resolveActiveEnvironment :: Maybe Text -> IO (Maybe (Text, Environment))
+68:resolveActiveEnvironment mFlag =
+73:      (name, _src) <- resolveActiveEnvironmentName cfg mFlag
+```
+
+```text
+$ grep -n "envName" shiki-cli/src/Shiki/Cli.hs
+56:    envName :: !(Maybe Text),
+70:      runConfigShow (opts ^. #envName)
+72:      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
+75:      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
+78:      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \schema env ->
+```
+
+```text
+$ cabal build all
+... command completed successfully with exit code 0
+```
+
+```text
+$ cabal test shiki-cli
+Shiki.Cli.EnvRouting
+  staging run is stored in staging database and absent from prod: OK
+  legacy fallback, missing source error, and db flag override:    OK
+All 35 tests passed
+```
+
+```text
+$ cabal test all
+... command completed successfully with exit code 0
+```
 
 
 ## Validation and Acceptance
