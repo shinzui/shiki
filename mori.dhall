@@ -23,6 +23,33 @@ in  Schema.Project::{
         , path = Some "shiki-core"
         , description = Some
             "Domain types, persistence, and Kubernetes runner library."
+        , dependencies =
+          [ Schema.Dependency.ByName "haskell/aeson"
+          , Schema.Dependency.ByName "shinzui/baikai"
+          , Schema.Dependency.ByName "dhall-lang/dhall-haskell"
+          , Schema.Dependency.ByName "hasql/hasql"
+          , Schema.Dependency.ByName "shinzui/hasql-migration"
+          , Schema.Dependency.ByName "snoyberg/http-client"
+          , Schema.Dependency.ByName "codedownio/kubernetes-api"
+          , Schema.Dependency.ByName "ekmett/lens"
+          , Schema.Dependency.ByName "haskell-hvr/uuid"
+          , Schema.Dependency.WithAugmentation
+              { name = "shinzui/ephemeral-pg"
+              , extraDocs = [] : List Schema.DocRef.Type
+              , localPathOverride = None Text
+              , kind = Some Schema.DependencyKind.ThirdParty
+              , source = Some Schema.DependencySource.Hackage
+              , scope = Some Schema.DependencyScope.Test
+              }
+          , Schema.Dependency.WithAugmentation
+              { name = "UnkindPartition/tasty"
+              , extraDocs = [] : List Schema.DocRef.Type
+              , localPathOverride = None Text
+              , kind = Some Schema.DependencyKind.ThirdParty
+              , source = Some Schema.DependencySource.Hackage
+              , scope = Some Schema.DependencyScope.Test
+              }
+          ]
         }
       , Schema.Package::{
         , name = "shiki-cli"
@@ -30,12 +57,54 @@ in  Schema.Project::{
         , language = Schema.Language.Haskell
         , path = Some "shiki-cli"
         , description = Some "shiki command-line executable."
+        , dependencies =
+          [ Schema.Dependency.ByName "haskell/aeson"
+          , Schema.Dependency.ByName "shinzui/baikai"
+          , Schema.Dependency.ByName "hasql/hasql"
+          , Schema.Dependency.ByName "ekmett/lens"
+          , Schema.Dependency.ByName "pcapriotti/optparse-applicative"
+          , Schema.Dependency.WithAugmentation
+              { name = "shinzui/ephemeral-pg"
+              , extraDocs = [] : List Schema.DocRef.Type
+              , localPathOverride = None Text
+              , kind = Some Schema.DependencyKind.ThirdParty
+              , source = Some Schema.DependencySource.Hackage
+              , scope = Some Schema.DependencyScope.Test
+              }
+          , Schema.Dependency.WithAugmentation
+              { name = "UnkindPartition/tasty"
+              , extraDocs = [] : List Schema.DocRef.Type
+              , localPathOverride = None Text
+              , kind = Some Schema.DependencyKind.ThirdParty
+              , source = Some Schema.DependencySource.Hackage
+              , scope = Some Schema.DependencyScope.Test
+              }
+          , Schema.Dependency.WithAugmentation
+              { name = "haskell-hvr/uuid"
+              , extraDocs = [] : List Schema.DocRef.Type
+              , localPathOverride = None Text
+              , kind = Some Schema.DependencyKind.ThirdParty
+              , source = Some Schema.DependencySource.Hackage
+              , scope = Some Schema.DependencyScope.Test
+              }
+          ]
         }
       ]
     , dependencies =
-      [ "shinzui/hasql-migration"
+      [ "haskell/aeson"
+      , "shinzui/baikai"
+      , "composewell/streamly"
+      , "dhall-lang/dhall-haskell"
+      , "shinzui/ephemeral-pg"
+      , "hasql/hasql"
+      , "shinzui/hasql-migration"
+      , "snoyberg/http-client"
+      , "codedownio/kubernetes-api"
+      , "ekmett/lens"
+      , "pcapriotti/optparse-applicative"
+      , "UnkindPartition/tasty"
+      , "haskell-hvr/uuid"
       , "kazu-yamamoto/crypton"
       , "jappeace/ram"
-      , "codedownio/kubernetes-api"
       ]
     }
