@@ -5,7 +5,7 @@
 , hoauth2-src
 }:
 let
-  inherit (pkgs.haskell.lib.compose) doJailbreak dontCheck overrideCabal;
+  inherit (pkgs.haskell.lib.compose) doJailbreak dontCheck dontHaddock overrideCabal;
 
   noDerivingTypeable = drv: {
     configureFlags = (drv.configureFlags or [ ]) ++ [
@@ -52,13 +52,23 @@ final: prev:
   hoauth2 =
     dontCheck (doJailbreak (final.callCabal2nix "hoauth2" "${hoauth2-src}/hoauth2" { }));
 
+  # `dontHaddock` below: shiki ships a CLI, not a library anyone reads Haddock
+  # for, and these are exactly the derivations that rebuild on every `nix build`
+  # here and on every `darwin-rebuild` in mori://shinzui/dotfiles.nix. nixpkgs'
+  # builder defaults `doHaddock` to true, which adds a `doc` output plus a
+  # Haddock pass over the package and its dependencies' interfaces — pure
+  # repeated cost. Scoped to these packages rather than the whole scope (which
+  # is what `disableHaddock = true` on mori://shinzui/haskell-nix's
+  # `mkChannelExtension` would do) so the dependency closure keeps its hashes
+  # instead of needing a one-time full rebuild.
+
   shiki-core =
-    dontCheck
+    dontHaddock (dontCheck
       (overrideCabal stageRootFiles
-        (doJailbreak (final.callCabal2nix "shiki-core" ../shiki-core { })));
+        (doJailbreak (final.callCabal2nix "shiki-core" ../shiki-core { }))));
 
   shiki-cli =
-    dontCheck
+    dontHaddock (dontCheck
       (overrideCabal (drv: stageRootFiles drv // shikiVersionFlags drv)
-        (doJailbreak (final.callCabal2nix "shiki-cli" ../shiki-cli { })));
+        (doJailbreak (final.callCabal2nix "shiki-cli" ../shiki-cli { }))));
 }
