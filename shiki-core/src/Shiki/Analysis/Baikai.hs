@@ -10,13 +10,17 @@ where
 
 import Shiki.Prelude
 import "baikai" Baikai
-  ( Context (..),
-    Options (..),
+  ( BaikaiError,
     Response,
     completeRequest,
+    emptyContext,
+    emptyOptions,
     flattenAssistantBlocks,
-    _Context,
-    _Options,
+    maxTokens,
+    messages,
+    responseError,
+    systemPrompt,
+    temperature,
   )
 import "baikai" Baikai.Content (AssistantContent (..), TextContent (..))
 import "baikai" Baikai.Message (user)
@@ -59,19 +63,21 @@ runBaikai modelId logTail = case lookupModel modelId of
   Just (model, registerProvider) -> do
     registerProvider
     let ctx =
-          _Context
+          emptyContext
             { systemPrompt = Just systemPromptText,
               messages = V.singleton (user logTail)
             }
         opts =
-          _Options
+          emptyOptions
             { maxTokens = Just 256,
               temperature = Just 0.0
             }
     result <- try @SomeException (completeRequest model ctx opts)
     case result of
       Left e -> pure (Left (Text.pack (show e)))
-      Right resp -> pure (Right (capChars (extractText resp)))
+      Right resp -> case responseError resp of
+        Just err -> pure (Left (renderError err))
+        Nothing -> pure (Right (capChars (extractText resp)))
 
 lookupModel :: Text -> Maybe (Model, IO ())
 lookupModel = \case
@@ -87,6 +93,11 @@ extractText resp =
       [ text tc
       | AssistantText tc <- V.toList (flattenAssistantBlocks resp)
       ]
+
+-- | baikai reports provider, transport, and unregistered-API failures
+--   in-band as an error-shaped 'Response' rather than by throwing.
+renderError :: BaikaiError -> Text
+renderError err = Text.pack (show (err ^. #category)) <> ": " <> err ^. #message
 
 capChars :: Text -> Text
 capChars t

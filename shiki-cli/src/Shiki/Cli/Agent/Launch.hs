@@ -24,24 +24,29 @@ import Shiki.Cli.Agent.Provider
 import Shiki.Prelude
 import "baikai" Baikai
   ( Api (..),
-    Context (..),
-    Model (..),
+    BaikaiError,
+    Model,
     Response,
     completeRequest,
+    emptyContext,
+    emptyModel,
+    emptyOptions,
     flattenAssistantBlocks,
-    _Context,
-    _Model,
-    _Options,
+    responseError,
   )
+import "baikai" Baikai.Agent (AgentRenderError, renderAgentRenderError)
 import "baikai" Baikai.Content (AssistantContent (..), TextContent (..))
+import "baikai" Baikai.Context qualified as Context
 import "baikai" Baikai.Interactive
   ( CodexApprovalPolicy (CodexApprovalOnRequest),
     CodexSandboxMode (CodexWorkspaceWrite),
-    InteractiveLaunchRequest (..),
     InteractiveLaunchResult (..),
     InteractiveSafety (ClaudeAllowedTools, CodexSandbox),
+    interactiveLaunchRequest,
   )
+import "baikai" Baikai.Interactive qualified as Interactive
 import "baikai" Baikai.Message (user)
+import "baikai" Baikai.Model qualified as Model
 import "baikai-claude" Baikai.Provider.Claude.Api qualified as ClaudeApi
 import "baikai-claude" Baikai.Provider.Claude.Interactive
   ( defaultClaudeInteractiveConfig,
@@ -128,19 +133,15 @@ launchClaude mModel sys mPrompt = do
       exitFailure
     Just _ -> do
       cwd <- getCurrentDirectory
-      InteractiveLaunchResult {exitCode} <-
-        launchClaudeInteractive
+      launchExitCode
+        =<< launchClaudeInteractive
           defaultClaudeInteractiveConfig
-          InteractiveLaunchRequest
-            { systemPrompt = Just sys,
-              userPrompt = fromMaybe "" mPrompt,
-              model = mModel,
-              workingDir = Just cwd,
-              extraDirs = [],
-              safety = ClaudeAllowedTools assistAllowedTools,
-              extraArgs = []
+          (interactiveLaunchRequest (fromMaybe "" mPrompt))
+            { Interactive.systemPrompt = Just sys,
+              Interactive.modelId = mModel,
+              Interactive.workingDir = Just cwd,
+              Interactive.safety = ClaudeAllowedTools assistAllowedTools
             }
-      pure exitCode
 
 launchCodex :: Maybe Text -> Text -> Maybe Text -> IO ExitCode
 launchCodex mModel sys mPrompt = do
@@ -153,19 +154,24 @@ launchCodex mModel sys mPrompt = do
       exitFailure
     Just _ -> do
       cwd <- getCurrentDirectory
-      InteractiveLaunchResult {exitCode} <-
-        launchCodexInteractive
+      launchExitCode
+        =<< launchCodexInteractive
           defaultCodexInteractiveConfig
-          InteractiveLaunchRequest
-            { systemPrompt = Just sys,
-              userPrompt = fromMaybe "" mPrompt,
-              model = mModel,
-              workingDir = Just cwd,
-              extraDirs = [],
-              safety = CodexSandbox CodexWorkspaceWrite CodexApprovalOnRequest,
-              extraArgs = []
+          (interactiveLaunchRequest (fromMaybe "" mPrompt))
+            { Interactive.systemPrompt = Just sys,
+              Interactive.modelId = mModel,
+              Interactive.workingDir = Just cwd,
+              Interactive.safety = CodexSandbox CodexWorkspaceWrite CodexApprovalOnRequest
             }
-      pure exitCode
+
+-- | The launchers refuse, without spawning anything, a request whose
+--   safety policy the CLI cannot express.
+launchExitCode :: Either AgentRenderError InteractiveLaunchResult -> IO ExitCode
+launchExitCode = \case
+  Left err -> do
+    hPutStrLn stderr ("shiki: " <> Text.unpack (renderAgentRenderError err))
+    exitFailure
+  Right InteractiveLaunchResult {exitCode} -> pure exitCode
 
 -- ── API one-shot calls ─────────────────────────────────────────────
 
@@ -173,18 +179,27 @@ runOneShotApi :: IO () -> Model -> Text -> Maybe Text -> IO ExitCode
 runOneShotApi registerProvider model sys mPrompt = do
   registerProvider
   let ctx =
-        _Context
-          { systemPrompt = Just sys,
-            messages = maybe V.empty (V.singleton . user) mPrompt
+        emptyContext
+          { Context.systemPrompt = Just sys,
+            Context.messages = maybe V.empty (V.singleton . user) mPrompt
           }
-  result <- try @SomeException (completeRequest model ctx _Options)
+  result <- try @SomeException (completeRequest model ctx emptyOptions)
   case result of
     Left e -> do
       hPutStrLn stderr ("shiki: agent api call failed: " <> show e)
       exitFailure
-    Right resp -> do
-      TIO.putStrLn (extractAssistantText resp)
-      pure ExitSuccess
+    Right resp -> case responseError resp of
+      Just err -> do
+        hPutStrLn stderr ("shiki: agent api call failed: " <> renderError err)
+        exitFailure
+      Nothing -> do
+        TIO.putStrLn (extractAssistantText resp)
+        pure ExitSuccess
+
+-- | baikai reports provider, transport, and unregistered-API failures
+--   in-band as an error-shaped 'Response' rather than by throwing.
+renderError :: BaikaiError -> String
+renderError err = show (err ^. #category) <> ": " <> Text.unpack (err ^. #message)
 
 extractAssistantText :: Response -> Text
 extractAssistantText resp =
@@ -196,20 +211,20 @@ extractAssistantText resp =
 
 anthropicModel :: AgentModelConfig -> Model
 anthropicModel cfg =
-  _Model
-    { modelId = fromMaybe "claude-sonnet-4-6" (cfg ^. #model),
-      name = fromMaybe "Claude Sonnet 4.6" (cfg ^. #model),
-      api = AnthropicMessages,
-      provider = "anthropic",
-      baseUrl = "https://api.anthropic.com"
+  emptyModel
+    { Model.modelId = fromMaybe "claude-sonnet-4-6" (cfg ^. #model),
+      Model.name = fromMaybe "Claude Sonnet 4.6" (cfg ^. #model),
+      Model.api = AnthropicMessages,
+      Model.provider = "anthropic",
+      Model.baseUrl = "https://api.anthropic.com"
     }
 
 openAiModel :: AgentModelConfig -> Model
 openAiModel cfg =
-  _Model
-    { modelId = fromMaybe "gpt-4o-mini" (cfg ^. #model),
-      name = fromMaybe "GPT-4o Mini" (cfg ^. #model),
-      api = OpenAIChatCompletions,
-      provider = "openai",
-      baseUrl = "https://api.openai.com"
+  emptyModel
+    { Model.modelId = fromMaybe "gpt-4o-mini" (cfg ^. #model),
+      Model.name = fromMaybe "GPT-4o Mini" (cfg ^. #model),
+      Model.api = OpenAIChatCompletions,
+      Model.provider = "openai",
+      Model.baseUrl = "https://api.openai.com"
     }

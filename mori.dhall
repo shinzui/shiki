@@ -93,7 +93,6 @@ in  Schema.Project::{
     , dependencies =
       [ "haskell/aeson"
       , "shinzui/baikai"
-      , "composewell/streamly"
       , "dhall-lang/dhall-haskell"
       , "shinzui/ephemeral-pg"
       , "hasql/hasql"

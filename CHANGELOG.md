@@ -43,6 +43,22 @@ $ shiki runs show
 }
 ```
 
+### Changed
+
+- build: depend on `baikai`, `baikai-claude`, and `baikai-openai` 0.7 from
+  Hackage instead of a GitHub pin of the pre-release tree. The pin no longer
+  built once Hackage `claude` reached 1.5, and the Nix build already resolved
+  baikai 0.7 from the shared package registry. The mirrored streamly fork pins
+  are gone too; baikai 0.7 builds against Hackage streamly 0.11. `time` moves to
+  `^>=1.14` to match baikai.
+- fix(shiki-core, shiki-cli): baikai 0.7 reports provider, transport, and
+  missing-API-key failures in-band as an error-shaped response rather than by
+  throwing. `shiki runs analyze --analyzer=baikai:<id>` and
+  `shiki agent assist --provider anthropic|openai` now check for that and fail
+  with the error, instead of recording an empty summary or printing an empty
+  answer and exiting 0. `shiki agent assist` also reports a safety policy the
+  claude or codex CLI cannot express instead of launching it.
+
 ### Fixed
 
 - fix(shiki-core): migrations no longer run `CREATE SCHEMA IF NOT EXISTS` or
