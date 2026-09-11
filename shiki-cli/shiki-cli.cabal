@@ -61,6 +61,7 @@ library
     Shiki.Cli.Project
     Shiki.Cli.Run
     Shiki.Cli.Runs
+    Shiki.Cli.Runs.Format
     Shiki.Cli.Schema
     Shiki.Cli.Version
 
@@ -121,11 +122,13 @@ test-suite shiki-cli-test
     Shiki.Cli.Agent.ProviderSpec
     Shiki.Cli.ConfigInitSpec
     Shiki.Cli.EnvRoutingSpec
+    Shiki.Cli.Fixtures
     Shiki.Cli.Fzf.Selector.RunSpec
     Shiki.Cli.FzfSpec
     Shiki.Cli.HelpSpec
     Shiki.Cli.ParserSpec
     Shiki.Cli.ProjectSpec
+    Shiki.Cli.Runs.FormatSpec
     Shiki.Cli.VersionSpec
 
   build-depends:

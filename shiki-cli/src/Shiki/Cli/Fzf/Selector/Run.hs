@@ -2,14 +2,14 @@
 --
 --   This is the bridge between the abstract 'Shiki.Cli.Fzf.runFzf' and
 --   the concrete @runs@ table: it fetches the 50 most-recent rows,
---   formats them in the same column shape that @runs list@ uses, runs
+--   aligns them under the same column titles @runs list@ uses, runs
 --   them through fzf, and returns either a full UUID (as 'Text', so the
 --   existing handlers can keep using 'findRunByPrefixStatement') or one
 --   of the non-selection outcomes.
 module Shiki.Cli.Fzf.Selector.Run
   ( RunSelection (..),
     defaultRunOpts,
-    formatRunCandidate,
+    formatRunCandidates,
     selectRun,
     resolveRunId,
   )
@@ -18,7 +18,6 @@ where
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
-import Data.Time.Format qualified as TimeFmt
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Shiki.Cli.Env (CliEnv (..))
@@ -28,17 +27,18 @@ import Shiki.Cli.Fzf
     FzfResult (..),
     isFzfAvailable,
     runFzf,
+    withHeaderRow,
     withHeight,
     withNoSort,
     withPrompt,
     withSelectOne,
   )
+import Shiki.Cli.Runs.Format (computeWidths, formatRow, runColumns, runTableHeader)
 import Shiki.Persistence.Run
   ( RunId (..),
     RunRecord,
     listRecentRunsStatement,
   )
-import Shiki.Persistence.RunStatus (runStatusToText)
 import Shiki.Prelude
 import System.IO (hPutStrLn, stderr)
 
@@ -64,31 +64,16 @@ defaultRunOpts =
 selectorRowLimit :: Int
 selectorRowLimit = 50
 
--- | Build the candidate row for one 'RunRecord'. The display is a
---   single line in the same column shape as @runs list@; the value is
---   the @(RunId, RunRecord)@ pair so callers can either re-query or
---   use the cached record directly.
-formatRunCandidate :: RunRecord -> Candidate (RunId, RunRecord)
-formatRunCandidate r =
-  Candidate
-    { display = Text.intercalate "  " columns,
-      value = (r ^. #runId, r)
-    }
-  where
-    columns =
-      [ Text.take 8 (Text.pack (show (unRunId (r ^. #runId)))),
-        Text.pack
-          ( TimeFmt.formatTime
-              TimeFmt.defaultTimeLocale
-              "%Y-%m-%d %H:%M:%S"
-              (r ^. #startedAt)
-          ),
-        r ^. #serviceName,
-        runStatusToText (r ^. #status),
-        maybe "-" formatDuration (r ^. #durationMs),
-        "exit=" <> maybe "-" (Text.pack . show) (r ^. #exitCode),
-        Text.intercalate " " (r ^. #command)
-      ]
+-- | Align the picker rows exactly like @runs list@: the widths are computed
+--   over the column titles and every row, and the titles are returned so the
+--   caller can show them with 'withHeaderRow'.
+formatRunCandidates :: [RunRecord] -> (Text, [Candidate RunRecord])
+formatRunCandidates rows =
+  let cells = map runColumns rows
+      widths = computeWidths (runTableHeader : cells)
+   in ( formatRow widths runTableHeader,
+        zipWith (\r cs -> Candidate {display = formatRow widths cs, value = r}) rows cells
+      )
 
 -- | Fetch the 50 most-recent rows from the @runs@ table and run them
 --   through fzf with 'defaultRunOpts'.
@@ -105,30 +90,13 @@ selectRun env
           pure (RunSelectionError (Text.pack ("persistence error: " <> show e)))
         Right [] -> pure RunNoRows
         Right rows -> do
-          let candidates = map formatRunCandidate rows
-          res <- runFzf (env ^. #fzf) defaultRunOpts candidates
+          let (titles, candidates) = formatRunCandidates rows
+          res <- runFzf (env ^. #fzf) (defaultRunOpts <> withHeaderRow titles) candidates
           pure $ case res of
-            FzfSelected (rid, rec) -> RunChosen rid rec
+            FzfSelected r -> RunChosen (r ^. #runId) r
             FzfNoMatch -> RunNoRows
             FzfCancelled -> RunSelectionCancelled
             FzfError msg -> RunSelectionError msg
-
--- | Pretty-print a duration in milliseconds. Mirrors the formatter
---   used by @runs list@; kept local so the selector module does not
---   depend on "Shiki.Cli.Runs" (which would create a cycle).
-formatDuration :: Int -> Text
-formatDuration ms =
-  let secs = ms `div` 1000
-      mins = secs `div` 60
-      hours = mins `div` 60
-      remMins = mins `mod` 60
-      remSecs = secs `mod` 60
-   in if hours > 0
-        then Text.pack (show hours <> "h" <> show remMins <> "m" <> show remSecs <> "s")
-        else
-          if mins > 0
-            then Text.pack (show mins <> "m" <> show remSecs <> "s")
-            else Text.pack (show secs <> "s")
 
 -- | The public entry point used by the @runs@ subcommand handlers.
 --   Returns the run id as 'Text' (the same shape the existing

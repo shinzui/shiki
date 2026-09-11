@@ -204,14 +204,20 @@ This section must always reflect the actual current state of the work.
 
 ### M7 — Share run formatting between `runs list` and the picker
 
-- [ ] Create `shiki-cli/src/Shiki/Cli/Runs/Format.hs` by moving `renderTable`,
+- [x] Create `shiki-cli/src/Shiki/Cli/Runs/Format.hs` by moving `renderTable`,
       `renderRow` (renamed `runColumns`), `humanDuration`, `computeWidths`, and
       `formatRow` out of `shiki-cli/src/Shiki/Cli/Runs.hs`, plus a `runTableHeader`.
-- [ ] Replace `formatRunCandidate` with `formatRunCandidates`, which aligns rows with the
+      [2026-09-11]
+- [x] Fix `computeWidths` so it terminates (fold from `[]`, not `repeat 0`); discovered
+      while capturing the M7 baseline (see Surprises). [2026-09-11]
+- [x] Replace `formatRunCandidate` with `formatRunCandidates`, which aligns rows with the
       shared helpers and returns the column-title row; delete the private
-      `formatDuration`; pass the titles with `withHeaderRow`.
-- [ ] Add `shiki-cli/test/Shiki/Cli/Runs/FormatSpec.hs`; update `RunSpec` for alignment.
-- [ ] `shiki runs list` output is byte-identical to before the move; tests green; commit.
+      `formatDuration`; pass the titles with `withHeaderRow`. [2026-09-11]
+- [x] Add `shiki-cli/test/Shiki/Cli/Runs/FormatSpec.hs` and the shared
+      `shiki-cli/test/Shiki/Cli/Fixtures.hs`; update `RunSpec` for alignment. [2026-09-11]
+- [x] `shiki runs list` terminates and prints the aligned table over three seeded rows; the
+      real fzf picker shows the title row exactly above the aligned rows and Enter prints the
+      JSON; `All 79 tests passed`; commit. [2026-09-11]
 
 ### M8 — One run resolver: target before the database, record after
 
@@ -988,12 +994,15 @@ a new `Shiki.Cli.Fzf` group; `shiki runs show --help` and every picker behave as
 ### Milestone 7 — Share run formatting between `runs list` and the picker
 
 Scope: one set of column helpers used by both views, aligned picker rows under a
-column-title header, and no duplicated duration formatter. `runs list` output must not
-change by a single byte.
+column-title header, and no duplicated duration formatter. `runs list` keeps its layout
+(cells padded to the column width, joined by two spaces); the only behavioural change is
+that it now terminates when the table has rows (see Surprises and the Decision Log).
 
-**File `shiki-cli/src/Shiki/Cli/Runs/Format.hs` (new).** Move, unchanged, `renderTable`,
-`humanDuration`, `computeWidths`, and `formatRow` from `shiki-cli/src/Shiki/Cli/Runs.hs`;
-move `renderRow` and rename it `runColumns`; lift the header list into a named value:
+**File `shiki-cli/src/Shiki/Cli/Runs/Format.hs` (new).** Move `renderTable`,
+`humanDuration`, and `formatRow` unchanged from `shiki-cli/src/Shiki/Cli/Runs.hs`; move
+`renderRow` and rename it `runColumns`; move `computeWidths` and change its fold's starting
+value from `repeat 0` to `[]` (the original never terminates for a non-empty table); lift
+the header list into a named value:
 
 ```haskell
 module Shiki.Cli.Runs.Format
@@ -1043,18 +1052,31 @@ bare number under the `EXIT` title, as in `runs list`.
 
 **Tests.** New `shiki-cli/test/Shiki/Cli/Runs/FormatSpec.hs`: `humanDuration` gives `12s`,
 `2m5s`, and `1h1m1s` for 12000, 125000, and 3661000; `renderTable [fixture]` has exactly
-two lines, the first starting with `ID`, and the column that starts with `STATUS` in the
-header starts with `Succeeded` in the row (same character offset). In `RunSpec`, replace
+two lines, the first starting with `ID` (this is also the regression test for the
+`computeWidths` hang); `computeWidths [["ab", "cdefgh"], ["abc", "d", "e"]]` is
+`[3, 6, 1]`; and over two rows the column that starts with `STATUS` in the header starts
+with the status text in each row (same character offset). Status text is lowercase
+(`succeeded`, `failed`), as `runStatusToText` renders it. In `RunSpec`, replace
 the three `formatRunCandidate` tests with `formatRunCandidates` tests over two rows whose
 services have different lengths (`ingest` and `a-much-longer-service`) and different
-statuses (`Succeeded`, `Failed`): displays are single-line and contain the id prefix, the
+statuses (`succeeded`, `failed`): displays are single-line and contain the id prefix, the
 service, and the command; and the offset of `STATUS` in the title row equals the offset of
-each row's status text. Move `fixtureRow` into a small shared test helper module
-(`shiki-cli/test/Shiki/Cli/Fixtures.hs`, listed in `other-modules`) so both specs use it.
+each row's status text; each candidate's value is its record. Move `fixtureRow` into a
+small shared test helper module (`shiki-cli/test/Shiki/Cli/Fixtures.hs`, listed in
+`other-modules`) next to a second row, `longServiceRow`, so both specs use them.
 
-Acceptance: with the database up, capture `cabal run -v0 shiki -- runs list > before.txt`
-before the move and `after.txt` after it; `diff before.txt after.txt` prints nothing. Tests
-green. `just shiki runs show` shows a title row above aligned rows.
+Acceptance: tests green. With the database up and at least one run recorded,
+`cabal run -v0 shiki -- runs list` prints (and exits) a title line and one aligned line per
+run, for example:
+
+```text
+ID        STARTED              SERVICE                STATUS     DURATION  EXIT  COMMAND
+c9d8e7f6  2026-05-29 12:00:00  worker                 running    -         -     echo hi
+7a01bc22  2026-05-28 09:01:00  a-much-longer-service  failed     2m5s      2     migrate
+3f2c1a9d  2026-05-27 17:22:11  ingest                 succeeded  12s       0     reindex --batch 100
+```
+
+`just shiki runs show` shows the same title row directly above the aligned rows.
 
 ### Milestone 8 — One run resolver: target before the database, record after
 
@@ -1385,7 +1407,6 @@ $ just up                              # PostgreSQL, needed for the runs checks
 $ cabal build all
 $ cabal test shiki-cli-test            # baseline: All 62 tests passed
 $ just shiki runs list -l 3            # seed runs with `just shiki run <service> -- echo hi` if empty
-$ cabal run -v0 shiki -- runs list > /tmp/runs-list-before.txt   # baseline for M7
 ```
 
 ### M6
@@ -1418,8 +1439,7 @@ $ $EDITOR shiki-cli/src/Shiki/Cli/Fzf/Selector/Run.hs
 $ $EDITOR shiki-cli/test/Shiki/Cli/Fixtures.hs shiki-cli/test/Shiki/Cli/Runs/FormatSpec.hs
 $ $EDITOR shiki-cli/test/Shiki/Cli/Fzf/Selector/RunSpec.hs shiki-cli/test/Spec.hs shiki-cli/shiki-cli.cabal
 $ cabal test shiki-cli-test
-$ cabal run -v0 shiki -- runs list > /tmp/runs-list-after.txt
-$ diff /tmp/runs-list-before.txt /tmp/runs-list-after.txt     # expect no output
+$ cabal run -v0 shiki -- runs list                              # terminates; aligned table
 $ just shiki runs show                                          # title row above aligned rows
 ```
 
@@ -1502,7 +1522,7 @@ run (at least two where stated).
 | 10 | `env PATH=/usr/bin shiki --db postgresql://127.0.0.1:1/none runs show </dev/null` | `shiki: no run id given and fzf is not available`; **no connection error** (*changed*: the database was contacted first). | 1 |
 | 11 | `shiki runs analyze` (no arg, exactly 1 run) | Picker **is** drawn with the header "Enter re-runs analysis on the selected run and overwrites its stored error summary" (*changed*: was auto-selected). | 0 after Enter |
 | 12 | `shiki runs analyze` (no arg) + Enter | Analysis runs for the chosen row and prints `analyzed run <id> with <source>: …`. | 0 |
-| 13 | `shiki runs list` | Byte-identical to before M7; `(no runs recorded yet)` on stdout with exit 0 for an empty table. | 0 |
+| 13 | `shiki runs list` | Title line plus one aligned line per run, same layout as before (*changed*: with any row it used to hang); `(no runs recorded yet)` on stdout with exit 0 for an empty table. | 0 |
 | 14 | `shiki service show <existing-name>` | Prints JSON. | 0 |
 | 15 | `shiki service show <missing-name>` | Dhall load error on stderr. | non-zero |
 | 16 | `shiki service show` (no arg) | Picker over `services/*.dhall` with ≥2 files; a lone file prints immediately. | 0 |

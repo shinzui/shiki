@@ -11,6 +11,7 @@ import Shiki.Cli.FzfSpec qualified as FzfSpec
 import Shiki.Cli.HelpSpec qualified as HelpSpec
 import Shiki.Cli.ParserSpec qualified as ParserSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
+import Shiki.Cli.Runs.FormatSpec qualified as RunsFormatSpec
 import Shiki.Cli.VersionSpec qualified as VersionSpec
 import Test.Tasty (defaultMain, localOption, testGroup)
 import Test.Tasty.Runners (NumThreads (..))
@@ -36,6 +37,7 @@ main =
           ParserSpec.tests,
           VersionSpec.tests,
           FzfSpec.tests,
+          RunsFormatSpec.tests,
           RunSelectorSpec.tests,
           ProjectSpec.tests
         ]

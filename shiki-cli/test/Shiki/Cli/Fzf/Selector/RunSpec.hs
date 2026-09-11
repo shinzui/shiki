@@ -3,62 +3,47 @@ module Shiki.Cli.Fzf.Selector.RunSpec
   )
 where
 
-import Data.Aeson qualified as Aeson
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
-import Data.Time qualified as Time
-import Data.UUID qualified as UUID
-import Shiki.Cli.Fzf.Selector.Run (formatRunCandidate)
-import Shiki.Persistence.Run (RunId (..), RunRecord (..))
-import Shiki.Persistence.RunStatus (RunStatus (..))
+import Shiki.Cli.Fixtures (fixtureRow, longServiceRow)
+import Shiki.Cli.Fzf.Selector.Run (formatRunCandidates)
 import Shiki.Prelude ((^.))
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertBool, testCase)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =
   testGroup
     "Shiki.Cli.Fzf.Selector.Run"
-    [ testCase "formatRunCandidate produces single-line display" $ do
-        let c = formatRunCandidate fixtureRow
+    [ testCase "formatRunCandidates produces single-line displays" $
+        mapM_
+          ( \d ->
+              assertBool
+                ("display must not contain embedded newlines: " <> show d)
+                (not (Text.any (== '\n') d))
+          )
+          (titles : displays),
+      testCase "formatRunCandidates embeds the 8-char id prefix" $
         assertBool
-          "display must not contain embedded newlines"
-          (not (Text.any (== '\n') (c ^. #display))),
-      testCase "formatRunCandidate embeds the 8-char id prefix" $ do
-        let c = formatRunCandidate fixtureRow
-        assertBool
-          ("expected id prefix in display: " <> Text.unpack (c ^. #display))
-          (Text.isInfixOf "3f2c1a9d" (c ^. #display)),
-      testCase "formatRunCandidate includes service name and command" $ do
-        let c = formatRunCandidate fixtureRow
-        assertBool
-          "service name appears"
-          (Text.isInfixOf "ingest" (c ^. #display))
-        assertBool
-          "command appears"
-          (Text.isInfixOf "reindex" (c ^. #display))
+          ("expected id prefix in display: " <> show displays)
+          (any (Text.isInfixOf "3f2c1a9d") (take 1 displays)),
+      testCase "formatRunCandidates includes service name and command" $ do
+        assertBool "service name appears" (any (Text.isInfixOf "ingest") (take 1 displays))
+        assertBool "command appears" (any (Text.isInfixOf "reindex") (take 1 displays))
+        assertBool "long service appears" (any (Text.isInfixOf "a-much-longer-service") (drop 1 displays)),
+      testCase "formatRunCandidates keeps each record as the value" $
+        assertEqual
+          "values"
+          [fixtureRow, longServiceRow]
+          (map (^. #value) candidates),
+      testCase "formatRunCandidates aligns rows under the title row" $ do
+        let offsetOf needle line = Text.length (fst (Text.breakOn needle line))
+        assertBool "titles start with ID" ("ID" `Text.isPrefixOf` titles)
+        assertEqual
+          "status column offsets"
+          [offsetOf "STATUS" titles, offsetOf "STATUS" titles]
+          (zipWith offsetOf ["succeeded", "failed"] displays)
     ]
-
-fixtureRow :: RunRecord
-fixtureRow =
-  RunRecord
-    { runId = RunId (UUID.fromWords 0x3f2c1a9d 0x00000000 0x00000000 0x00000001),
-      serviceName = "ingest",
-      command = ["reindex", "--batch", "100"],
-      namespace = "data",
-      jobName = "shiki-ingest-3f2c1a9d",
-      image = Just "registry.example.com/ingest:latest",
-      status = Succeeded,
-      exitCode = Just 0,
-      startedAt =
-        Time.UTCTime
-          (Time.fromGregorian 2026 5 27)
-          (Time.secondsToDiffTime (17 * 3600 + 22 * 60 + 11)),
-      endedAt = Nothing,
-      durationMs = Just 12_000,
-      logTail = Nothing,
-      serviceConfig = Aeson.Null,
-      errorMessage = Nothing,
-      errorSummary = Nothing,
-      errorSummarySource = "none"
-    }
+  where
+    (titles, candidates) = formatRunCandidates [fixtureRow, longServiceRow]
+    displays = map (^. #display) candidates
