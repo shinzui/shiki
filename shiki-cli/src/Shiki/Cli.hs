@@ -22,6 +22,7 @@
 module Shiki.Cli
   ( runCli,
     parserInfo,
+    cliPrefs,
   )
 where
 
@@ -77,9 +78,16 @@ data Options = Options
   }
   deriving stock (Generic, Eq, Show)
 
+-- | Parser preferences. 'Opt.showHelpOnEmpty' makes bare @shiki@ (or
+--   @shiki runs@ with no subcommand) print the help page instead of a terse
+--   @Missing: COMMAND@. 'Opt.customExecParser' handles the completion
+--   protocol exactly as 'Opt.execParser' does.
+cliPrefs :: Opt.ParserPrefs
+cliPrefs = Opt.prefs Opt.showHelpOnEmpty
+
 runCli :: IO ()
 runCli = do
-  opts <- Opt.execParser parserInfo
+  opts <- Opt.customExecParser cliPrefs parserInfo
   case opts ^. #command of
     ServiceShow nm -> serviceShowHandler nm
     Help helpOpts -> runHelp helpOpts
@@ -142,34 +150,40 @@ versionOption =
     (Text.unpack appVersionWithGit)
     (Opt.long "version" <> Opt.help "Show version information")
 
+-- | The global flags render under an @Environment@ heading in @--help@.
 optionsParser :: Parser Options
 optionsParser =
-  Options
-    <$> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "db"
-              <> Opt.metavar "CONNSTR"
-              <> Opt.help
-                "Postgres connection string (overrides shiki.dhall and env fallbacks)"
-          )
-      )
-    <*> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "db-schema"
-              <> Opt.metavar "SCHEMA"
-              <> Opt.help
-                "Postgres schema for shiki tables (default: shiki, overrides SHIKI_DB_SCHEMA)"
-          )
-      )
-    <*> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "env"
-              <> Opt.metavar "NAME"
-              <> Opt.help
-                "shiki environment from shiki.dhall (overrides SHIKI_ENV / defaultEnvironment)"
-          )
-      )
+  (\(conn, schema, env) cmd -> Options conn schema env cmd)
+    <$> Opt.parserOptionGroup "Environment" ((,,) <$> dbOpt <*> dbSchemaOpt <*> envOpt)
     <*> commandParser
+  where
+    dbOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "db"
+                <> Opt.metavar "CONNSTR"
+                <> Opt.help
+                  "Postgres connection string (overrides shiki.dhall and env fallbacks)"
+            )
+        )
+    dbSchemaOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "db-schema"
+                <> Opt.metavar "SCHEMA"
+                <> Opt.help
+                  "Postgres schema for shiki tables (default: shiki, overrides SHIKI_DB_SCHEMA)"
+            )
+        )
+    envOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "env"
+                <> Opt.metavar "NAME"
+                <> Opt.help
+                  "shiki environment from shiki.dhall (overrides SHIKI_ENV / defaultEnvironment)"
+            )
+        )
 
 commandParser :: Parser Command
 commandParser =

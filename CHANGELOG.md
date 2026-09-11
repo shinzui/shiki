@@ -55,6 +55,14 @@ $ shiki runs show
 
 ### Changed
 
+- feat(shiki-cli): `shiki --help` lists the global `--db`, `--db-schema`, and
+  `--env` flags under an `Environment` heading, and `shiki agent assist --help`
+  groups its flags under `Provider` and `Session context`. Running bare `shiki`,
+  or a command group such as `shiki runs` without a subcommand, prints that
+  command's help page instead of a terse `Missing: COMMAND` error.
+- build(shiki-cli): require `optparse-applicative` 0.19, the first release with
+  option groups.
+- build: require GHC 9.12 (`base >=4.21`) and declare `tested-with: GHC ==9.12.4`.
 - build: depend on `baikai`, `baikai-claude`, and `baikai-openai` 0.7 from
   Hackage instead of a GitHub pin of the pre-release tree. The pin no longer
   built once Hackage `claude` reached 1.5, and the Nix build already resolved

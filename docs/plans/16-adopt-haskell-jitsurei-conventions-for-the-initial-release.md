@@ -102,10 +102,10 @@ Milestone 5 — Shell completions
 
 Milestone 6 — Option groups and help-on-empty
 
-- [ ] Raise `optparse-applicative` to `>=0.19 && <0.20` in the `shiki-cli` library and test suite.
-- [ ] Group the global flags under `Environment`, and the `agent assist` flags under `Provider` and `Session context`, with `parserOptionGroup`.
-- [ ] Switch `runCli` to `customExecParser cliPrefs` where `cliPrefs = prefs showHelpOnEmpty`, exported for tests.
-- [ ] Extend `ParserSpec` with help-rendering tests; update docs; commit.
+- [x] (2026-09-11 20:45Z) Raise `optparse-applicative` to `>=0.19 && <0.20` in the `shiki-cli` library and test suite (Hackage confirmed 0.19.0.0 is the newest release).
+- [x] (2026-09-11 20:45Z) Group the global flags under `Environment`, and the `agent assist` flags under `Provider` and `Session context`, with `parserOptionGroup`.
+- [x] (2026-09-11 20:45Z) Switch `runCli` to `customExecParser cliPrefs` where `cliPrefs = prefs showHelpOnEmpty`, exported for tests.
+- [x] (2026-09-11 20:50Z) Extend `ParserSpec` with help-rendering tests (four cases, including `shiki runs` without a subcommand; the suite now has 62); add `CHANGELOG.md` entries. `docs/user/commands.md` shows a flag table and a usage synopsis rather than `--help` output, and both remain accurate, so it needs no change; commit.
 
 Milestone 7 — Release conformance audit, ADR, and Nix build
 
@@ -262,6 +262,27 @@ Milestone 7 — Release conformance audit, ADR, and Nix build
   `shiki-cli/src/Shiki/Cli/Completions.hs` and `shiki-cli/test/Shiki/Cli/ParserSpec.hs`
   for the `#compdef` and `${#completions[@]}` text inside string literals. Neither file
   uses overloaded labels, so both are false positives and get no labels import.
+
+- (Implementation, M6) optparse-applicative 0.19 renders grouped sections *before* the
+  default `Available options:` block, not after it as the plan expected. The tests
+  assert only that each heading is present, so this does not matter to them:
+
+  ```text
+  $ shiki agent assist --help
+  …
+  Provider
+    --provider PROVIDER      Agent provider: claude-cli, codex-cli, anthropic,
+    --model MODEL            Agent model name or provider-specific model alias
+
+  Session context
+    --prompt PROMPT          Initial user prompt to seed the session
+    --service NAME           Pre-seed the prompt with a reference to a service
+    --run ID                 Pre-seed the prompt with a reference to a run id
+
+  Available options:
+    --debug                  Print the rendered system prompt and exit
+    -h,--help                Show this help text
+  ```
 
 
 ## Decision Log

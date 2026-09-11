@@ -3,9 +3,10 @@ module Shiki.Cli.ParserSpec
   )
 where
 
+import Data.List (isInfixOf)
 import Data.Text qualified as Text
 import Options.Applicative qualified as Opt
-import Shiki.Cli (parserInfo)
+import Shiki.Cli (cliPrefs, parserInfo)
 import Shiki.Cli.Completions (CompletionsShell (..), completionScript)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase)
@@ -57,6 +58,24 @@ tests =
                     (not ("/nix/store" `Text.isInfixOf` completionScript sh))
               )
               [minBound .. maxBound]
+        ],
+      testGroup
+        "help layout"
+        [ testCase "--help groups the global flags under Environment" $ do
+            let out = renderedHelp ["--help"]
+            assertHas "Environment" out
+            assertHas "--db-schema" out,
+          testCase "agent assist --help shows Provider and Session context" $ do
+            let out = renderedHelp ["agent", "assist", "--help"]
+            assertHas "Provider" out
+            assertHas "Session context" out
+            assertHas "--debug" out,
+          testCase "bare shiki shows the help page (showHelpOnEmpty)" $
+            assertHas "Available commands:" (renderedHelp []),
+          testCase "shiki runs with no subcommand shows its help page" $ do
+            let out = renderedHelp ["runs"]
+            assertHas "Available commands:" out
+            assertBool ("unexpected Missing: in:\n" <> out) (not ("Missing:" `isInfixOf` out))
         ]
     ]
 
@@ -64,7 +83,7 @@ tests =
 --   completion protocol, exactly as the generated shell scripts do.
 completionsFor :: [String] -> IO [String]
 completionsFor wordsSoFar =
-  case Opt.execParserPure Opt.defaultPrefs parserInfo protocolArgs of
+  case Opt.execParserPure cliPrefs parserInfo protocolArgs of
     Opt.CompletionInvoked c -> lines <$> Opt.execCompletion c "shiki"
     _ -> assertFailure "expected the completion protocol to be invoked"
   where
@@ -77,3 +96,15 @@ assertContains needle haystack =
   assertBool
     ("expected " <> show needle <> " in:\n" <> Text.unpack haystack)
     (needle `Text.isInfixOf` haystack)
+
+-- | The help text a user would see for @args@, rendered the way
+--   'Opt.customExecParser' prints it.
+renderedHelp :: [String] -> String
+renderedHelp args =
+  case Opt.execParserPure cliPrefs parserInfo args of
+    Opt.Failure failure -> fst (Opt.renderFailure failure "shiki")
+    _ -> error ("expected help output for " <> show args)
+
+assertHas :: String -> String -> IO ()
+assertHas needle haystack =
+  assertBool ("expected " <> show needle <> " in:\n" <> haystack) (needle `isInfixOf` haystack)

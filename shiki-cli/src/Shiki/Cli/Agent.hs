@@ -51,48 +51,60 @@ agentParser =
         )
     )
 
+-- | The flags render under @Provider@ and @Session context@ headings in
+--   @--help@; @--debug@ stays in the default options section.
 assistOptionsParser :: Parser AssistOptions
 assistOptionsParser =
-  AssistOptions
-    <$> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "provider"
-              <> Opt.metavar "PROVIDER"
-              <> Opt.help "Agent provider: claude-cli, codex-cli, anthropic, openai"
-          )
-      )
-    <*> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "model"
-              <> Opt.metavar "MODEL"
-              <> Opt.help "Agent model name or provider-specific model alias"
-          )
-      )
-    <*> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "prompt"
-              <> Opt.metavar "PROMPT"
-              <> Opt.help "Initial user prompt to seed the session"
-          )
-      )
-    <*> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "service"
-              <> Opt.metavar "NAME"
-              <> Opt.help "Pre-seed the prompt with a reference to a service"
-          )
-      )
-    <*> Opt.optional
-      ( Opt.strOption
-          ( Opt.long "run"
-              <> Opt.metavar "ID"
-              <> Opt.help "Pre-seed the prompt with a reference to a run id"
-          )
-      )
-    <*> Opt.switch
-      ( Opt.long "debug"
-          <> Opt.help "Print the rendered system prompt and exit"
-      )
+  (\(prov, mdl) (prm, svc, rid) dbg -> AssistOptions prov mdl prm svc rid dbg)
+    <$> Opt.parserOptionGroup "Provider" ((,) <$> providerOpt <*> modelOpt)
+    <*> Opt.parserOptionGroup "Session context" ((,,) <$> promptOpt <*> serviceOpt <*> runOpt)
+    <*> debugSwitch
+  where
+    providerOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "provider"
+                <> Opt.metavar "PROVIDER"
+                <> Opt.help "Agent provider: claude-cli, codex-cli, anthropic, openai"
+            )
+        )
+    modelOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "model"
+                <> Opt.metavar "MODEL"
+                <> Opt.help "Agent model name or provider-specific model alias"
+            )
+        )
+    promptOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "prompt"
+                <> Opt.metavar "PROMPT"
+                <> Opt.help "Initial user prompt to seed the session"
+            )
+        )
+    serviceOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "service"
+                <> Opt.metavar "NAME"
+                <> Opt.help "Pre-seed the prompt with a reference to a service"
+            )
+        )
+    runOpt =
+      Opt.optional
+        ( Opt.strOption
+            ( Opt.long "run"
+                <> Opt.metavar "ID"
+                <> Opt.help "Pre-seed the prompt with a reference to a run id"
+            )
+        )
+    debugSwitch =
+      Opt.switch
+        ( Opt.long "debug"
+            <> Opt.help "Print the rendered system prompt and exit"
+        )
 
 -- | Dispatch a parsed 'AgentCommand'. Today this is exactly one verb
 --   ('AgentAssist'); the case-of leaves room for siblings later.
