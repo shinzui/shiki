@@ -11,18 +11,47 @@
 --   The allowed-tool list is hard-coded here (see the EP-8 Decision
 --   Log entry) so each session ships with the same defense-in-depth.
 module Shiki.Cli.Agent.Launch
-  ( AssistDispatch (..)
-  , runAssistSession
-  , assistAllowedTools
-  ) where
-
-import Shiki.Prelude
+  ( AssistDispatch (..),
+    runAssistSession,
+    assistAllowedTools,
+  )
+where
 
 import Shiki.Cli.Agent.Provider
-  ( AgentModelConfig (..)
-  , AgentProvider (..)
+  ( AgentModelConfig (..),
+    AgentProvider (..),
   )
-
+import Shiki.Prelude
+import "baikai" Baikai
+  ( Api (..),
+    Context (..),
+    Model (..),
+    Response,
+    completeRequest,
+    flattenAssistantBlocks,
+    _Context,
+    _Model,
+    _Options,
+  )
+import "baikai" Baikai.Content (AssistantContent (..), TextContent (..))
+import "baikai" Baikai.Interactive
+  ( CodexApprovalPolicy (CodexApprovalOnRequest),
+    CodexSandboxMode (CodexWorkspaceWrite),
+    InteractiveLaunchRequest (..),
+    InteractiveLaunchResult (..),
+    InteractiveSafety (ClaudeAllowedTools, CodexSandbox),
+  )
+import "baikai" Baikai.Message (user)
+import "baikai-claude" Baikai.Provider.Claude.Api qualified as ClaudeApi
+import "baikai-claude" Baikai.Provider.Claude.Interactive
+  ( defaultClaudeInteractiveConfig,
+    launchClaudeInteractive,
+  )
+import "baikai-openai" Baikai.Provider.OpenAI.Api qualified as OpenAIApi
+import "baikai-openai" Baikai.Provider.OpenAI.Interactive
+  ( defaultCodexInteractiveConfig,
+    launchCodexInteractive,
+  )
 import "base" Control.Exception (SomeException, try)
 import "base" System.Exit (ExitCode (..), exitFailure)
 import "base" System.IO (hPutStrLn, stderr)
@@ -31,42 +60,11 @@ import "text" Data.Text qualified as Text
 import "text" Data.Text.IO qualified as TIO
 import "vector" Data.Vector qualified as V
 
-import "baikai" Baikai
-  ( Api (..)
-  , Context (..)
-  , Model (..)
-  , Response
-  , _Context
-  , _Model
-  , _Options
-  , completeRequest
-  , flattenAssistantBlocks
-  )
-import "baikai" Baikai.Content (AssistantContent (..), TextContent (..))
-import "baikai" Baikai.Interactive
-  ( CodexApprovalPolicy (CodexApprovalOnRequest)
-  , CodexSandboxMode (CodexWorkspaceWrite)
-  , InteractiveLaunchRequest (..)
-  , InteractiveLaunchResult (..)
-  , InteractiveSafety (ClaudeAllowedTools, CodexSandbox)
-  )
-import "baikai" Baikai.Message (user)
-import "baikai-claude" Baikai.Provider.Claude.Api qualified as ClaudeApi
-import "baikai-claude" Baikai.Provider.Claude.Interactive
-  ( defaultClaudeInteractiveConfig
-  , launchClaudeInteractive
-  )
-import "baikai-openai" Baikai.Provider.OpenAI.Api qualified as OpenAIApi
-import "baikai-openai" Baikai.Provider.OpenAI.Interactive
-  ( defaultCodexInteractiveConfig
-  , launchCodexInteractive
-  )
-
 -- | Inputs to one assist-session dispatch.
 data AssistDispatch = AssistDispatch
-  { systemPrompt :: !Text
-  , userPrompt   :: !(Maybe Text)
-  , debug        :: !Bool
+  { systemPrompt :: !Text,
+    userPrompt :: !(Maybe Text),
+    debug :: !Bool
   }
   deriving stock (Generic, Eq, Show)
 
@@ -75,15 +73,15 @@ data AssistDispatch = AssistDispatch
 --   to see issued on their behalf.
 assistAllowedTools :: [Text]
 assistAllowedTools =
-  [ "Bash(shiki *)"
-  , "Bash(kubectl get *)"
-  , "Bash(kubectl logs *)"
-  , "Bash(pwd)"
-  , "Bash(ls *)"
-  , "Bash(cat *)"
-  , "Read"
-  , "Glob"
-  , "Grep"
+  [ "Bash(shiki *)",
+    "Bash(kubectl get *)",
+    "Bash(kubectl logs *)",
+    "Bash(pwd)",
+    "Bash(ls *)",
+    "Bash(cat *)",
+    "Read",
+    "Glob",
+    "Grep"
   ]
 
 -- | Run one assist-session dispatch and return its exit code (or
@@ -94,22 +92,28 @@ runAssistSession cfg dispatch
       TIO.putStr (dispatch ^. #systemPrompt)
       pure ExitSuccess
   | otherwise = case cfg ^. #provider of
-      ClaudeCli -> launchClaude (cfg ^. #model)
-                     (dispatch ^. #systemPrompt)
-                     (dispatch ^. #userPrompt)
-      CodexCli  -> launchCodex (cfg ^. #model)
-                     (dispatch ^. #systemPrompt)
-                     (dispatch ^. #userPrompt)
-      Anthropic -> runOneShotApi
-                     ClaudeApi.register
-                     (anthropicModel cfg)
-                     (dispatch ^. #systemPrompt)
-                     (dispatch ^. #userPrompt)
-      OpenAI    -> runOneShotApi
-                     OpenAIApi.register
-                     (openAiModel cfg)
-                     (dispatch ^. #systemPrompt)
-                     (dispatch ^. #userPrompt)
+      ClaudeCli ->
+        launchClaude
+          (cfg ^. #model)
+          (dispatch ^. #systemPrompt)
+          (dispatch ^. #userPrompt)
+      CodexCli ->
+        launchCodex
+          (cfg ^. #model)
+          (dispatch ^. #systemPrompt)
+          (dispatch ^. #userPrompt)
+      Anthropic ->
+        runOneShotApi
+          ClaudeApi.register
+          (anthropicModel cfg)
+          (dispatch ^. #systemPrompt)
+          (dispatch ^. #userPrompt)
+      OpenAI ->
+        runOneShotApi
+          OpenAIApi.register
+          (openAiModel cfg)
+          (dispatch ^. #systemPrompt)
+          (dispatch ^. #userPrompt)
 
 -- ── Interactive CLI launches ───────────────────────────────────────
 
@@ -118,22 +122,23 @@ launchClaude mModel sys mPrompt = do
   mExe <- findExecutable "claude"
   case mExe of
     Nothing -> do
-      hPutStrLn stderr
+      hPutStrLn
+        stderr
         "shiki: 'claude' CLI not found on PATH (install: https://docs.anthropic.com/en/docs/claude-code)"
       exitFailure
     Just _ -> do
       cwd <- getCurrentDirectory
-      InteractiveLaunchResult { exitCode } <-
+      InteractiveLaunchResult {exitCode} <-
         launchClaudeInteractive
           defaultClaudeInteractiveConfig
           InteractiveLaunchRequest
-            { systemPrompt = Just sys
-            , userPrompt   = fromMaybe "" mPrompt
-            , model        = mModel
-            , workingDir   = Just cwd
-            , extraDirs    = []
-            , safety       = ClaudeAllowedTools assistAllowedTools
-            , extraArgs    = []
+            { systemPrompt = Just sys,
+              userPrompt = fromMaybe "" mPrompt,
+              model = mModel,
+              workingDir = Just cwd,
+              extraDirs = [],
+              safety = ClaudeAllowedTools assistAllowedTools,
+              extraArgs = []
             }
       pure exitCode
 
@@ -142,22 +147,23 @@ launchCodex mModel sys mPrompt = do
   mExe <- findExecutable "codex"
   case mExe of
     Nothing -> do
-      hPutStrLn stderr
+      hPutStrLn
+        stderr
         "shiki: 'codex' CLI not found on PATH (install and authenticate Codex CLI, then retry)"
       exitFailure
     Just _ -> do
       cwd <- getCurrentDirectory
-      InteractiveLaunchResult { exitCode } <-
+      InteractiveLaunchResult {exitCode} <-
         launchCodexInteractive
           defaultCodexInteractiveConfig
           InteractiveLaunchRequest
-            { systemPrompt = Just sys
-            , userPrompt   = fromMaybe "" mPrompt
-            , model        = mModel
-            , workingDir   = Just cwd
-            , extraDirs    = []
-            , safety       = CodexSandbox CodexWorkspaceWrite CodexApprovalOnRequest
-            , extraArgs    = []
+            { systemPrompt = Just sys,
+              userPrompt = fromMaybe "" mPrompt,
+              model = mModel,
+              workingDir = Just cwd,
+              extraDirs = [],
+              safety = CodexSandbox CodexWorkspaceWrite CodexApprovalOnRequest,
+              extraArgs = []
             }
       pure exitCode
 
@@ -168,8 +174,8 @@ runOneShotApi registerProvider model sys mPrompt = do
   registerProvider
   let ctx =
         _Context
-          { systemPrompt = Just sys
-          , messages     = maybe V.empty (V.singleton . user) mPrompt
+          { systemPrompt = Just sys,
+            messages = maybe V.empty (V.singleton . user) mPrompt
           }
   result <- try @SomeException (completeRequest model ctx _Options)
   case result of
@@ -191,19 +197,19 @@ extractAssistantText resp =
 anthropicModel :: AgentModelConfig -> Model
 anthropicModel cfg =
   _Model
-    { modelId  = fromMaybe "claude-sonnet-4-6" (cfg ^. #model)
-    , name     = fromMaybe "Claude Sonnet 4.6" (cfg ^. #model)
-    , api      = AnthropicMessages
-    , provider = "anthropic"
-    , baseUrl  = "https://api.anthropic.com"
+    { modelId = fromMaybe "claude-sonnet-4-6" (cfg ^. #model),
+      name = fromMaybe "Claude Sonnet 4.6" (cfg ^. #model),
+      api = AnthropicMessages,
+      provider = "anthropic",
+      baseUrl = "https://api.anthropic.com"
     }
 
 openAiModel :: AgentModelConfig -> Model
 openAiModel cfg =
   _Model
-    { modelId  = fromMaybe "gpt-4o-mini" (cfg ^. #model)
-    , name     = fromMaybe "GPT-4o Mini" (cfg ^. #model)
-    , api      = OpenAIChatCompletions
-    , provider = "openai"
-    , baseUrl  = "https://api.openai.com"
+    { modelId = fromMaybe "gpt-4o-mini" (cfg ^. #model),
+      name = fromMaybe "GPT-4o Mini" (cfg ^. #model),
+      api = OpenAIChatCompletions,
+      provider = "openai",
+      baseUrl = "https://api.openai.com"
     }

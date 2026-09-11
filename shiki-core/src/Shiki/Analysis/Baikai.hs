@@ -3,24 +3,20 @@
 --   the @shiki runs analyze --analyzer=baikai:\<id\>@ post-hoc path; never
 --   reached by the inline @shiki run@ path.
 module Shiki.Analysis.Baikai
-  ( runBaikai
-  , supportedModels
-  ) where
+  ( runBaikai,
+    supportedModels,
+  )
+where
 
 import Shiki.Prelude
-
-import "base" Control.Exception (SomeException, try)
-import "text" Data.Text qualified as Text
-import "vector" Data.Vector qualified as V
-
 import "baikai" Baikai
-  ( Context (..)
-  , Options (..)
-  , Response
-  , _Context
-  , _Options
-  , completeRequest
-  , flattenAssistantBlocks
+  ( Context (..),
+    Options (..),
+    Response,
+    completeRequest,
+    flattenAssistantBlocks,
+    _Context,
+    _Options,
   )
 import "baikai" Baikai.Content (AssistantContent (..), TextContent (..))
 import "baikai" Baikai.Message (user)
@@ -28,6 +24,9 @@ import "baikai" Baikai.Model (Model)
 import "baikai" Baikai.Models.Generated qualified as Models
 import "baikai-claude" Baikai.Provider.Claude.Api qualified as ClaudeApi
 import "baikai-openai" Baikai.Provider.OpenAI.Api qualified as OpenAIApi
+import "base" Control.Exception (SomeException, try)
+import "text" Data.Text qualified as Text
+import "vector" Data.Vector qualified as V
 
 -- | Hand-curated list of baikai catalog ids this build of shiki knows
 --   how to dispatch. Extend by adding a case to 'lookupModel' below;
@@ -36,9 +35,9 @@ import "baikai-openai" Baikai.Provider.OpenAI.Api qualified as OpenAIApi
 --   through to a default model.
 supportedModels :: [Text]
 supportedModels =
-  [ "anthropic_claude_haiku_4_5"
-  , "anthropic_claude_sonnet_4_6"
-  , "openai_gpt_4o_mini"
+  [ "anthropic_claude_haiku_4_5",
+    "anthropic_claude_sonnet_4_6",
+    "openai_gpt_4o_mini"
   ]
 
 systemPromptText :: Text
@@ -61,25 +60,25 @@ runBaikai modelId logTail = case lookupModel modelId of
     registerProvider
     let ctx =
           _Context
-            { systemPrompt = Just systemPromptText
-            , messages     = V.singleton (user logTail)
+            { systemPrompt = Just systemPromptText,
+              messages = V.singleton (user logTail)
             }
         opts =
           _Options
-            { maxTokens   = Just 256
-            , temperature = Just 0.0
+            { maxTokens = Just 256,
+              temperature = Just 0.0
             }
     result <- try @SomeException (completeRequest model ctx opts)
     case result of
-      Left e    -> pure (Left (Text.pack (show e)))
+      Left e -> pure (Left (Text.pack (show e)))
       Right resp -> pure (Right (capChars (extractText resp)))
 
 lookupModel :: Text -> Maybe (Model, IO ())
 lookupModel = \case
-  "anthropic_claude_haiku_4_5"  -> Just (Models.anthropic_claude_haiku_4_5, ClaudeApi.register)
+  "anthropic_claude_haiku_4_5" -> Just (Models.anthropic_claude_haiku_4_5, ClaudeApi.register)
   "anthropic_claude_sonnet_4_6" -> Just (Models.anthropic_claude_sonnet_4_6, ClaudeApi.register)
-  "openai_gpt_4o_mini"          -> Just (Models.openai_gpt_4o_mini, OpenAIApi.register)
-  _                             -> Nothing
+  "openai_gpt_4o_mini" -> Just (Models.openai_gpt_4o_mini, OpenAIApi.register)
+  _ -> Nothing
 
 extractText :: Response -> Text
 extractText resp =
@@ -92,4 +91,4 @@ extractText resp =
 capChars :: Text -> Text
 capChars t
   | Text.length t <= summaryCharCap = t
-  | otherwise                       = Text.take summaryCharCap t
+  | otherwise = Text.take summaryCharCap t
