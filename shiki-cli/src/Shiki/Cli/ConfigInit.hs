@@ -8,6 +8,7 @@ module Shiki.Cli.ConfigInit
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Shiki.Prelude

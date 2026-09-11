@@ -12,6 +12,7 @@ module Shiki.K8s.Introspection
 where
 
 import Control.Exception (Exception, throwIO)
+import Data.Generics.Labels ()
 import Data.List qualified as List
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map

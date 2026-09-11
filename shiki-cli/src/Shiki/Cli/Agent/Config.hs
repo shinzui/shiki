@@ -9,6 +9,7 @@ module Shiki.Cli.Agent.Config
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Shiki.Cli.Agent.Provider
   ( AgentModelConfig (..),

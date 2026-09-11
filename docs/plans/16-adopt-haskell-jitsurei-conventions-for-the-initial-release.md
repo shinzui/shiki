@@ -74,10 +74,10 @@ Milestone 1 — Cabal baseline and package-import hygiene
 
 Milestone 2 — Per-module generic-lens labels
 
-- [ ] Remove `import "generic-lens" Data.Generics.Labels ()` from `Shiki.Prelude` and update its Haddock comment.
-- [ ] Add `import Data.Generics.Labels ()` to every module that uses `#label` syntax (25 files today; list in Plan of Work).
-- [ ] Add `generic-lens` to the `build-depends` of the `shiki-core` test suite and the `shiki-run-once` example executable.
-- [ ] `cabal build all` and `cabal test all` pass; the missing-import check prints nothing; commit.
+- [x] (2026-09-11 19:25Z) Remove `import "generic-lens" Data.Generics.Labels ()` from `Shiki.Prelude` and update its Haddock comment.
+- [x] (2026-09-11 19:25Z) Add `import Data.Generics.Labels ()` to every module that uses `#label` syntax (the same 25 files listed in Context and Orientation).
+- [x] (2026-09-11 19:25Z) Add `generic-lens` to the `build-depends` of the `shiki-core` test suite and the `shiki-run-once` example executable.
+- [x] (2026-09-11 19:30Z) `cabal build all` and `cabal test all` pass (33 and 42 tests); the missing-import check prints nothing; commit.
 
 Milestone 3 — Record-shape conformance
 
@@ -180,6 +180,20 @@ Milestone 7 — Release conformance audit, ADR, and Nix build
 - (Implementation, M1) `git grep -n PackageImports` without a pathspec also matches the
   historical plans under `docs/`, which describe the old convention. The conformance
   check is scoped to code: `git grep -n PackageImports -- '*.hs' '*.cabal'`.
+
+- (Implementation, M2) The plan asks the prelude's Haddock to tell readers to add
+  `import Data.Generics.Labels ()` themselves, but its own check,
+  `git grep -n 'Data.Generics.Labels' -- shiki-core/src/Shiki/Prelude.hs`, then matches
+  that comment. The check is now anchored to import lines:
+  `git grep -n '^import.*Data.Generics.Labels' -- shiki-core/src/Shiki/Prelude.hs`. For
+  the same reason, the Haddock says "overloaded labels" rather than the literal
+  `#label`, which the label-usage loop would otherwise count as a use.
+
+- (Implementation, M2) The label-usage loop is a heuristic. It matches any
+  `#identifier` text outside CPP directives, including inside string literals. Milestone
+  5's Zsh script contains `"#compdef shiki"`, and the loop would demand a labels import
+  in `Completions.hs` for it. Such a hit is a false positive, to be recognized and
+  ignored rather than silenced with an unneeded import.
 
 
 ## Decision Log
@@ -1284,7 +1298,7 @@ for f in $(git grep -lE '#[a-z][A-Za-z0-9_]*' -- '*.hs'); do
     grep -q '^import Data.Generics.Labels ()' "$f" || echo "MISSING labels import: $f"
   fi
 done
-git grep -n 'Data.Generics.Labels' -- shiki-core/src/Shiki/Prelude.hs            # expect no output
+git grep -n '^import.*Data.Generics.Labels' -- shiki-core/src/Shiki/Prelude.hs   # expect no output
 cabal build all && cabal test all
 ```
 
@@ -1364,7 +1378,7 @@ grep -nE 'default-language|tested-with|base >=' shiki-core/shiki-core.cabal shik
 git grep -nE '^import qualified ' -- '*.hs'                                      # expect no output
 git grep -n 'import "' -- '*.hs' | grep -v '^shiki-core/src/Shiki/Prelude.hs:'   # expect no output
 git grep -n PackageImports -- '*.hs' '*.cabal'                                   # expect only the Prelude pragma
-git grep -n 'Data.Generics.Labels' -- shiki-core/src/Shiki/Prelude.hs            # expect no output
+git grep -n '^import.*Data.Generics.Labels' -- shiki-core/src/Shiki/Prelude.hs   # expect no output
 cabal build all && cabal test all
 nix build .#shiki
 ./result/bin/shiki --version

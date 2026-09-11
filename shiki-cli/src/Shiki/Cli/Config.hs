@@ -8,6 +8,7 @@ module Shiki.Cli.Config
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Shiki.Cli.Project (resolveActiveEnvironment)
 import Shiki.Persistence.Connection (ConnectionString (..))

@@ -13,6 +13,7 @@ where
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, throwIO)
+import Data.Generics.Labels ()
 import Data.Time.Clock (diffUTCTime)
 import Kubernetes.OpenAPI qualified as K8s
 import Kubernetes.OpenAPI.API.BatchV1 qualified as BatchV1

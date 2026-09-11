@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Shiki.K8s.Client (loadDefaultClientConfig)
 import Shiki.K8s.Introspection

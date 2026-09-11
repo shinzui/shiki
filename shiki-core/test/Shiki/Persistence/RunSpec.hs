@@ -1,6 +1,7 @@
 module Shiki.Persistence.RunSpec (tests) where
 
 import Data.Aeson qualified as Aeson
+import Data.Generics.Labels ()
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)

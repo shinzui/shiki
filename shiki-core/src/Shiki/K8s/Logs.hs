@@ -21,6 +21,7 @@ module Shiki.K8s.Logs
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Kubernetes.OpenAPI qualified as K8s
 import Kubernetes.OpenAPI.API.CoreV1 qualified as CoreV1

@@ -1,10 +1,16 @@
 {-# LANGUAGE PackageImports #-}
 
 -- | Project-wide prelude for shiki. Re-exports the common vocabulary used
---   by every module: lens operators, generic-lens labels, basic types,
---   MonadIO, aeson, time. Modules in this project should import
---   @Shiki.Prelude@ in place of the standard prelude wherever practical
---   so that domain modules stay free of import noise.
+--   by every module: lens operators, basic types, MonadIO, aeson, time.
+--   Modules in this project should import @Shiki.Prelude@ in place of the
+--   standard prelude wherever practical so that domain modules stay free of
+--   import noise.
+--
+--   The prelude deliberately does not import @Data.Generics.Labels ()@. That
+--   module carries generic-lens's orphan @IsLabel@ instance, and an orphan
+--   imported here would be forced on every module in the project. A module
+--   that reads or sets fields through overloaded labels adds
+--   @import Data.Generics.Labels ()@ itself.
 module Shiki.Prelude
   ( module X,
     module Control.Lens,
@@ -33,7 +39,6 @@ import "base" Data.List.NonEmpty as X (NonEmpty (..))
 import "base" Data.Maybe as X (fromMaybe, isJust, isNothing)
 import "base" Data.Proxy as X (Proxy (..))
 import "base" GHC.Generics as X (Generic)
-import "generic-lens" Data.Generics.Labels ()
 import "lens" Control.Lens
 import "text" Data.Text as X (Text)
 import "time" Data.Time as X (UTCTime, getCurrentTime)

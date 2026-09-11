@@ -13,6 +13,7 @@ module Shiki.Cli.Project
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Shiki.Prelude

@@ -7,6 +7,7 @@ module Shiki.Cli.ConfigShow
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO

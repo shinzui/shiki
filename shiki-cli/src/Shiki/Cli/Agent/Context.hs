@@ -13,6 +13,7 @@ module Shiki.Cli.Agent.Context
 where
 
 import Control.Exception (SomeException, try)
+import Data.Generics.Labels ()
 import Data.List (sort)
 import Data.Text qualified as Text
 import Hasql.Pool (Pool)

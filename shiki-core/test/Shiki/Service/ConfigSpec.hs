@@ -1,5 +1,6 @@
 module Shiki.Service.ConfigSpec (tests) where
 
+import Data.Generics.Labels ()
 import Shiki.Prelude
 import Shiki.Service.Config (AnalyzerBackend (..), ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)

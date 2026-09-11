@@ -13,6 +13,7 @@ module Shiki.Cli.Run
 where
 
 import Control.Exception (SomeException, try)
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Time.Clock (diffUTCTime)

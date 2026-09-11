@@ -28,6 +28,7 @@ where
 
 import Data.Aeson qualified as Aeson
 import Data.Functor.Contravariant ((>$<))
+import Data.Generics.Labels ()
 import Data.UUID (UUID)
 import Data.UUID.V4 qualified as UUIDv4
 import Hasql.Decoders qualified as Decoders

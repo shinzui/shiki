@@ -15,6 +15,7 @@ module Shiki.Cli.Fzf.Selector.Run
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Time.Format qualified as TimeFmt

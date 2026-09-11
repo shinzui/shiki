@@ -19,6 +19,7 @@ where
 
 import Data.FileEmbed (embedStringFile)
 import Data.Foldable (traverse_)
+import Data.Generics.Labels ()
 import Data.List (find)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO

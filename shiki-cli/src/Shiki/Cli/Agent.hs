@@ -9,6 +9,7 @@ module Shiki.Cli.Agent
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Options.Applicative (Parser, hsubparser, info)
 import Options.Applicative qualified as Opt

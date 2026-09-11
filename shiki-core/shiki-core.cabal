@@ -109,6 +109,7 @@ executable shiki-run-once
   hs-source-dirs: example
   build-depends:
     base >=4.21 && <5,
+    generic-lens >=2.2 && <2.4,
     shiki-core,
     text ^>=2.1,
 
@@ -144,6 +145,7 @@ test-suite shiki-core-test
     directory ^>=1.3,
     ephemeral-pg >=0.2,
     filepath ^>=1.5,
+    generic-lens >=2.2 && <2.4,
     hasql >=1.10,
     hasql-pool >=1.4,
     kubernetes-api,

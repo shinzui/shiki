@@ -1,6 +1,7 @@
 module Shiki.Persistence.RunListSpec (tests) where
 
 import Data.Aeson qualified as Aeson
+import Data.Generics.Labels ()
 import Data.Time.Clock (addUTCTime)
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session

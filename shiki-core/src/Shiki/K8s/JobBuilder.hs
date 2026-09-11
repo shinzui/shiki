@@ -9,6 +9,7 @@ module Shiki.K8s.JobBuilder
 where
 
 import Control.Monad (replicateM)
+import Data.Generics.Labels ()
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text

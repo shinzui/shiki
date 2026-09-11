@@ -23,6 +23,7 @@ where
 
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy.Char8 qualified as BL8
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Options.Applicative (Parser, ParserInfo, (<**>))
 import Options.Applicative qualified as Opt

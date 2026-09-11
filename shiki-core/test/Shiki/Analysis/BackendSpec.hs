@@ -1,5 +1,6 @@
 module Shiki.Analysis.BackendSpec (tests) where
 
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Shiki.Analysis.Backend
   ( AnalyzerError (..),

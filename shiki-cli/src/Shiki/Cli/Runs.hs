@@ -12,6 +12,7 @@ where
 import Control.Exception (IOException, try)
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy.Char8 qualified as BL8
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Time.Format qualified as TimeFmt

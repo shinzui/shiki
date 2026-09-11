@@ -28,6 +28,7 @@ import Baikai.Models.Generated qualified as Models
 import Baikai.Provider.Claude.Api qualified as ClaudeApi
 import Baikai.Provider.OpenAI.Api qualified as OpenAIApi
 import Control.Exception (SomeException, try)
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Shiki.Prelude
