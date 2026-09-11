@@ -21,7 +21,6 @@ import Shiki.Persistence.Connection
   )
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (Schema, mkSchema)
-import Shiki.Prelude
 
 -- | A fresh, randomly-named schema each call. Useful for test isolation.
 --   The name is always prefixed with @shiki_test_@ so a leftover schema

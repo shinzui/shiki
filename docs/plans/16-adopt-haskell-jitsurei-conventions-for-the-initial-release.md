@@ -109,7 +109,7 @@ Milestone 6 — Option groups and help-on-empty
 
 Milestone 7 — Release conformance audit, ADR, and Nix build
 
-- [ ] Clear the 12 pre-existing GHC warnings (see Surprises & Discoveries) so a clean rebuild is warning-free.
+- [x] (2026-09-11 21:00Z) Clear the pre-existing GHC warnings (12 at baseline, 11 after M3; see Surprises & Discoveries) so a clean rebuild is warning-free. The `dependentTestGroup` replacement needs tasty 1.5.4, so `shiki-cli-test` now bounds `tasty >=1.5.4 && <1.6`.
 - [ ] Run the full conformance audit and record the transcript in this plan.
 - [ ] `nix build .#shiki` succeeds; exercise `--version`, `completions`, `help --width` on `./result/bin/shiki`.
 - [ ] Create `docs/adr/1-follow-haskell-jitsurei-conventions.md`.

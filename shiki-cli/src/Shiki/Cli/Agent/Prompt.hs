@@ -15,7 +15,6 @@ where
 
 import Data.FileEmbed (embedStringFile)
 import Data.Generics.Labels ()
-import Data.List (foldl')
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as TE
 import Shiki.Cli.Agent.Context

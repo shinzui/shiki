@@ -38,12 +38,12 @@ import System.Directory
   )
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Tasty (DependencyType (..), TestTree, sequentialTestGroup)
+import Test.Tasty (DependencyType (..), TestTree, dependentTestGroup)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =
-  sequentialTestGroup
+  dependentTestGroup
     "Shiki.Cli.Agent.Context"
     AllSucceed
     [ testCase "loads good services, records bad ones, sees DB rows" $

@@ -16,7 +16,7 @@ import Shiki.Cli.Agent.Prompt (renderAssistPrompt)
 import Shiki.Persistence.Run (RunId (..), RunRecord (..))
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 tests :: TestTree
 tests =

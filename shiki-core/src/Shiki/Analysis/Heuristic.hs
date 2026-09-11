@@ -34,11 +34,11 @@ summarizeFailure raw =
                   rustPanic,
                   levelPrefixed
                 ]
-              chosen =
+              picked =
                 case asum (map ($ ls) pickers) of
                   Just t -> t
                   Nothing -> lastNonBlank ls
-           in Just (capChars chosen)
+           in Just (capChars picked)
   where
     asum = foldr (<|>) Nothing
 
@@ -50,8 +50,8 @@ summarizeFailure raw =
 pythonTraceback :: [Text] -> Maybe Text
 pythonTraceback ls = do
   let tracebackHeader t = "Traceback (most recent call last):" `Text.isPrefixOf` Text.stripStart t
-  ix <- lastIndexBy tracebackHeader ls
-  let after = drop (ix + 1) ls
+  idx <- lastIndexBy tracebackHeader ls
+  let after = drop (idx + 1) ls
       block = takeWhile (not . blank) after
       exceptionLines = filter (not . isIndented) block
   case lastMaybe exceptionLines of
@@ -62,9 +62,9 @@ pythonTraceback ls = do
 --   @Caused by:@ line that follows it (if any).
 jvmExceptionChain :: [Text] -> Maybe Text
 jvmExceptionChain ls = do
-  ix <- lastIndexBy (\t -> "Exception in thread " `Text.isPrefixOf` Text.stripStart t) ls
-  let header = Text.stripEnd (ls !! ix)
-      after = drop (ix + 1) ls
+  idx <- lastIndexBy (\t -> "Exception in thread " `Text.isPrefixOf` Text.stripStart t) ls
+  let header = Text.stripEnd (ls !! idx)
+      after = drop (idx + 1) ls
       causedBy = listToMaybe' [Text.stripEnd t | t <- after, "Caused by:" `Text.isPrefixOf` Text.stripStart t]
   pure $ case causedBy of
     Just c -> header <> " / " <> c
@@ -74,9 +74,9 @@ jvmExceptionChain ls = do
 --   @goroutine@ context line.
 goPanic :: [Text] -> Maybe Text
 goPanic ls = do
-  ix <- lastIndexBy (\t -> "panic:" `Text.isPrefixOf` Text.stripStart t) ls
-  let header = Text.stripEnd (ls !! ix)
-      before = take ix ls
+  idx <- lastIndexBy (\t -> "panic:" `Text.isPrefixOf` Text.stripStart t) ls
+  let header = Text.stripEnd (ls !! idx)
+      before = take idx ls
       previousGoroutine =
         case dropWhile (not . isGoroutineLine) (reverse before) of
           (g : _) -> Just (Text.stripEnd g)
@@ -93,16 +93,16 @@ rustPanic ls = do
   let isRustPanic t =
         let s = Text.stripStart t
          in "thread '" `Text.isPrefixOf` s && " panicked at " `Text.isInfixOf` s
-  ix <- lastIndexBy isRustPanic ls
-  pure (Text.stripEnd (ls !! ix))
+  idx <- lastIndexBy isRustPanic ls
+  pure (Text.stripEnd (ls !! idx))
 
 -- | The last line whose first whitespace-delimited token names a level
 --   commonly used for terminal-fatal messages, in either bracketed,
 --   bare, or structured-JSON form.
 levelPrefixed :: [Text] -> Maybe Text
 levelPrefixed ls = do
-  ix <- lastIndexBy isLevelLine ls
-  pure (Text.stripEnd (ls !! ix))
+  idx <- lastIndexBy isLevelLine ls
+  pure (Text.stripEnd (ls !! idx))
   where
     isLevelLine t =
       let s = Text.stripStart t

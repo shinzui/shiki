@@ -17,7 +17,7 @@ import Shiki.Cli.Agent.Provider
     providerToText,
   )
 import System.Environment (lookupEnv, setEnv, unsetEnv)
-import Test.Tasty (DependencyType (..), TestTree, sequentialTestGroup, testGroup)
+import Test.Tasty (DependencyType (..), TestTree, dependentTestGroup, testGroup)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
@@ -60,7 +60,7 @@ roundTripCases =
 
 resolveCases :: TestTree
 resolveCases =
-  sequentialTestGroup
+  dependentTestGroup
     "resolveAgentModelConfig"
     AllSucceed
     [ testCase "flag wins" $
