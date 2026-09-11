@@ -1,26 +1,34 @@
--- | Selector that lets the operator pick a service config by name via
---   @fzf@. The candidate list is built by listing
---   @services/*.dhall@ — the same directory the existing
---   @shiki service show NAME@ handler resolves against — so a pick
---   followed by Enter is byte-for-byte equivalent to typing the bare
---   name.
+-- | Resolve a service config name from either a typed name or an @fzf@
+--   picker. The candidate list is built by listing @services/*.dhall@ — the
+--   same directory @shiki service show NAME@ resolves against — so a pick
+--   followed by Enter is byte-for-byte equivalent to typing the bare name.
+--
+--   Like "Shiki.Cli.Fzf.Selector.Run", 'serviceTarget' decides between the
+--   name and the picker first, 'resolveService' produces the name, and every
+--   failure is a 'ServiceLookupFailure' rendered by
+--   'renderServiceLookupFailure'.
 module Shiki.Cli.Fzf.Selector.Service
-  ( ServiceSelection (..),
-    defaultServiceOpts,
-    selectService,
-    resolveServiceName,
+  ( ServiceTarget (..),
+    ServiceLookupFailure (..),
+    serviceOpts,
+    serviceTarget,
+    pickerServiceTarget,
+    resolveService,
+    listServiceNames,
+    fromServiceFzfResult,
+    renderServiceLookupFailure,
   )
 where
 
 import Control.Exception (IOException, try)
 import Data.List (sort)
 import Data.Text qualified as Text
-import Data.Text.IO qualified as TIO
 import Shiki.Cli.Fzf
   ( Candidate (..),
     FzfConfig,
     FzfOpts,
     FzfResult (..),
+    detectFzfConfig,
     isFzfAvailable,
     runFzf,
     withHeight,
@@ -31,51 +39,59 @@ import Shiki.Cli.Fzf
 import Shiki.Prelude
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (takeExtension, takeFileName, (-<.>))
-import System.IO (hPutStrLn, stderr)
 
 -- | Hard-coded location for service configs, matching the existing
 --   @serviceShowHandler@ in "Shiki.Cli".
 serviceConfigDir :: FilePath
 serviceConfigDir = "services"
 
-data ServiceSelection
-  = ServiceChosen !Text -- bare service name, sans @.dhall@
-  | ServiceNoneFound
-  | ServiceSelectionCancelled
+-- | What the operator asked for: a service name, or the picker.
+data ServiceTarget
+  = ServiceByName !Text
+  | ServiceByPicker !FzfConfig
+
+-- | Every way turning a target into a service name can fail.
+data ServiceLookupFailure
+  = NoServiceConfigs
+  | ServicePickerNoMatch
+  | ServicePickerCancelled
   | ServiceFzfUnavailable
-  | ServiceSelectionError !Text
+  | ServicePickerFailed !Text
+  deriving stock (Eq, Show)
 
-defaultServiceOpts :: FzfOpts
-defaultServiceOpts =
-  withPrompt "service> " <> withHeight "40%" <> withNoSort <> withSelectOne
+-- | @service> @ prompt, 40% height, lexical order kept, a lone config picked
+--   without asking (showing a config is read-only).
+serviceOpts :: FzfOpts
+serviceOpts = withPrompt "service> " <> withHeight "40%" <> withNoSort <> withSelectOne
 
--- | Enumerate @services/*.dhall@ in lexical order and hand the basenames
---   (minus the @.dhall@ extension) to fzf.
-selectService :: FzfConfig -> IO ServiceSelection
-selectService cfg
-  | not (isFzfAvailable cfg) = pure ServiceFzfUnavailable
-  | otherwise = do
-      eEntries <- try @IOException (listEntries serviceConfigDir)
-      case eEntries of
-        Left e ->
-          pure (ServiceSelectionError (Text.pack ("listDirectory failed: " <> show e)))
-        Right [] -> pure ServiceNoneFound
-        Right entries -> do
-          let candidates =
-                [ Candidate {display = n, value = n}
-                | n <- entries
-                ]
-          res <- runFzf cfg defaultServiceOpts candidates
-          pure $ case res of
-            FzfSelected n -> ServiceChosen n
-            FzfNoMatch -> ServiceNoneFound
-            FzfCancelled -> ServiceSelectionCancelled
-            FzfError msg -> ServiceSelectionError msg
+-- | Decide the target. Probes for fzf only when no name was given.
+serviceTarget :: Maybe Text -> IO (Either ServiceLookupFailure ServiceTarget)
+serviceTarget (Just n) = pure (Right (ServiceByName n))
+serviceTarget Nothing = pickerServiceTarget <$> detectFzfConfig
 
--- | Read @services/@, keep only @*.dhall@ entries, strip the extension,
---   sort lexically. Returns @[]@ if the directory does not exist.
-listEntries :: FilePath -> IO [Text]
-listEntries dir = do
+-- | The picker target, or 'ServiceFzfUnavailable' when fzf cannot run.
+pickerServiceTarget :: FzfConfig -> Either ServiceLookupFailure ServiceTarget
+pickerServiceTarget cfg
+  | isFzfAvailable cfg = Right (ServiceByPicker cfg)
+  | otherwise = Left ServiceFzfUnavailable
+
+-- | Resolve a target to a service name; the picker offers every
+--   @services/*.dhall@ basename.
+resolveService :: ServiceTarget -> IO (Either ServiceLookupFailure Text)
+resolveService = \case
+  ServiceByName n -> pure (Right n)
+  ServiceByPicker cfg ->
+    try @IOException (listServiceNames serviceConfigDir) >>= \case
+      Left e -> pure (Left (ServicePickerFailed (Text.pack ("listDirectory failed: " <> show e))))
+      Right [] -> pure (Left NoServiceConfigs)
+      Right names ->
+        fromServiceFzfResult
+          <$> runFzf cfg serviceOpts [Candidate {display = n, value = n} | n <- names]
+
+-- | Read @dir@, keep only @*.dhall@ entries, strip the extension, sort
+--   lexically. Returns @[]@ if the directory does not exist.
+listServiceNames :: FilePath -> IO [Text]
+listServiceNames dir = do
   exists <- doesDirectoryExist dir
   if not exists
     then pure []
@@ -88,25 +104,19 @@ listEntries dir = do
             ]
       pure (map Text.pack (sort dhalls))
 
--- | Public entry point for @service show@. 'Nothing' return means the
---   caller should exit non-zero (any user-visible message has already
---   been printed).
-resolveServiceName :: FzfConfig -> IO (Maybe Text)
-resolveServiceName cfg
-  | not (isFzfAvailable cfg) = do
-      hPutStrLn stderr "shiki: no service name given and fzf is not available"
-      pure Nothing
-  | otherwise = do
-      sel <- selectService cfg
-      case sel of
-        ServiceChosen n -> pure (Just n)
-        ServiceNoneFound -> do
-          TIO.putStrLn ("(no service configs found in " <> Text.pack serviceConfigDir <> "/)")
-          pure Nothing
-        ServiceSelectionCancelled -> pure Nothing
-        ServiceFzfUnavailable -> do
-          hPutStrLn stderr "shiki: no service name given and fzf is not available"
-          pure Nothing
-        ServiceSelectionError e -> do
-          TIO.hPutStrLn stderr ("shiki: fzf: " <> e)
-          pure Nothing
+fromServiceFzfResult :: FzfResult Text -> Either ServiceLookupFailure Text
+fromServiceFzfResult = \case
+  FzfSelected n -> Right n
+  FzfNoMatch -> Left ServicePickerNoMatch
+  FzfCancelled -> Left ServicePickerCancelled
+  FzfError e -> Left (ServicePickerFailed e)
+
+-- | The message for a failure, or 'Nothing' for a silent cancel. The caller
+--   prints it on stderr and exits 1.
+renderServiceLookupFailure :: ServiceLookupFailure -> Maybe Text
+renderServiceLookupFailure = \case
+  NoServiceConfigs -> Just ("shiki: no service configs found in " <> Text.pack serviceConfigDir <> "/")
+  ServicePickerNoMatch -> Just "shiki: no service matches the picker query"
+  ServicePickerCancelled -> Nothing
+  ServiceFzfUnavailable -> Just "shiki: no service name given and fzf is not available"
+  ServicePickerFailed e -> Just ("shiki: fzf: " <> e)

@@ -237,13 +237,15 @@ This section must always reflect the actual current state of the work.
 
 ### M9 — Same resolver shape for `service show`
 
-- [ ] Replace `ServiceSelection` / `selectService` / `resolveServiceName` with
+- [x] Replace `ServiceSelection` / `selectService` / `resolveServiceName` with
       `ServiceTarget`, `ServiceLookupFailure`, `serviceTarget`, `pickerServiceTarget`,
       `resolveService`, `listServiceNames`, `fromServiceFzfResult`,
-      `renderServiceLookupFailure`, `serviceOpts`.
-- [ ] Rewrite `serviceShowHandler` in `shiki-cli/src/Shiki/Cli.hs` on top of them.
-- [ ] Add `shiki-cli/test/Shiki/Cli/Fzf/Selector/ServiceSpec.hs`.
-- [ ] Build warning-free, tests green, manual checks for rows 14–19; commit.
+      `renderServiceLookupFailure`, `serviceOpts`. [2026-09-11]
+- [x] Rewrite `serviceShowHandler` in `shiki-cli/src/Shiki/Cli.hs` on top of them.
+      [2026-09-11]
+- [x] Add `shiki-cli/test/Shiki/Cli/Fzf/Selector/ServiceSpec.hs`. [2026-09-11]
+- [x] Build warning-free, `All 92 tests passed`, manual checks for rows 14–19 (evidence
+      under Validation and Acceptance); commit. [2026-09-11]
 
 ### M10 — Docs, help topic, changelog, retrospective
 
@@ -1618,6 +1620,34 @@ EXIT=0
 
 The picker rendering for row 4 (title row directly above aligned rows, Enter prints the
 JSON) was captured the same way during M7.
+
+### Evidence captured on 2026-09-11 after M9
+
+The two-config checks ran in a scratch project whose `services/` holds `alpha.dhall` and
+`beta.dhall` (copies of `services/mls-service-v2.dhall`) next to a `shiki-core` symlink,
+because the config imports `../shiki-core/dhall/AnalyzerBackend.dhall` relative to itself.
+
+```text
+$ shiki service show mls-service-v2 | head -2                        # row 14
+{
+    "analyzer": {
+$ env PATH=/usr/bin shiki service show </dev/null; echo "exit=$?"    # row 18
+shiki: no service name given and fzf is not available
+exit=1
+# row 16 — repository (one config), no keys: JSON printed at once, EXIT=0
+# row 16 — scratch project, no keys
+▌ beta
+▌ alpha
+  2/2 ──────────────────────────────────────────────────────────────────────────────
+service>
+# row 19 — scratch project, typed zzzz, Enter
+service> zzzz
+STDERR: shiki: no service matches the picker query
+EXIT=1
+# row 17 — a directory without services/
+STDERR: shiki: no service configs found in services/
+EXIT=1
+```
 
 
 ## Idempotence and Recovery

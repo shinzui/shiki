@@ -30,6 +30,7 @@ import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
 import Options.Applicative (Parser, ParserInfo, (<**>))
 import Options.Applicative qualified as Opt
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
@@ -42,8 +43,12 @@ import Shiki.Cli.ConfigInit
   )
 import Shiki.Cli.ConfigShow (runConfigShow)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
-import Shiki.Cli.Fzf (detectFzfConfig)
-import Shiki.Cli.Fzf.Selector.Service (resolveServiceName)
+import Shiki.Cli.Fzf.Selector.Service
+  ( ServiceLookupFailure,
+    renderServiceLookupFailure,
+    resolveService,
+    serviceTarget,
+  )
 import Shiki.Cli.Help (HelpCommand, helpParser, runHelp)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
@@ -54,6 +59,7 @@ import Shiki.Prelude hiding (Options, argument)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 import System.Exit (exitFailure)
+import System.IO (stderr)
 
 data Command
   = Run !RunOptions
@@ -118,13 +124,18 @@ withDbEnv mConn mSchema mEnv k = do
   schema <- resolveSchema mSchema
   withCliEnv cs schema (k schema)
 
+-- | Show the named config, or pick one with fzf when no name is given.
 serviceShowHandler :: Maybe Text -> IO ()
-serviceShowHandler (Just nm) = serviceShowOne nm
-serviceShowHandler Nothing = do
-  fzfCfg <- detectFzfConfig
-  resolveServiceName fzfCfg >>= \case
-    Just nm -> serviceShowOne nm
-    Nothing -> exitFailure
+serviceShowHandler mName =
+  serviceTarget mName >>= \case
+    Left failure -> failService failure
+    Right target -> resolveService target >>= either failService serviceShowOne
+
+-- | Print the failure's message (if any) on stderr and exit 1.
+failService :: ServiceLookupFailure -> IO a
+failService failure = do
+  mapM_ (TIO.hPutStrLn stderr) (renderServiceLookupFailure failure)
+  exitFailure
 
 serviceShowOne :: Text -> IO ()
 serviceShowOne nm = do
