@@ -9,35 +9,34 @@
 --   unknown topics print an @Available:@ list to stderr and exit
 --   non-zero.
 module Shiki.Cli.Help
-  ( HelpTopic (..)
-  , HelpCommand (..)
-  , helpTopics
-  , helpParser
-  , runHelp
-  ) where
+  ( HelpTopic (..),
+    HelpCommand (..),
+    helpTopics,
+    helpParser,
+    runHelp,
+  )
+where
 
 import Shiki.Prelude hiding (argument)
-
 import "base" Data.Foldable (traverse_)
 import "base" Data.List (find)
 import "base" System.Exit (exitFailure)
 import "base" System.IO (hPutStrLn, stderr)
 import "file-embed" Data.FileEmbed (embedStringFile)
-import "optparse-applicative"
-  Options.Applicative
-    ( Parser
-    , argument
-    , help
-    , metavar
-    , str
-    )
+import "optparse-applicative" Options.Applicative
+  ( Parser,
+    argument,
+    help,
+    metavar,
+    str,
+  )
 import "text" Data.Text qualified as Text
 import "text" Data.Text.IO qualified as TIO
 
 data HelpTopic = HelpTopic
-  { name        :: !Text
-  , description :: !Text
-  , content     :: !Text
+  { name :: !Text,
+    description :: !Text,
+    content :: !Text
   }
   deriving stock (Generic, Eq, Show)
 
@@ -48,12 +47,12 @@ data HelpCommand
 
 helpTopics :: [HelpTopic]
 helpTopics =
-  [ HelpTopic "services"  "Service configuration: services/*.dhall" servicesContent
-  , HelpTopic "runs"      "Run lifecycle and the runs table"        runsContent
-  , HelpTopic "analyzers" "Failure analysis backends"               analyzersContent
-  , HelpTopic "agent"     "shiki agent assist"                      agentContent
-  , HelpTopic "schema"    "Postgres schema configuration"           schemaContent
-  , HelpTopic "env"       "Environment variables"                   envContent
+  [ HelpTopic "services" "Service configuration: services/*.dhall" servicesContent,
+    HelpTopic "runs" "Run lifecycle and the runs table" runsContent,
+    HelpTopic "analyzers" "Failure analysis backends" analyzersContent,
+    HelpTopic "agent" "shiki agent assist" agentContent,
+    HelpTopic "schema" "Postgres schema configuration" schemaContent,
+    HelpTopic "env" "Environment variables" envContent
   ]
 
 servicesContent :: Text
@@ -79,7 +78,8 @@ helpParser =
   fmap ShowTopic topicArg <|> pure ListTopics
   where
     topicArg =
-      argument str
+      argument
+        str
         ( metavar "TOPIC"
             <> help ("Help topic (one of: " <> Text.unpack topicList <> ")")
         )
@@ -87,7 +87,7 @@ helpParser =
 
 runHelp :: HelpCommand -> IO ()
 runHelp = \case
-  ListTopics      -> listTopics
+  ListTopics -> listTopics
   ShowTopic topic -> showTopic topic
 
 listTopics :: IO ()
@@ -112,10 +112,11 @@ showTopic :: Text -> IO ()
 showTopic raw =
   let key = Text.toLower (Text.strip raw)
    in case find (\t -> (t ^. #name) == key) helpTopics of
-        Just t  -> TIO.putStr (t ^. #content)
+        Just t -> TIO.putStr (t ^. #content)
         Nothing -> do
           hPutStrLn stderr ("Unknown topic: " <> Text.unpack raw)
-          hPutStrLn stderr
+          hPutStrLn
+            stderr
             ( "Available: "
                 <> Text.unpack
                   (Text.intercalate ", " (fmap (^. #name) helpTopics))

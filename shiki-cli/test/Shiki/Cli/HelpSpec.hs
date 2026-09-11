@@ -1,9 +1,9 @@
 module Shiki.Cli.HelpSpec
-  ( tests
-  ) where
+  ( tests,
+  )
+where
 
 import Shiki.Cli.Help (HelpCommand (..), HelpTopic (..), helpParser, helpTopics)
-
 import "base" Data.List (nub)
 import "optparse-applicative" Options.Applicative qualified as Opt
 import "tasty" Test.Tasty (TestTree, testGroup)
@@ -18,16 +18,16 @@ tests =
     [ testCase "registry has at least six topics" $
         assertBool
           ("expected >= 6 topics, got " <> show (length helpTopics))
-          (length helpTopics >= 6)
-    , testCase "every topic is well-formed" wellFormedCase
-    , testCase "topic names are unique" $ do
+          (length helpTopics >= 6),
+      testCase "every topic is well-formed" wellFormedCase,
+      testCase "topic names are unique" $ do
         let ns = topicNames
-        assertEqual "duplicate topic name(s) detected" (length ns) (length (nub ns))
-    , testCase "topic names are lowercase ASCII letters or hyphen" $
-        mapM_ assertNameOk topicNames
-    , testCase "parser: no argument => ListTopics" $
-        assertEqual "" (Right ListTopics) (parsePure [])
-    , testCase "parser: 'services' => ShowTopic \"services\"" $
+        assertEqual "duplicate topic name(s) detected" (length ns) (length (nub ns)),
+      testCase "topic names are lowercase ASCII letters or hyphen" $
+        mapM_ assertNameOk topicNames,
+      testCase "parser: no argument => ListTopics" $
+        assertEqual "" (Right ListTopics) (parsePure []),
+      testCase "parser: 'services' => ShowTopic \"services\"" $
         assertEqual "" (Right (ShowTopic "services")) (parsePure ["services"])
     ]
 
@@ -58,9 +58,9 @@ assertNameOk n =
 parsePure :: [String] -> Either String HelpCommand
 parsePure args =
   case Opt.execParserPure
-         Opt.defaultPrefs
-         (Opt.info helpParser Opt.idm)
-         args of
-    Opt.Success a       -> Right a
-    Opt.Failure _       -> Left "parse failed"
+    Opt.defaultPrefs
+    (Opt.info helpParser Opt.idm)
+    args of
+    Opt.Success a -> Right a
+    Opt.Failure _ -> Left "parse failed"
     Opt.CompletionInvoked _ -> Left "unexpected completion"

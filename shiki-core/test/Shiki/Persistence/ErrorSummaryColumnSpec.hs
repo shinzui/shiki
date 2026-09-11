@@ -3,17 +3,15 @@
 --   not silently dropped.
 module Shiki.Persistence.ErrorSummaryColumnSpec (tests) where
 
-import Shiki.Prelude
-
 import Shiki.Persistence.Connection
-  ( ConnectionString (..)
-  , acquirePool
-  , releasePool
+  ( ConnectionString (..),
+    acquirePool,
+    releasePool,
   )
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (schemaText)
 import Shiki.Persistence.TestPg (freshSchema)
-
+import Shiki.Prelude
 import "base" Control.Exception (bracket)
 import "base" Data.Functor.Contravariant ((>$<))
 import "base" Data.Int (Int32)
@@ -28,7 +26,8 @@ import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =
-  testGroup "Shiki.Persistence (error_summary migration)"
+  testGroup
+    "Shiki.Persistence (error_summary migration)"
     [ testCase "error_summary and error_summary_source land in the configured schema" $ do
         schema <- freshSchema
         result <- EpPg.with $ \db -> do

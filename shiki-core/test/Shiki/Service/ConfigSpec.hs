@@ -1,12 +1,10 @@
 module Shiki.Service.ConfigSpec (tests) where
 
 import Shiki.Prelude
-
 import Shiki.Service.Config (AnalyzerBackend (..), ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-
 import "directory" System.Directory (doesDirectoryExist, getCurrentDirectory)
-import "filepath" System.FilePath ((</>), takeDirectory)
+import "filepath" System.FilePath (takeDirectory, (</>))
 import "tasty" Test.Tasty (TestTree, testGroup)
 import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
 
@@ -27,13 +25,14 @@ serviceConfigPath name = do
         then pure dir
         else
           let parent = takeDirectory dir
-          in  if parent == dir
+           in if parent == dir
                 then ioError (userError "no `services/` directory found above cwd")
                 else locate parent
 
 tests :: TestTree
 tests =
-  testGroup "Shiki.Service.Config"
+  testGroup
+    "Shiki.Service.Config"
     [ testCase "loadServiceConfig parses mls-service-v2.dhall" $ do
         path <- serviceConfigPath "mls-service-v2"
         cfg <- loadServiceConfig path
@@ -44,8 +43,8 @@ tests =
         assertEqual
           "defaultNamespace"
           ("prod" :: Text)
-          (cfg ^. #defaultNamespace)
-    , testCase "first init container is cloud-sql-proxy" $ do
+          (cfg ^. #defaultNamespace),
+      testCase "first init container is cloud-sql-proxy" $ do
         path <- serviceConfigPath "mls-service-v2"
         cfg <- loadServiceConfig path
         case cfg ^. #initContainers of
@@ -55,8 +54,8 @@ tests =
               ("cloud-sql-proxy" :: Text)
               (ic ^. #name)
           [] ->
-            fail "expected at least one init container"
-    , testCase "analyzer field decodes to Heuristic" $ do
+            fail "expected at least one init container",
+      testCase "analyzer field decodes to Heuristic" $ do
         path <- serviceConfigPath "mls-service-v2"
         cfg <- loadServiceConfig path
         assertEqual "analyzer" Heuristic (cfg ^. #analyzer)

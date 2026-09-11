@@ -3,21 +3,21 @@
 --   'mkSchema' or 'defaultSchema'; this gives every internal user the proof
 --   that the wrapped 'Text' is safe to splice into a SQL identifier literal.
 module Shiki.Persistence.Schema
-  ( Schema
-  , defaultSchema
-  , mkSchema
-  , schemaText
-  , quoteSchema
-  ) where
+  ( Schema,
+    defaultSchema,
+    mkSchema,
+    schemaText,
+    quoteSchema,
+  )
+where
 
 import Shiki.Prelude
-
 import "text" Data.Text qualified as Text
 
 -- | A validated PostgreSQL schema name. Members of this type are guaranteed
 --   to match @[A-Za-z_][A-Za-z0-9_]*@ and to fit within PostgreSQL's
 --   @NAMEDATALEN@ default (63 bytes).
-newtype Schema = Schema { unSchema :: Text }
+newtype Schema = Schema {unSchema :: Text}
   deriving stock (Generic, Eq, Show)
   deriving newtype (FromJSON, ToJSON)
 
@@ -39,7 +39,7 @@ mkSchema t
       Left "schema name may only contain ASCII letters, digits, and underscore"
   | otherwise = Right (Schema t)
   where
-    isInitial c    = isAsciiAlpha c || c == '_'
+    isInitial c = isAsciiAlpha c || c == '_'
     isSubsequent c = isAsciiAlpha c || isAsciiDigit c || c == '_'
     isAsciiAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
     isAsciiDigit c = c >= '0' && c <= '9'

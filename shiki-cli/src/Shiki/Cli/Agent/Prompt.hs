@@ -9,18 +9,17 @@
 --   matching values. There is no template language; all formatting
 --   happens in the helpers below before substitution.
 module Shiki.Cli.Agent.Prompt
-  ( renderAssistPrompt
-  ) where
-
-import Shiki.Prelude
+  ( renderAssistPrompt,
+  )
+where
 
 import Shiki.Cli.Agent.Context
-  ( AgentContext (..)
-  , ServiceSummary (..)
+  ( AgentContext (..),
+    ServiceSummary (..),
   )
 import Shiki.Persistence.Run (RunId (..), RunRecord)
 import Shiki.Persistence.RunStatus (runStatusToText)
-
+import Shiki.Prelude
 import "base" Data.List (foldl')
 import "file-embed" Data.FileEmbed (embedStringFile)
 import "text" Data.Text qualified as Text
@@ -36,14 +35,15 @@ defaultAssistPrompt =
 --   placeholder @(no hints)@.
 renderAssistPrompt :: AgentContext -> Maybe Text -> Text
 renderAssistPrompt ctx mUserPrompt =
-  substitute defaultAssistPrompt
-    [ ("cwd",          ctx ^. #cwd)
-    , ("schema",       ctx ^. #schemaName)
-    , ("cluster",      ctx ^. #cluster)
-    , ("services_dir", Text.pack (ctx ^. #servicesDir))
-    , ("services",     formatServices (ctx ^. #services))
-    , ("recent_runs",  formatRuns (ctx ^. #recentRuns))
-    , ("user_prompt",  fromMaybe "(no hints)" mUserPrompt)
+  substitute
+    defaultAssistPrompt
+    [ ("cwd", ctx ^. #cwd),
+      ("schema", ctx ^. #schemaName),
+      ("cluster", ctx ^. #cluster),
+      ("services_dir", Text.pack (ctx ^. #servicesDir)),
+      ("services", formatServices (ctx ^. #services)),
+      ("recent_runs", formatRuns (ctx ^. #recentRuns)),
+      ("user_prompt", fromMaybe "(no hints)" mUserPrompt)
     ]
 
 -- | Replace every @{{name}}@ token in the template with the matching

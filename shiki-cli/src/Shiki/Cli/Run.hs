@@ -6,70 +6,69 @@
 --   'Shiki.Persistence.Run', and 'Shiki.K8s.Runner' without changing any
 --   of them.
 module Shiki.Cli.Run
-  ( RunOptions (..)
-  , runOptionsParser
-  , runRun
-  ) where
-
-import Shiki.Prelude hiding (Strict, argument)
+  ( RunOptions (..),
+    runOptionsParser,
+    runRun,
+  )
+where
 
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.K8s.Introspection
-  ( DeploymentName (..)
-  , DeploymentSnapshot
-  , Namespace (..)
-  , inspectDeployment
+  ( DeploymentName (..),
+    DeploymentSnapshot,
+    Namespace (..),
+    inspectDeployment,
   )
 import Shiki.K8s.JobBuilder (JobInputs (..), generateJobName)
 import Shiki.K8s.Runner
-  ( JobOutcome (..)
-  , JobPhase (..)
-  , runJob
-  , submitJob
+  ( JobOutcome (..),
+    JobPhase (..),
+    runJob,
+    submitJob,
   )
 import Shiki.Persistence.Run
-  ( NewRun (..)
-  , RunCompletion (..)
-  , RunId (..)
-  , completeRunStatement
-  , insertRunStatement
-  , markRunRunningStatement
-  , newRunId
+  ( NewRun (..),
+    RunCompletion (..),
+    RunId (..),
+    completeRunStatement,
+    insertRunStatement,
+    markRunRunningStatement,
+    newRunId,
   )
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
+import Shiki.Prelude hiding (Strict, argument)
 import Shiki.Service.Config (ServiceConfig, ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-
 import "base" Control.Exception (SomeException, try)
+import "base" System.Exit (exitFailure)
+import "hasql" Hasql.Session qualified as Session
+import "hasql" Hasql.Statement (Statement)
+import "hasql-pool" Hasql.Pool qualified as Pool
+import "optparse-applicative" Options.Applicative
+  ( Parser,
+    argument,
+    help,
+    long,
+    many,
+    metavar,
+    optional,
+    short,
+    showDefault,
+    str,
+    strOption,
+    switch,
+    value,
+  )
 import "text" Data.Text qualified as Text
 import "text" Data.Text.IO qualified as TIO
 import "time" Data.Time.Clock (diffUTCTime)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement)
-import "optparse-applicative" Options.Applicative
-  ( Parser
-  , argument
-  , help
-  , long
-  , many
-  , metavar
-  , optional
-  , short
-  , showDefault
-  , str
-  , strOption
-  , switch
-  , value
-  )
-import "base" System.Exit (exitFailure)
 
 data RunOptions = RunOptions
-  { service     :: !Text
-  , overrideNs  :: !(Maybe Text)
-  , noWait      :: !Bool
-  , configDir   :: !FilePath
-  , commandArgs :: ![Text]
+  { service :: !Text,
+    overrideNs :: !(Maybe Text),
+    noWait :: !Bool,
+    configDir :: !FilePath,
+    commandArgs :: ![Text]
   }
   deriving stock (Generic, Eq, Show)
 
@@ -83,24 +82,24 @@ runOptionsParser =
   RunOptions
     <$> argument str (metavar "SERVICE")
     <*> optional
-          ( strOption
-              ( long "namespace"
-                  <> short 'n'
-                  <> metavar "NS"
-                  <> help "Override the service's default namespace"
-              )
+      ( strOption
+          ( long "namespace"
+              <> short 'n'
+              <> metavar "NS"
+              <> help "Override the service's default namespace"
           )
+      )
     <*> switch
-          ( long "no-wait"
-              <> help "Submit and exit without waiting for completion"
-          )
+      ( long "no-wait"
+          <> help "Submit and exit without waiting for completion"
+      )
     <*> strOption
-          ( long "config-dir"
-              <> metavar "DIR"
-              <> value "services"
-              <> showDefault
-              <> help "Directory holding <service>.dhall files"
-          )
+      ( long "config-dir"
+          <> metavar "DIR"
+          <> value "services"
+          <> showDefault
+          <> help "Directory holding <service>.dhall files"
+      )
     <*> many (argument str (metavar "-- ARG..."))
 
 -- | End-to-end handler: load config, write a @pending@ row, mark it
@@ -124,26 +123,26 @@ runRun env opts = do
       (DeploymentName (cfg ^. #detectFromDeployment))
       (cfg ^. #containerName)
 
-  rid       <- newRunId
+  rid <- newRunId
   startedAt <- getCurrentTime
-  jobNm     <- generateJobName (cfg ^. #name) startedAt
+  jobNm <- generateJobName (cfg ^. #name) startedAt
 
   let inputs =
         JobInputs
-          { namespace = ns
-          , args      = opts ^. #commandArgs
-          , jobName   = jobNm
+          { namespace = ns,
+            args = opts ^. #commandArgs,
+            jobName = jobNm
           }
       newRow =
         NewRun
-          { runId         = rid
-          , serviceName   = unServiceName (cfg ^. #name)
-          , command       = opts ^. #commandArgs
-          , namespace     = unNamespace ns
-          , jobName       = jobNm
-          , image         = Just (snap ^. #image)
-          , startedAt     = startedAt
-          , serviceConfig = toJSON cfg
+          { runId = rid,
+            serviceName = unServiceName (cfg ^. #name),
+            command = opts ^. #commandArgs,
+            namespace = unNamespace ns,
+            jobName = jobNm,
+            image = Just (snap ^. #image),
+            startedAt = startedAt,
+            serviceConfig = toJSON cfg
           }
 
   runSessionUnit env insertRunStatement newRow
@@ -151,16 +150,16 @@ runRun env opts = do
 
   if opts ^. #noWait
     then noWaitPath env rid startedAt cfg snap inputs
-    else waitPath   env rid startedAt cfg snap inputs
+    else waitPath env rid startedAt cfg snap inputs
 
-noWaitPath
-  :: CliEnv
-  -> RunId
-  -> UTCTime
-  -> ServiceConfig
-  -> DeploymentSnapshot
-  -> JobInputs
-  -> IO ()
+noWaitPath ::
+  CliEnv ->
+  RunId ->
+  UTCTime ->
+  ServiceConfig ->
+  DeploymentSnapshot ->
+  JobInputs ->
+  IO ()
 noWaitPath env rid startedAt cfg snap inputs = do
   result <- try (submitJob (env ^. #client) cfg snap inputs)
   case result of
@@ -174,19 +173,19 @@ noWaitPath env rid startedAt cfg snap inputs = do
             <> ")"
         )
 
-waitPath
-  :: CliEnv
-  -> RunId
-  -> UTCTime
-  -> ServiceConfig
-  -> DeploymentSnapshot
-  -> JobInputs
-  -> IO ()
+waitPath ::
+  CliEnv ->
+  RunId ->
+  UTCTime ->
+  ServiceConfig ->
+  DeploymentSnapshot ->
+  JobInputs ->
+  IO ()
 waitPath env rid startedAt cfg snap inputs = do
   result <- try (runJob (env ^. #client) cfg snap inputs 5 345600)
   case result of
     Left (e :: SomeException) -> finalizeFailed env rid startedAt e
-    Right outcome             -> finalizeOutcome env rid startedAt outcome
+    Right outcome -> finalizeOutcome env rid startedAt outcome
 
 finalizeFailed :: CliEnv -> RunId -> UTCTime -> SomeException -> IO ()
 finalizeFailed env rid startedAt e = do
@@ -196,15 +195,15 @@ finalizeFailed env rid startedAt e = do
     env
     completeRunStatement
     RunCompletion
-      { runId              = rid
-      , status             = Failed
-      , exitCode           = Nothing
-      , endedAt            = endedAt
-      , durationMs         = durationMs
-      , logTail            = Nothing
-      , errorMessage       = Just (Text.pack (show e))
-      , errorSummary       = Nothing
-      , errorSummarySource = "heuristic"
+      { runId = rid,
+        status = Failed,
+        exitCode = Nothing,
+        endedAt = endedAt,
+        durationMs = durationMs,
+        logTail = Nothing,
+        errorMessage = Just (Text.pack (show e)),
+        errorSummary = Nothing,
+        errorSummarySource = "heuristic"
       }
   TIO.putStrLn
     ("FAILED run " <> showRunId rid <> ": " <> Text.pack (show e))
@@ -212,29 +211,29 @@ finalizeFailed env rid startedAt e = do
 
 finalizeOutcome :: CliEnv -> RunId -> UTCTime -> JobOutcome -> IO ()
 finalizeOutcome env rid startedAt outcome = do
-  let endedAt      = outcome ^. #endedAt
-      durationMs   = elapsedMs startedAt endedAt
-      finalStatus  = case outcome ^. #phase of
-        JobSucceeded   -> Succeeded
-        JobFailed _    -> Failed
-        JobTimedOut    -> Failed
+  let endedAt = outcome ^. #endedAt
+      durationMs = elapsedMs startedAt endedAt
+      finalStatus = case outcome ^. #phase of
+        JobSucceeded -> Succeeded
+        JobFailed _ -> Failed
+        JobTimedOut -> Failed
       errMsg = case outcome ^. #phase of
-        JobSucceeded   -> Nothing
-        JobFailed t    -> Just t
-        JobTimedOut    -> Just "timed out"
+        JobSucceeded -> Nothing
+        JobFailed t -> Just t
+        JobTimedOut -> Just "timed out"
   runSessionUnit
     env
     completeRunStatement
     RunCompletion
-      { runId              = rid
-      , status             = finalStatus
-      , exitCode           = outcome ^. #exitCode
-      , endedAt            = endedAt
-      , durationMs         = durationMs
-      , logTail            = outcome ^. #logTail
-      , errorMessage       = errMsg
-      , errorSummary       = outcome ^. #errorSummary
-      , errorSummarySource = outcome ^. #errorSummarySource
+      { runId = rid,
+        status = finalStatus,
+        exitCode = outcome ^. #exitCode,
+        endedAt = endedAt,
+        durationMs = durationMs,
+        logTail = outcome ^. #logTail,
+        errorMessage = errMsg,
+        errorSummary = outcome ^. #errorSummary,
+        errorSummarySource = outcome ^. #errorSummarySource
       }
   TIO.putStrLn
     ( "run "
@@ -246,7 +245,7 @@ finalizeOutcome env rid startedAt outcome = do
     )
   case finalStatus of
     Succeeded -> pure ()
-    _         -> exitFailure
+    _ -> exitFailure
 
 elapsedMs :: UTCTime -> UTCTime -> Int
 elapsedMs startedAt endedAt =

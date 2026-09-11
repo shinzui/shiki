@@ -6,42 +6,41 @@
 --   on the consumer side.
 module Shiki.Persistence.Run
   ( -- * Identifier
-    RunId (..)
-  , newRunId
+    RunId (..),
+    newRunId,
 
     -- * Records
-  , RunRecord (..)
-  , NewRun (..)
-  , RunCompletion (..)
+    RunRecord (..),
+    NewRun (..),
+    RunCompletion (..),
 
     -- * Statements
-  , insertRunStatement
-  , markRunRunningStatement
-  , completeRunStatement
-  , updateErrorSummaryStatement
-  , getRunStatement
-  , listRecentRunsStatement
-  , listRecentRunsByServiceStatement
-  , findRunByPrefixStatement
-  ) where
-
-import Shiki.Prelude
+    insertRunStatement,
+    markRunRunningStatement,
+    completeRunStatement,
+    updateErrorSummaryStatement,
+    getRunStatement,
+    listRecentRunsStatement,
+    listRecentRunsByServiceStatement,
+    findRunByPrefixStatement,
+  )
+where
 
 import Shiki.Persistence.RunStatus
-  ( RunStatus (Pending)
-  , runStatusFromText
-  , runStatusToText
+  ( RunStatus (Pending),
+    runStatusFromText,
+    runStatusToText,
   )
-
+import Shiki.Prelude
 import "aeson" Data.Aeson qualified as Aeson
 import "base" Data.Functor.Contravariant ((>$<))
-import "uuid" Data.UUID (UUID)
-import "uuid" Data.UUID.V4 qualified as UUIDv4
 import "hasql" Hasql.Decoders qualified as Decoders
 import "hasql" Hasql.Encoders qualified as Encoders
 import "hasql" Hasql.Statement (Statement, preparable)
+import "uuid" Data.UUID (UUID)
+import "uuid" Data.UUID.V4 qualified as UUIDv4
 
-newtype RunId = RunId { unRunId :: UUID }
+newtype RunId = RunId {unRunId :: UUID}
   deriving stock (Generic, Eq, Ord, Show)
   deriving newtype (FromJSON, ToJSON)
 
@@ -53,22 +52,22 @@ newRunId = RunId <$> UUIDv4.nextRandom
 --   when the run was submitted, so a later operator can reconstruct
 --   what the CLI saw at submission time.
 data RunRecord = RunRecord
-  { runId :: !RunId
-  , serviceName :: !Text
-  , command :: ![Text]
-  , namespace :: !Text
-  , jobName :: !Text
-  , image :: !(Maybe Text)
-  , status :: !RunStatus
-  , exitCode :: !(Maybe Int)
-  , startedAt :: !UTCTime
-  , endedAt :: !(Maybe UTCTime)
-  , durationMs :: !(Maybe Int)
-  , logTail :: !(Maybe Text)
-  , serviceConfig :: !Aeson.Value
-  , errorMessage :: !(Maybe Text)
-  , errorSummary :: !(Maybe Text)
-  , errorSummarySource :: !Text
+  { runId :: !RunId,
+    serviceName :: !Text,
+    command :: ![Text],
+    namespace :: !Text,
+    jobName :: !Text,
+    image :: !(Maybe Text),
+    status :: !RunStatus,
+    exitCode :: !(Maybe Int),
+    startedAt :: !UTCTime,
+    endedAt :: !(Maybe UTCTime),
+    durationMs :: !(Maybe Int),
+    logTail :: !(Maybe Text),
+    serviceConfig :: !Aeson.Value,
+    errorMessage :: !(Maybe Text),
+    errorSummary :: !(Maybe Text),
+    errorSummarySource :: !Text
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -78,14 +77,14 @@ data RunRecord = RunRecord
 --   Deployment, the wall-clock start time, and the JSON-encoded service
 --   config. Status is always 'Pending' immediately after insert.
 data NewRun = NewRun
-  { runId :: !RunId
-  , serviceName :: !Text
-  , command :: ![Text]
-  , namespace :: !Text
-  , jobName :: !Text
-  , image :: !(Maybe Text)
-  , startedAt :: !UTCTime
-  , serviceConfig :: !Aeson.Value
+  { runId :: !RunId,
+    serviceName :: !Text,
+    command :: ![Text],
+    namespace :: !Text,
+    jobName :: !Text,
+    image :: !(Maybe Text),
+    startedAt :: !UTCTime,
+    serviceConfig :: !Aeson.Value
   }
   deriving stock (Generic, Eq, Show)
 
@@ -94,15 +93,15 @@ data NewRun = NewRun
 --   of the Job pod's logs (the writer must enforce a sane byte cap, see
 --   the MasterPlan).
 data RunCompletion = RunCompletion
-  { runId :: !RunId
-  , status :: !RunStatus
-  , exitCode :: !(Maybe Int)
-  , endedAt :: !UTCTime
-  , durationMs :: !Int
-  , logTail :: !(Maybe Text)
-  , errorMessage :: !(Maybe Text)
-  , errorSummary :: !(Maybe Text)
-  , errorSummarySource :: !Text
+  { runId :: !RunId,
+    status :: !RunStatus,
+    exitCode :: !(Maybe Int),
+    endedAt :: !UTCTime,
+    durationMs :: !Int,
+    logTail :: !(Maybe Text),
+    errorMessage :: !(Maybe Text),
+    errorSummary :: !(Maybe Text),
+    errorSummarySource :: !Text
   }
   deriving stock (Generic, Eq, Show)
 
@@ -214,13 +213,13 @@ listRecentRunsStatement = preparable sql encoder decoder
   where
     sql =
       """
-      SELECT id, service_name, command, namespace, job_name,
-             image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error,
-             error_summary, error_summary_source
-        FROM runs
-    ORDER BY started_at DESC
-       LIMIT $1
+        SELECT id, service_name, command, namespace, job_name,
+               image, status, exit_code, started_at, ended_at,
+               duration_ms, log_tail, service_config, error,
+               error_summary, error_summary_source
+          FROM runs
+      ORDER BY started_at DESC
+         LIMIT $1
       """
     encoder = int8Param
     decoder = Decoders.rowList runRecordRow
@@ -231,14 +230,14 @@ listRecentRunsByServiceStatement = preparable sql encoder decoder
   where
     sql =
       """
-      SELECT id, service_name, command, namespace, job_name,
-             image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error,
-             error_summary, error_summary_source
-        FROM runs
-       WHERE service_name = $1
-    ORDER BY started_at DESC
-       LIMIT $2
+        SELECT id, service_name, command, namespace, job_name,
+               image, status, exit_code, started_at, ended_at,
+               duration_ms, log_tail, service_config, error,
+               error_summary, error_summary_source
+          FROM runs
+         WHERE service_name = $1
+      ORDER BY started_at DESC
+         LIMIT $2
       """
     encoder =
       (fst >$< textParam)
@@ -335,7 +334,7 @@ textArrayDecoder =
     -- The plan calls for @replicateM@ but the prelude does not re-export it.
     -- Use a local recursive replicate-via-applicative which is what
     -- 'Control.Monad.replicateM' would do for any 'Monad'.
-    replicateM :: Monad m => Int -> m a -> m [a]
+    replicateM :: (Monad m) => Int -> m a -> m [a]
     replicateM n action
       | n <= 0 = pure []
       | otherwise = (:) <$> action <*> replicateM (n - 1) action

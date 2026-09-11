@@ -1,23 +1,21 @@
 module Shiki.Persistence.SchemaIsolationSpec (tests) where
 
-import Shiki.Prelude
-
 import Shiki.Persistence.Connection
-  ( ConnectionString (..)
-  , acquirePool
-  , releasePool
+  ( ConnectionString (..),
+    acquirePool,
+    releasePool,
   )
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Run
-  ( NewRun (..)
-  , insertRunStatement
-  , newRunId
+  ( NewRun (..),
+    insertRunStatement,
+    newRunId,
   )
 import Shiki.Persistence.Schema (Schema, mkSchema, schemaText)
-
+import Shiki.Prelude
+import "aeson" Data.Aeson qualified as Aeson
 import "base" Control.Exception (bracket)
 import "base" Data.Int (Int32)
-import "aeson" Data.Aeson qualified as Aeson
 import "ephemeral-pg" EphemeralPg qualified as EpPg
 import "hasql" Hasql.Decoders qualified as Decoders
 import "hasql" Hasql.Encoders qualified as Encoders
@@ -28,22 +26,24 @@ import "tasty" Test.Tasty (TestTree, testGroup)
 import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
-tests = testGroup "Shiki.Persistence.Schema (isolation)"
-  [ testCase "two schemas in one database stay separate" $ do
-      Right alpha <- pure (mkSchema "alpha")
-      Right beta  <- pure (mkSchema "beta")
-      result <- EpPg.with $ \db -> do
-        let cs = ConnectionString (EpPg.connectionString db)
-        runOnePool cs alpha
-        runOnePool cs beta
-        verifyCount cs alpha 1
-        verifyCount cs beta  1
-        verifyMissingFromPublic cs
-      case result of
-        Right () -> pure ()
-        Left err ->
-          fail ("ephemeral-pg failed to start: " <> show (EpPg.renderStartError err))
-  ]
+tests =
+  testGroup
+    "Shiki.Persistence.Schema (isolation)"
+    [ testCase "two schemas in one database stay separate" $ do
+        Right alpha <- pure (mkSchema "alpha")
+        Right beta <- pure (mkSchema "beta")
+        result <- EpPg.with $ \db -> do
+          let cs = ConnectionString (EpPg.connectionString db)
+          runOnePool cs alpha
+          runOnePool cs beta
+          verifyCount cs alpha 1
+          verifyCount cs beta 1
+          verifyMissingFromPublic cs
+        case result of
+          Right () -> pure ()
+          Left err ->
+            fail ("ephemeral-pg failed to start: " <> show (EpPg.renderStartError err))
+    ]
 
 -- | Acquire a pool for the given schema, run migrations, insert one row.
 runOnePool :: ConnectionString -> Schema -> IO ()
@@ -52,16 +52,17 @@ runOnePool cs schema =
     runMigrations pool schema
     now <- getCurrentTime
     rid <- newRunId
-    let r = NewRun
-          { runId         = rid
-          , serviceName   = "svc-" <> schemaText schema
-          , command       = ["x"]
-          , namespace     = "ns"
-          , jobName       = "job"
-          , image         = Nothing
-          , startedAt     = now
-          , serviceConfig = Aeson.object []
-          }
+    let r =
+          NewRun
+            { runId = rid,
+              serviceName = "svc-" <> schemaText schema,
+              command = ["x"],
+              namespace = "ns",
+              jobName = "job",
+              image = Nothing,
+              startedAt = now,
+              serviceConfig = Aeson.object []
+            }
     Pool.use pool (Session.statement r insertRunStatement)
       >>= either (fail . show) pure
 
@@ -71,8 +72,9 @@ runOnePool cs schema =
 verifyCount :: ConnectionString -> Schema -> Int32 -> IO ()
 verifyCount cs schema expected =
   bracket (acquirePool cs schema) releasePool $ \pool -> do
-    n <- Pool.use pool (Session.statement () countRuns)
-           >>= either (fail . show) pure
+    n <-
+      Pool.use pool (Session.statement () countRuns)
+        >>= either (fail . show) pure
     assertEqual ("rows in " <> show (schemaText schema)) expected n
 
 countRuns :: Statement () Int32
@@ -93,7 +95,7 @@ verifyMissingFromPublic cs = do
   bracket (acquirePool cs pub) releasePool $ \pool -> do
     res <- Pool.use pool (Session.statement () existsRunsInPublic)
     case res of
-      Left e  -> fail ("information_schema probe failed: " <> show e)
+      Left e -> fail ("information_schema probe failed: " <> show e)
       Right 0 -> pure ()
       Right n ->
         fail ("public.runs unexpectedly present (" <> show n <> " info-schema row(s))")

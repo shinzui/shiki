@@ -3,63 +3,62 @@
 --   persistence statements defined in "Shiki.Persistence.Run"; never
 --   mutates the database.
 module Shiki.Cli.Runs
-  ( RunsCommand (..)
-  , runsParser
-  , runRuns
-  ) where
-
-import Shiki.Prelude hiding (argument)
+  ( RunsCommand (..),
+    runsParser,
+    runRuns,
+  )
+where
 
 import Shiki.Analysis.Backend
-  ( AnalyzerError (..)
-  , AnalyzerKind (..)
-  , AnalyzerResult (..)
-  , analyzerBackendToKind
-  , runAnalyzer
+  ( AnalyzerError (..),
+    AnalyzerKind (..),
+    AnalyzerResult (..),
+    analyzerBackendToKind,
+    runAnalyzer,
   )
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Cli.Fzf.Selector.Run (resolveRunId)
 import Shiki.Persistence.Run
-  ( RunId (..)
-  , RunRecord
-  , findRunByPrefixStatement
-  , listRecentRunsByServiceStatement
-  , listRecentRunsStatement
-  , updateErrorSummaryStatement
+  ( RunId (..),
+    RunRecord,
+    findRunByPrefixStatement,
+    listRecentRunsByServiceStatement,
+    listRecentRunsStatement,
+    updateErrorSummaryStatement,
   )
 import Shiki.Persistence.RunStatus (runStatusToText)
+import Shiki.Prelude hiding (argument)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-
 import "aeson-pretty" Data.Aeson.Encode.Pretty qualified as AesonPretty
-import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
-import "time" Data.Time.Format qualified as TimeFmt
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement)
-import "optparse-applicative" Options.Applicative
-  ( Parser
-  , argument
-  , auto
-  , help
-  , hsubparser
-  , info
-  , long
-  , metavar
-  , option
-  , optional
-  , progDesc
-  , short
-  , showDefault
-  , str
-  , strOption
-  , value
-  )
-import "optparse-applicative" Options.Applicative qualified as Opt
 import "base" Control.Exception (IOException, try)
 import "base" System.Exit (exitFailure)
 import "base" System.IO (hPutStrLn, stderr)
+import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
+import "hasql" Hasql.Session qualified as Session
+import "hasql" Hasql.Statement (Statement)
+import "hasql-pool" Hasql.Pool qualified as Pool
+import "optparse-applicative" Options.Applicative
+  ( Parser,
+    argument,
+    auto,
+    help,
+    hsubparser,
+    info,
+    long,
+    metavar,
+    option,
+    optional,
+    progDesc,
+    short,
+    showDefault,
+    str,
+    strOption,
+    value,
+  )
+import "optparse-applicative" Options.Applicative qualified as Opt
+import "text" Data.Text qualified as Text
+import "text" Data.Text.IO qualified as TIO
+import "time" Data.Time.Format qualified as TimeFmt
 
 data RunsCommand
   = RunsList !(Maybe Text) !Int
@@ -75,26 +74,27 @@ data RunsCommand
 runsParser :: Parser RunsCommand
 runsParser =
   hsubparser
-    ( Opt.command "list"
+    ( Opt.command
+        "list"
         ( info
             ( RunsList
                 <$> optional
-                      ( strOption
-                          ( long "service"
-                              <> short 's'
-                              <> metavar "NAME"
-                              <> help "Filter by service name"
-                          )
+                  ( strOption
+                      ( long "service"
+                          <> short 's'
+                          <> metavar "NAME"
+                          <> help "Filter by service name"
                       )
+                  )
                 <*> option
-                      auto
-                      ( long "limit"
-                          <> short 'l'
-                          <> metavar "N"
-                          <> value 20
-                          <> showDefault
-                          <> help "Maximum rows to show"
-                      )
+                  auto
+                  ( long "limit"
+                      <> short 'l'
+                      <> metavar "N"
+                      <> value 20
+                      <> showDefault
+                      <> help "Maximum rows to show"
+                  )
             )
             (progDesc "List recent runs, newest first")
         )
@@ -122,13 +122,13 @@ runsParser =
               ( RunsAnalyze
                   <$> optional (argument str idArgHelp)
                   <*> optional
-                        ( option
-                            analyzerKindReader
-                            ( long "analyzer"
-                                <> metavar "heuristic|baikai:<model-id>|none"
-                                <> help "Override the service's default analyzer"
-                            )
+                    ( option
+                        analyzerKindReader
+                        ( long "analyzer"
+                            <> metavar "heuristic|baikai:<model-id>|none"
+                            <> help "Override the service's default analyzer"
                         )
+                    )
               )
               (progDesc "Re-run analysis on a stored run's log tail (uses fzf if omitted)")
           )
@@ -140,12 +140,13 @@ idArgHelp = metavar "ID" <> help "Run id (UUID or unambiguous prefix); opens an 
 analyzerKindReader :: Opt.ReadM AnalyzerKind
 analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
   "heuristic" -> Right Heuristic
-  "none"      -> Right None
-  t | "baikai:" `Text.isPrefixOf` t ->
-    let mid = Text.drop (Text.length "baikai:") t
-     in if Text.null mid
-          then Left "expected 'baikai:<model-id>', e.g. baikai:anthropic_claude_haiku_4_5"
-          else Right (Baikai mid)
+  "none" -> Right None
+  t
+    | "baikai:" `Text.isPrefixOf` t ->
+        let mid = Text.drop (Text.length "baikai:") t
+         in if Text.null mid
+              then Left "expected 'baikai:<model-id>', e.g. baikai:anthropic_claude_haiku_4_5"
+              else Right (Baikai mid)
   _ -> Left "expected 'heuristic', 'none', or 'baikai:<model-id>'"
 
 -- | Dispatch a parsed 'RunsCommand' to the right handler. Read
@@ -153,11 +154,11 @@ analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
 --   ID opens an fzf picker (see 'Shiki.Cli.Fzf.Selector.Run').
 runRuns :: CliEnv -> RunsCommand -> IO ()
 runRuns env = \case
-  RunsList mService limit       -> doList env mService limit
-  RunsShow mId                  -> withResolved env mId doShow
-  RunsLogs mId                  -> withResolved env mId doLogs
-  RunsError mId                 -> withResolved env mId doError
-  RunsAnalyze mId override      -> withResolved env mId (\e t -> doAnalyze e t override)
+  RunsList mService limit -> doList env mService limit
+  RunsShow mId -> withResolved env mId doShow
+  RunsLogs mId -> withResolved env mId doLogs
+  RunsError mId -> withResolved env mId doError
+  RunsAnalyze mId override -> withResolved env mId (\e t -> doAnalyze e t override)
 
 -- | Resolve the optional positional through the run selector; if the
 --   resolver returns 'Nothing' (cancelled / no fzf / no rows / error)
@@ -167,7 +168,7 @@ withResolved :: CliEnv -> Maybe Text -> (CliEnv -> Text -> IO ()) -> IO ()
 withResolved env mIdText body = do
   mResolved <- resolveRunId env mIdText
   case mResolved of
-    Just t  -> body env t
+    Just t -> body env t
     Nothing -> exitFailure
 
 doList :: CliEnv -> Maybe Text -> Int -> IO ()
@@ -217,14 +218,16 @@ doAnalyze env idText override = do
       kind <- effectiveBackend r override
       case r ^. #logTail of
         Nothing -> TIO.putStrLn "(no logs captured; cannot analyze)"
-        Just t  -> do
+        Just t -> do
           result <- runAnalyzer kind t
           case result of
             Left err -> do
               hPutStrLn stderr (renderAnalyzerError err)
               exitFailure
             Right res -> do
-              runWrite env updateErrorSummaryStatement
+              runWrite
+                env
+                updateErrorSummaryStatement
                 (r ^. #runId, res ^. #summary, res ^. #source)
               TIO.putStrLn (renderAnalyzeOutcome (r ^. #runId) res)
 
@@ -237,14 +240,14 @@ effectiveBackend r Nothing = do
   let path = "services/" <> Text.unpack (r ^. #serviceName) <> ".dhall"
   mCfg <- try @IOException (loadServiceConfig path)
   case mCfg of
-    Left _    -> pure Heuristic
+    Left _ -> pure Heuristic
     Right cfg -> pure (analyzerBackendToKind (cfg ^. #analyzer))
 
 renderAnalyzerError :: AnalyzerError -> String
 renderAnalyzerError = \case
   AnalyzerBackendDisabled -> "shiki: analyzer disabled (backend = None)"
-  AnalyzerUnknown t       -> "shiki: unknown analyzer override: " <> Text.unpack t
-  AnalyzerBaikaiError t   -> "shiki: baikai backend failed: " <> Text.unpack t
+  AnalyzerUnknown t -> "shiki: unknown analyzer override: " <> Text.unpack t
+  AnalyzerBaikaiError t -> "shiki: baikai backend failed: " <> Text.unpack t
 
 renderAnalyzeOutcome :: RunId -> AnalyzerResult -> Text
 renderAnalyzeOutcome rid res =
@@ -276,18 +279,18 @@ renderTable rs =
 
 renderRow :: RunRecord -> [Text]
 renderRow r =
-  [ Text.take 8 (Text.pack (show (unRunId (r ^. #runId))))
-  , Text.pack
+  [ Text.take 8 (Text.pack (show (unRunId (r ^. #runId)))),
+    Text.pack
       ( TimeFmt.formatTime
           TimeFmt.defaultTimeLocale
           "%Y-%m-%d %H:%M:%S"
           (r ^. #startedAt)
-      )
-  , r ^. #serviceName
-  , runStatusToText (r ^. #status)
-  , maybe "-" humanDuration (r ^. #durationMs)
-  , maybe "-" (Text.pack . show) (r ^. #exitCode)
-  , Text.intercalate " " (r ^. #command)
+      ),
+    r ^. #serviceName,
+    runStatusToText (r ^. #status),
+    maybe "-" humanDuration (r ^. #durationMs),
+    maybe "-" (Text.pack . show) (r ^. #exitCode),
+    Text.intercalate " " (r ^. #command)
   ]
 
 humanDuration :: Int -> Text

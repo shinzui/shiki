@@ -5,11 +5,11 @@
 --   matches. Returns 'Nothing' only when the input has no non-whitespace
 --   content.
 module Shiki.Analysis.Heuristic
-  ( summarizeFailure
-  ) where
+  ( summarizeFailure,
+  )
+where
 
 import Shiki.Prelude
-
 import "text" Data.Text qualified as Text
 
 -- | Hard cap on the returned summary length, in characters. Kept in
@@ -28,15 +28,15 @@ summarizeFailure raw =
         [] -> Nothing
         _ ->
           let pickers =
-                [ pythonTraceback
-                , jvmExceptionChain
-                , goPanic
-                , rustPanic
-                , levelPrefixed
+                [ pythonTraceback,
+                  jvmExceptionChain,
+                  goPanic,
+                  rustPanic,
+                  levelPrefixed
                 ]
               chosen =
                 case asum (map ($ ls) pickers) of
-                  Just t  -> t
+                  Just t -> t
                   Nothing -> lastNonBlank ls
            in Just (capChars chosen)
   where
@@ -55,7 +55,7 @@ pythonTraceback ls = do
       block = takeWhile (not . blank) after
       exceptionLines = filter (not . isIndented) block
   case lastMaybe exceptionLines of
-    Just t  -> Just (Text.stripEnd t)
+    Just t -> Just (Text.stripEnd t)
     Nothing -> Nothing
 
 -- | The last @Exception in thread@ line, joined with the most recent
@@ -64,10 +64,10 @@ jvmExceptionChain :: [Text] -> Maybe Text
 jvmExceptionChain ls = do
   ix <- lastIndexBy (\t -> "Exception in thread " `Text.isPrefixOf` Text.stripStart t) ls
   let header = Text.stripEnd (ls !! ix)
-      after  = drop (ix + 1) ls
-      causedBy = listToMaybe' [ Text.stripEnd t | t <- after, "Caused by:" `Text.isPrefixOf` Text.stripStart t ]
+      after = drop (ix + 1) ls
+      causedBy = listToMaybe' [Text.stripEnd t | t <- after, "Caused by:" `Text.isPrefixOf` Text.stripStart t]
   pure $ case causedBy of
-    Just c  -> header <> " / " <> c
+    Just c -> header <> " / " <> c
     Nothing -> header
 
 -- | The last @panic:@ header, optionally prefixed by the preceding
@@ -80,9 +80,9 @@ goPanic ls = do
       previousGoroutine =
         case dropWhile (not . isGoroutineLine) (reverse before) of
           (g : _) -> Just (Text.stripEnd g)
-          _       -> Nothing
+          _ -> Nothing
   pure $ case previousGoroutine of
-    Just g  -> g <> " / " <> header
+    Just g -> g <> " / " <> header
     Nothing -> header
   where
     isGoroutineLine t = "goroutine " `Text.isPrefixOf` Text.stripStart t
@@ -112,14 +112,14 @@ levelPrefixed ls = do
             || "\"level\":\"fatal\"" `Text.isInfixOf` t
     isSpace c = c == ' ' || c == '\t'
     levelTokens =
-      [ "ERROR"
-      , "FATAL"
-      , "PANIC"
-      , "EMERGENCY"
-      , "[ERROR]"
-      , "[FATAL]"
-      , "[PANIC]"
-      , "[EMERGENCY]"
+      [ "ERROR",
+        "FATAL",
+        "PANIC",
+        "EMERGENCY",
+        "[ERROR]",
+        "[FATAL]",
+        "[PANIC]",
+        "[EMERGENCY]"
       ]
 
 -- ── Helpers ──────────────────────────────────────────────────────────────
@@ -135,7 +135,7 @@ blank = Text.null . Text.strip
 isIndented :: Text -> Bool
 isIndented t = case Text.uncons t of
   Just (c, _) -> c == ' ' || c == '\t'
-  Nothing     -> False
+  Nothing -> False
 
 -- | The last element of a list, or 'Nothing' on @[]@. Local re-spelling
 --   to avoid pulling 'Data.Maybe.listToMaybe' shadowing.
@@ -143,7 +143,7 @@ lastMaybe :: [a] -> Maybe a
 lastMaybe = foldl (\_ x -> Just x) Nothing
 
 listToMaybe' :: [a] -> Maybe a
-listToMaybe' []      = Nothing
+listToMaybe' [] = Nothing
 listToMaybe' (x : _) = Just x
 
 -- | The 0-based index of the last element satisfying the predicate.
@@ -156,9 +156,9 @@ lastIndexBy p xs =
 lastNonBlank :: [Text] -> Text
 lastNonBlank ls = case dropWhile blank (reverse ls) of
   (t : _) -> Text.stripEnd t
-  []      -> ""
+  [] -> ""
 
 capChars :: Text -> Text
 capChars t
   | Text.length t <= summaryCharCap = t
-  | otherwise                       = Text.take summaryCharCap t
+  | otherwise = Text.take summaryCharCap t

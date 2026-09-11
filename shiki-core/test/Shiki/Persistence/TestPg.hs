@@ -3,20 +3,19 @@
 --   concurrent test runs do not collide and so the M6 isolation test can
 --   trust that the existing tests no longer hardcode the default schema.
 module Shiki.Persistence.TestPg
-  ( freshSchema
-  , withSchemaPool
-  ) where
-
-import Shiki.Prelude
+  ( freshSchema,
+    withSchemaPool,
+  )
+where
 
 import Shiki.Persistence.Connection
-  ( ConnectionString (..)
-  , acquirePool
-  , releasePool
+  ( ConnectionString (..),
+    acquirePool,
+    releasePool,
   )
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (Schema, mkSchema)
-
+import Shiki.Prelude
 import "base" Control.Exception (bracket)
 import "ephemeral-pg" EphemeralPg qualified as EpPg
 import "hasql-pool" Hasql.Pool qualified as Pool
@@ -34,7 +33,7 @@ freshSchema = do
   let raw = "shiki_test_" <> Text.filter (/= '-') (UUID.toText u)
   case mkSchema raw of
     Right s -> pure s
-    Left e  -> error ("freshSchema: unexpectedly invalid schema: " <> Text.unpack e)
+    Left e -> error ("freshSchema: unexpectedly invalid schema: " <> Text.unpack e)
 
 -- | Spin up an ephemeral Postgres, allocate a fresh schema, acquire a
 --   pool, run migrations, hand the pool to the action.

@@ -3,22 +3,21 @@
 --   ('shiki runs ...') call 'acquirePool' once at the top of @runCli@
 --   and 'releasePool' at the bottom.
 module Shiki.Persistence.Connection
-  ( ConnectionString (..)
-  , acquirePool
-  , releasePool
-  ) where
-
-import Shiki.Prelude
+  ( ConnectionString (..),
+    acquirePool,
+    releasePool,
+  )
+where
 
 import Shiki.Persistence.Schema (Schema, quoteSchema)
-
-import "time" Data.Time.Clock (DiffTime)
+import Shiki.Prelude
 import "hasql" Hasql.Connection.Settings qualified as ConnSettings
 import "hasql" Hasql.Session qualified as Session
 import "hasql-pool" Hasql.Pool qualified as Pool
 import "hasql-pool" Hasql.Pool.Config qualified as PoolConfig
+import "time" Data.Time.Clock (DiffTime)
 
-newtype ConnectionString = ConnectionString { unConnectionString :: Text }
+newtype ConnectionString = ConnectionString {unConnectionString :: Text}
   deriving stock (Generic, Eq, Show)
   deriving newtype (FromJSON, ToJSON)
 
@@ -34,12 +33,12 @@ acquirePool :: ConnectionString -> Schema -> IO Pool.Pool
 acquirePool (ConnectionString cs) schema =
   Pool.acquire
     ( PoolConfig.settings
-        [ PoolConfig.size 5
-        , PoolConfig.acquisitionTimeout (10 :: DiffTime)
-        , PoolConfig.idlenessTimeout (3600 :: DiffTime)
-        , PoolConfig.agingTimeout (3600 :: DiffTime)
-        , PoolConfig.staticConnectionSettings (ConnSettings.connectionString cs)
-        , PoolConfig.initSession (setSearchPath schema)
+        [ PoolConfig.size 5,
+          PoolConfig.acquisitionTimeout (10 :: DiffTime),
+          PoolConfig.idlenessTimeout (3600 :: DiffTime),
+          PoolConfig.agingTimeout (3600 :: DiffTime),
+          PoolConfig.staticConnectionSettings (ConnSettings.connectionString cs),
+          PoolConfig.initSession (setSearchPath schema)
         ]
     )
 

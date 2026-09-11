@@ -6,15 +6,15 @@
 --   optional model id; the parsers here let the CLI flag and env-var
 --   layers in "Shiki.Cli.Agent.Config" share one spelling vocabulary.
 module Shiki.Cli.Agent.Provider
-  ( AgentProvider (..)
-  , AgentModelConfig (..)
-  , defaultAgentModelConfig
-  , providerFromText
-  , providerToText
-  ) where
+  ( AgentProvider (..),
+    AgentModelConfig (..),
+    defaultAgentModelConfig,
+    providerFromText,
+    providerToText,
+  )
+where
 
 import Shiki.Prelude
-
 import "text" Data.Text qualified as Text
 
 data AgentProvider
@@ -25,24 +25,24 @@ data AgentProvider
   deriving stock (Generic, Eq, Show)
 
 data AgentModelConfig = AgentModelConfig
-  { provider :: !AgentProvider
-  , model    :: !(Maybe Text)
+  { provider :: !AgentProvider,
+    model :: !(Maybe Text)
   }
   deriving stock (Generic, Eq, Show)
 
 defaultAgentModelConfig :: AgentModelConfig
 defaultAgentModelConfig =
   AgentModelConfig
-    { provider = ClaudeCli
-    , model    = Nothing
+    { provider = ClaudeCli,
+      model = Nothing
     }
 
 providerFromText :: Text -> Either Text AgentProvider
 providerFromText raw = case Text.toLower (Text.strip raw) of
   "claude-cli" -> Right ClaudeCli
-  "codex-cli"  -> Right CodexCli
-  "anthropic"  -> Right Anthropic
-  "openai"     -> Right OpenAI
+  "codex-cli" -> Right CodexCli
+  "anthropic" -> Right Anthropic
+  "openai" -> Right OpenAI
   other ->
     Left
       ( "unknown agent provider '"
@@ -53,6 +53,6 @@ providerFromText raw = case Text.toLower (Text.strip raw) of
 providerToText :: AgentProvider -> Text
 providerToText = \case
   ClaudeCli -> "claude-cli"
-  CodexCli  -> "codex-cli"
+  CodexCli -> "codex-cli"
   Anthropic -> "anthropic"
-  OpenAI    -> "openai"
+  OpenAI -> "openai"

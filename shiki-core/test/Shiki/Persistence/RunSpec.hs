@@ -1,61 +1,64 @@
 module Shiki.Persistence.RunSpec (tests) where
 
-import Shiki.Prelude
-
 import Shiki.Persistence.Run
-  ( NewRun (..)
-  , RunCompletion (..)
-  , RunRecord
-  , completeRunStatement
-  , getRunStatement
-  , insertRunStatement
-  , listRecentRunsStatement
-  , markRunRunningStatement
-  , newRunId
-  , updateErrorSummaryStatement
+  ( NewRun (..),
+    RunCompletion (..),
+    RunRecord,
+    completeRunStatement,
+    getRunStatement,
+    insertRunStatement,
+    listRecentRunsStatement,
+    markRunRunningStatement,
+    newRunId,
+    updateErrorSummaryStatement,
   )
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Persistence.TestPg (withSchemaPool)
-
+import Shiki.Prelude
 import "aeson" Data.Aeson qualified as Aeson
-import "hasql-pool" Hasql.Pool qualified as Pool
 import "hasql" Hasql.Session qualified as Session
 import "hasql" Hasql.Statement (Statement)
+import "hasql-pool" Hasql.Pool qualified as Pool
 import "tasty" Test.Tasty (TestTree, testGroup)
 import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =
-  testGroup "Shiki.Persistence.Run"
+  testGroup
+    "Shiki.Persistence.Run"
     [ testCase "insert / mark running / complete / list" $
         withSchemaPool $ \pool -> do
           now <- getCurrentTime
           rid <- newRunId
 
-          useStmt pool insertRunStatement
+          useStmt
+            pool
+            insertRunStatement
             NewRun
-              { runId = rid
-              , serviceName = "mls-service-v2"
-              , command = ["subscription", "process"]
-              , namespace = "prod"
-              , jobName = "mls-service-v2-oneoff-20260526-123000-1234"
-              , image = Just "gcr.io/example/mls-service-v2:abc123"
-              , startedAt = now
-              , serviceConfig =
+              { runId = rid,
+                serviceName = "mls-service-v2",
+                command = ["subscription", "process"],
+                namespace = "prod",
+                jobName = "mls-service-v2-oneoff-20260526-123000-1234",
+                image = Just "gcr.io/example/mls-service-v2:abc123",
+                startedAt = now,
+                serviceConfig =
                   Aeson.object [("name", Aeson.String "mls-service-v2")]
               }
           useStmt pool markRunRunningStatement rid
-          useStmt pool completeRunStatement
+          useStmt
+            pool
+            completeRunStatement
             RunCompletion
-              { runId = rid
-              , status = Succeeded
-              , exitCode = Just 0
-              , endedAt = now
-              , durationMs = 12345
-              , logTail = Just "everything is fine\n"
-              , errorMessage = Nothing
-              , errorSummary = Nothing
-              , errorSummarySource = "heuristic"
+              { runId = rid,
+                status = Succeeded,
+                exitCode = Just 0,
+                endedAt = now,
+                durationMs = 12345,
+                logTail = Just "everything is fine\n",
+                errorMessage = Nothing,
+                errorSummary = Nothing,
+                errorSummarySource = "heuristic"
               }
 
           mRow <- useStmt' pool getRunStatement rid
@@ -79,33 +82,37 @@ tests =
                 (r ^. #errorSummarySource)
 
           recent <- useStmt' pool listRecentRunsStatement (10 :: Int)
-          assertBool "one row recent" (length (recent :: [RunRecord]) == 1)
-    , testCase "Failed status round-trips" $
+          assertBool "one row recent" (length (recent :: [RunRecord]) == 1),
+      testCase "Failed status round-trips" $
         withSchemaPool $ \pool -> do
           now <- getCurrentTime
           rid <- newRunId
-          useStmt pool insertRunStatement
+          useStmt
+            pool
+            insertRunStatement
             NewRun
-              { runId = rid
-              , serviceName = "x"
-              , command = ["y"]
-              , namespace = "z"
-              , jobName = "j"
-              , image = Nothing
-              , startedAt = now
-              , serviceConfig = Aeson.object []
+              { runId = rid,
+                serviceName = "x",
+                command = ["y"],
+                namespace = "z",
+                jobName = "j",
+                image = Nothing,
+                startedAt = now,
+                serviceConfig = Aeson.object []
               }
-          useStmt pool completeRunStatement
+          useStmt
+            pool
+            completeRunStatement
             RunCompletion
-              { runId = rid
-              , status = Failed
-              , exitCode = Just 137
-              , endedAt = now
-              , durationMs = 0
-              , logTail = Just "Traceback (most recent call last):\nRuntimeError: boom\n"
-              , errorMessage = Just "OOMKilled"
-              , errorSummary = Just "RuntimeError: boom"
-              , errorSummarySource = "heuristic"
+              { runId = rid,
+                status = Failed,
+                exitCode = Just 137,
+                endedAt = now,
+                durationMs = 0,
+                logTail = Just "Traceback (most recent call last):\nRuntimeError: boom\n",
+                errorMessage = Just "OOMKilled",
+                errorSummary = Just "RuntimeError: boom",
+                errorSummarySource = "heuristic"
               }
           mRow <- useStmt' pool getRunStatement rid
           case mRow of
@@ -124,7 +131,9 @@ tests =
 
           -- updateErrorSummaryStatement rewrites the analyzer fields
           -- without touching the rest of the row.
-          useStmt pool updateErrorSummaryStatement
+          useStmt
+            pool
+            updateErrorSummaryStatement
             (rid, Just "model-derived summary", "baikai:test")
           mRow' <- useStmt' pool getRunStatement rid
           case mRow' of

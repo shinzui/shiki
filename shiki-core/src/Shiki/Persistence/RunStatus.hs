@@ -4,13 +4,13 @@
 --   @CHECK@ constraint enumerates the same four values that this ADT
 --   defines.
 module Shiki.Persistence.RunStatus
-  ( RunStatus (..)
-  , runStatusToText
-  , runStatusFromText
-  ) where
+  ( RunStatus (..),
+    runStatusToText,
+    runStatusFromText,
+  )
+where
 
 import Shiki.Prelude
-
 import "text" Data.Text qualified as Text
 
 data RunStatus

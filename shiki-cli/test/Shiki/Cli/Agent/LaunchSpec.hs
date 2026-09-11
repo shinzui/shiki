@@ -1,19 +1,19 @@
 module Shiki.Cli.Agent.LaunchSpec
-  ( tests
-  ) where
+  ( tests,
+  )
+where
 
 import Shiki.Cli.Agent.Launch (AssistDispatch (..), runAssistSession)
 import Shiki.Cli.Agent.Provider (defaultAgentModelConfig)
-
 import "base" GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import "base" System.Exit (ExitCode (..))
 import "base" System.IO
-  ( IOMode (ReadMode, WriteMode)
-  , hClose
-  , hGetContents
-  , openFile
-  , stdout
-  , withFile
+  ( IOMode (ReadMode, WriteMode),
+    hClose,
+    hGetContents,
+    openFile,
+    stdout,
+    withFile,
   )
 import "tasty" Test.Tasty (TestTree, testGroup)
 import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
@@ -24,14 +24,15 @@ tests =
   testGroup
     "Shiki.Cli.Agent.Launch"
     [ testCase "debug path writes the prompt and exits success" $ do
-        (captured, code) <- captureStdout $
-          runAssistSession
-            defaultAgentModelConfig
-            AssistDispatch
-              { systemPrompt = "PROMPT"
-              , userPrompt   = Nothing
-              , debug        = True
-              }
+        (captured, code) <-
+          captureStdout $
+            runAssistSession
+              defaultAgentModelConfig
+              AssistDispatch
+                { systemPrompt = "PROMPT",
+                  userPrompt = Nothing,
+                  debug = True
+                }
         assertEqual "exit code" ExitSuccess code
         assertEqual "captured stdout" "PROMPT" captured
     ]
@@ -45,7 +46,7 @@ captureStdout body =
   withSystemTempFile "shiki-launch-capture" $ \path h -> do
     hClose h
     saved <- hDuplicate stdout
-    out   <- openFile path WriteMode
+    out <- openFile path WriteMode
     hDuplicateTo out stdout
     hClose out
     result <- body

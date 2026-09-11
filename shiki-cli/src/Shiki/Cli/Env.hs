@@ -6,25 +6,24 @@
 --   the individual resources so a future plan can extend the bundle
 --   without touching every handler.
 module Shiki.Cli.Env
-  ( CliEnv (..)
-  , withCliEnv
-  ) where
-
-import Shiki.Prelude
+  ( CliEnv (..),
+    withCliEnv,
+  )
+where
 
 import Shiki.Cli.Fzf (FzfConfig, detectFzfConfig)
 import Shiki.K8s.Client (ClientEnv, loadDefaultClientConfig)
 import Shiki.Persistence.Connection (ConnectionString, acquirePool, releasePool)
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (Schema)
-
+import Shiki.Prelude
 import "base" Control.Exception (bracket)
 import "hasql-pool" Hasql.Pool qualified as Pool
 
 data CliEnv = CliEnv
-  { pool   :: !Pool.Pool
-  , client :: !ClientEnv
-  , fzf    :: !FzfConfig
+  { pool :: !Pool.Pool,
+    client :: !ClientEnv,
+    fzf :: !FzfConfig
   }
   deriving stock (Generic)
 
@@ -39,4 +38,4 @@ withCliEnv cs schema action =
     runMigrations p schema
     cl <- loadDefaultClientConfig
     fzfCfg <- detectFzfConfig
-    action CliEnv { pool = p, client = cl, fzf = fzfCfg }
+    action CliEnv {pool = p, client = cl, fzf = fzfCfg}

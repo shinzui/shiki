@@ -9,33 +9,32 @@
 --   \"the pod has no logs yet\" — the pre-EP-7 surface returned 'Nothing'
 --   for all three.
 module Shiki.K8s.Logs
-  ( FetchedLogs (..)
-  , LogFetchError (..)
-  , fetchJobPodLogs
-  , analysisLineCap
-  , analysisByteCap
-  , persistedLineCap
-  , persistedByteCap
-  , takeLastLines
-  , truncateChars
-  ) where
-
-import Shiki.Prelude
+  ( FetchedLogs (..),
+    LogFetchError (..),
+    fetchJobPodLogs,
+    analysisLineCap,
+    analysisByteCap,
+    persistedLineCap,
+    persistedByteCap,
+    takeLastLines,
+    truncateChars,
+  )
+where
 
 import Shiki.K8s.Client (ClientEnv (..))
 import Shiki.K8s.Introspection (Namespace (..))
-
-import "text" Data.Text qualified as Text
+import Shiki.Prelude
 import "kubernetes-api" Kubernetes.OpenAPI qualified as K8s
-import "kubernetes-api" Kubernetes.OpenAPI.API.CoreV1  qualified as CoreV1
+import "kubernetes-api" Kubernetes.OpenAPI.API.CoreV1 qualified as CoreV1
 import "kubernetes-api" Kubernetes.OpenAPI.ModelLens qualified as K8sLens
+import "text" Data.Text qualified as Text
 
 -- | The pair of log slices the runner cares about: the wider buffer
 --   shown to the analyzer and the narrower tail persisted into the
 --   @runs.log_tail@ column.
 data FetchedLogs = FetchedLogs
-  { analysisBuffer :: !Text
-  , persistedTail  :: !Text
+  { analysisBuffer :: !Text,
+    persistedTail :: !Text
   }
   deriving stock (Generic, Eq, Show)
 
@@ -43,43 +42,43 @@ data FetchedLogs = FetchedLogs
 --   \"no logs\" but the tagged shape lets future callers report a more
 --   useful diagnostic.
 data LogFetchError
-  = NoPodForJob !Text
-    -- ^ no pod matched @job-name=\<jobName\>@
-  | PodMissingName !Text
-    -- ^ a pod was returned but @metadata.name@ was unset
-  | PodListFailed !Text !String
-    -- ^ listing pods for the job failed with the wrapped 'MimeError'
-  | PodLogReadFailed !Text !String
-    -- ^ reading the pod's log failed with the wrapped 'MimeError'
+  = -- | no pod matched @job-name=\<jobName\>@
+    NoPodForJob !Text
+  | -- | a pod was returned but @metadata.name@ was unset
+    PodMissingName !Text
+  | -- | listing pods for the job failed with the wrapped 'MimeError'
+    PodListFailed !Text !String
+  | -- | reading the pod's log failed with the wrapped 'MimeError'
+    PodLogReadFailed !Text !String
   deriving stock (Generic, Eq, Show)
 
 analysisLineCap :: Int
 analysisLineCap = 1000
 
 analysisByteCap :: Int
-analysisByteCap = 262144  -- 256 KiB measured in characters
+analysisByteCap = 262144 -- 256 KiB measured in characters
 
 persistedLineCap :: Int
 persistedLineCap = 200
 
 persistedByteCap :: Int
-persistedByteCap = 65536  -- 64 KiB measured in characters
+persistedByteCap = 65536 -- 64 KiB measured in characters
 
 -- | Fetch the analysis buffer and derive the persisted tail. Issues one
 --   list-pods call to locate the pod, then one read-log call against it
 --   asking for the last 'analysisLineCap' lines. The persisted tail is
 --   carved out of the analysis buffer in-memory.
-fetchJobPodLogs
-  :: ClientEnv
-  -> Namespace
-  -> Text
-  -> IO (Either LogFetchError FetchedLogs)
+fetchJobPodLogs ::
+  ClientEnv ->
+  Namespace ->
+  Text ->
+  IO (Either LogFetchError FetchedLogs)
 fetchJobPodLogs env ns jobName = do
-  let listReq = CoreV1.listNamespacedPod
-                  (K8s.Accept K8s.MimeJSON)
-                  (K8s.Namespace (unNamespace ns))
-                `K8s.applyOptionalParam`
-                  K8s.LabelSelector ("job-name=" <> jobName)
+  let listReq =
+        CoreV1.listNamespacedPod
+          (K8s.Accept K8s.MimeJSON)
+          (K8s.Namespace (unNamespace ns))
+          `K8s.applyOptionalParam` K8s.LabelSelector ("job-name=" <> jobName)
   listResp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) listReq
   case K8s.mimeResult listResp of
     Left err -> pure (Left (PodListFailed jobName (show err)))
@@ -92,19 +91,19 @@ fetchJobPodLogs env ns jobName = do
 
 fetchPodLog :: ClientEnv -> Namespace -> Text -> IO (Either LogFetchError FetchedLogs)
 fetchPodLog env ns nm = do
-  let logReq = CoreV1.readNamespacedPodLog
-                 (K8s.Accept K8s.MimePlainText)
-                 (K8s.Name nm)
-                 (K8s.Namespace (unNamespace ns))
-               `K8s.applyOptionalParam`
-                 K8s.TailLines analysisLineCap
+  let logReq =
+        CoreV1.readNamespacedPodLog
+          (K8s.Accept K8s.MimePlainText)
+          (K8s.Name nm)
+          (K8s.Namespace (unNamespace ns))
+          `K8s.applyOptionalParam` K8s.TailLines analysisLineCap
   logResp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) logReq
   case K8s.mimeResult logResp of
-    Left err  -> pure (Left (PodLogReadFailed nm (show err)))
+    Left err -> pure (Left (PodLogReadFailed nm (show err)))
     Right txt ->
-      let buf  = truncateChars analysisByteCap txt
+      let buf = truncateChars analysisByteCap txt
           tail_ = truncateChars persistedByteCap (takeLastLines persistedLineCap buf)
-       in pure (Right FetchedLogs { analysisBuffer = buf, persistedTail = tail_ })
+       in pure (Right FetchedLogs {analysisBuffer = buf, persistedTail = tail_})
 
 -- | Keep the trailing @n@ lines of @t@. \"Line\" means \"text between
 --   @\\n@ characters\"; the result always ends with @\\n@ iff the input
@@ -122,4 +121,4 @@ takeLastLines n t
 truncateChars :: Int -> Text -> Text
 truncateChars n t
   | Text.length t <= n = t
-  | otherwise          = Text.takeEnd n t
+  | otherwise = Text.takeEnd n t

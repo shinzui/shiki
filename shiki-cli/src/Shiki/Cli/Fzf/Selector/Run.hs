@@ -7,37 +7,36 @@
 --   existing handlers can keep using 'findRunByPrefixStatement') or one
 --   of the non-selection outcomes.
 module Shiki.Cli.Fzf.Selector.Run
-  ( RunSelection (..)
-  , defaultRunOpts
-  , formatRunCandidate
-  , selectRun
-  , resolveRunId
-  ) where
-
-import Shiki.Prelude
+  ( RunSelection (..),
+    defaultRunOpts,
+    formatRunCandidate,
+    selectRun,
+    resolveRunId,
+  )
+where
 
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Cli.Fzf
-  ( Candidate (..)
-  , FzfOpts
-  , FzfResult (..)
-  , isFzfAvailable
-  , runFzf
-  , withAnsi
-  , withHeight
-  , withNoSort
-  , withPrompt
+  ( Candidate (..),
+    FzfOpts,
+    FzfResult (..),
+    isFzfAvailable,
+    runFzf,
+    withAnsi,
+    withHeight,
+    withNoSort,
+    withPrompt,
   )
 import Shiki.Persistence.Run
-  ( RunId (..)
-  , RunRecord
-  , listRecentRunsStatement
+  ( RunId (..),
+    RunRecord,
+    listRecentRunsStatement,
   )
 import Shiki.Persistence.RunStatus (runStatusToText)
-
+import Shiki.Prelude
 import "base" System.IO (hPutStrLn, stderr)
-import "hasql-pool" Hasql.Pool qualified as Pool
 import "hasql" Hasql.Session qualified as Session
+import "hasql-pool" Hasql.Pool qualified as Pool
 import "text" Data.Text qualified as Text
 import "text" Data.Text.IO qualified as TIO
 import "time" Data.Time.Format qualified as TimeFmt
@@ -70,23 +69,23 @@ selectorRowLimit = 50
 formatRunCandidate :: RunRecord -> Candidate (RunId, RunRecord)
 formatRunCandidate r =
   Candidate
-    { candidateDisplay = Text.intercalate "  " columns
-    , candidateValue   = (r ^. #runId, r)
+    { candidateDisplay = Text.intercalate "  " columns,
+      candidateValue = (r ^. #runId, r)
     }
   where
     columns =
-      [ Text.take 8 (Text.pack (show (unRunId (r ^. #runId))))
-      , Text.pack
+      [ Text.take 8 (Text.pack (show (unRunId (r ^. #runId)))),
+        Text.pack
           ( TimeFmt.formatTime
               TimeFmt.defaultTimeLocale
               "%Y-%m-%d %H:%M:%S"
               (r ^. #startedAt)
-          )
-      , r ^. #serviceName
-      , runStatusToText (r ^. #status)
-      , maybe "-" formatDuration (r ^. #durationMs)
-      , "exit=" <> maybe "-" (Text.pack . show) (r ^. #exitCode)
-      , Text.intercalate " " (r ^. #command)
+          ),
+        r ^. #serviceName,
+        runStatusToText (r ^. #status),
+        maybe "-" formatDuration (r ^. #durationMs),
+        "exit=" <> maybe "-" (Text.pack . show) (r ^. #exitCode),
+        Text.intercalate " " (r ^. #command)
       ]
 
 -- | Fetch the 50 most-recent rows from the @runs@ table and run them
@@ -95,8 +94,10 @@ selectRun :: CliEnv -> IO RunSelection
 selectRun env
   | not (isFzfAvailable (env ^. #fzf)) = pure RunFzfUnavailable
   | otherwise = do
-      eRows <- Pool.use (env ^. #pool)
-                 (Session.statement selectorRowLimit listRecentRunsStatement)
+      eRows <-
+        Pool.use
+          (env ^. #pool)
+          (Session.statement selectorRowLimit listRecentRunsStatement)
       case eRows of
         Left e ->
           pure (RunSelectionError (Text.pack ("persistence error: " <> show e)))
@@ -106,18 +107,18 @@ selectRun env
           res <- runFzf (env ^. #fzf) defaultRunOpts candidates
           pure $ case res of
             FzfSelected (rid, rec) -> RunChosen rid rec
-            FzfNoMatch             -> RunNoRows
-            FzfCancelled           -> RunSelectionCancelled
-            FzfError msg           -> RunSelectionError msg
+            FzfNoMatch -> RunNoRows
+            FzfCancelled -> RunSelectionCancelled
+            FzfError msg -> RunSelectionError msg
 
 -- | Pretty-print a duration in milliseconds. Mirrors the formatter
 --   used by @runs list@; kept local so the selector module does not
 --   depend on "Shiki.Cli.Runs" (which would create a cycle).
 formatDuration :: Int -> Text
 formatDuration ms =
-  let secs    = ms `div` 1000
-      mins    = secs `div` 60
-      hours   = mins `div` 60
+  let secs = ms `div` 1000
+      mins = secs `div` 60
+      hours = mins `div` 60
       remMins = mins `mod` 60
       remSecs = secs `mod` 60
    in if hours > 0
@@ -133,7 +134,7 @@ formatDuration ms =
 --   caller should exit non-zero (any user-visible message has already
 --   been printed).
 resolveRunId :: CliEnv -> Maybe Text -> IO (Maybe Text)
-resolveRunId _   (Just t) = pure (Just t)
+resolveRunId _ (Just t) = pure (Just t)
 resolveRunId env Nothing
   | not (isFzfAvailable (env ^. #fzf)) = do
       hPutStrLn stderr "shiki: no run id given and fzf is not available"
@@ -142,13 +143,13 @@ resolveRunId env Nothing
       sel <- selectRun env
       case sel of
         RunChosen (RunId u) _ -> pure (Just (Text.pack (show u)))
-        RunNoRows             -> do
+        RunNoRows -> do
           TIO.putStrLn "(no runs recorded yet)"
           pure Nothing
         RunSelectionCancelled -> pure Nothing
-        RunFzfUnavailable     -> do
+        RunFzfUnavailable -> do
           hPutStrLn stderr "shiki: no run id given and fzf is not available"
           pure Nothing
-        RunSelectionError e   -> do
+        RunSelectionError e -> do
           TIO.hPutStrLn stderr ("shiki: fzf: " <> e)
           pure Nothing

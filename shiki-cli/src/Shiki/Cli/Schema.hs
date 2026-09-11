@@ -2,24 +2,23 @@
 --   Precedence: @--db-schema@ flag, then @SHIKI_DB_SCHEMA@ env var, then
 --   @defaultSchema@ (which is @"shiki"@).
 module Shiki.Cli.Schema
-  ( resolveSchema
-  ) where
-
-import Shiki.Prelude
+  ( resolveSchema,
+  )
+where
 
 import Shiki.Persistence.Schema (Schema, defaultSchema, mkSchema)
-
-import "text" Data.Text qualified as Text
+import Shiki.Prelude
 import "base" System.Environment (lookupEnv)
+import "text" Data.Text qualified as Text
 
 resolveSchema :: Maybe Text -> IO Schema
 resolveSchema = \case
-  Just t  -> liftEither (mkSchema t)
+  Just t -> liftEither (mkSchema t)
   Nothing ->
     lookupEnv "SHIKI_DB_SCHEMA" >>= \case
       Just s | not (null s) -> liftEither (mkSchema (Text.pack s))
-      _                     -> pure defaultSchema
+      _ -> pure defaultSchema
   where
     liftEither = \case
-      Right s  -> pure s
+      Right s -> pure s
       Left err -> error ("shiki: invalid schema name: " <> Text.unpack err)
