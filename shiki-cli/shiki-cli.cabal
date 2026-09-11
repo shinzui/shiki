@@ -85,6 +85,7 @@ library
     optparse-applicative >=0.18,
     process ^>=1.6,
     shiki-core,
+    terminal-size >=0.3.4 && <0.4,
     text ^>=2.1,
     time ^>=1.14,
     vector,

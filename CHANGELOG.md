@@ -43,6 +43,12 @@ $ shiki runs show
 }
 ```
 
+- feat(shiki-cli): `shiki help <topic>` re-flows topic prose to the terminal
+  width, capped at 140 columns, and accepts `--width COLUMNS` (`-w`) to set it
+  explicitly. Indented tables and examples are left as written. Piped output is
+  unchanged: when stdout is not a terminal, the topic is printed byte-for-byte
+  as embedded.
+
 ### Changed
 
 - build: depend on `baikai`, `baikai-claude`, and `baikai-openai` 0.7 from

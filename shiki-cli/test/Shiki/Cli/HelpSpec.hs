@@ -7,7 +7,14 @@ import Data.List (nub)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Options.Applicative qualified as Opt
-import Shiki.Cli.Help (HelpCommand (..), HelpTopic (..), helpParser, helpTopics)
+import Shiki.Cli.Help
+  ( HelpCommand (..),
+    HelpTopic (..),
+    helpParser,
+    helpTopics,
+    renderTopic,
+    rewrap,
+  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertEqual, testCase)
 
@@ -27,8 +34,32 @@ tests =
         mapM_ assertNameOk topicNames,
       testCase "parser: no argument => ListTopics" $
         assertEqual "" (Right ListTopics) (parsePure []),
-      testCase "parser: 'services' => ShowTopic \"services\"" $
-        assertEqual "" (Right (ShowTopic "services")) (parsePure ["services"])
+      testCase "parser: 'services' => ShowTopic \"services\" Nothing" $
+        assertEqual "" (Right (ShowTopic "services" Nothing)) (parsePure ["services"]),
+      testCase "parser: 'services --width 60' => ShowTopic with width" $
+        assertEqual
+          ""
+          (Right (ShowTopic "services" (Just 60)))
+          (parsePure ["services", "--width", "60"]),
+      testCase "parser: '-w 60 services' => ShowTopic with width" $
+        assertEqual
+          ""
+          (Right (ShowTopic "services" (Just 60)))
+          (parsePure ["-w", "60", "services"]),
+      testCase "parser: '--width 60' without a topic => ListTopics" $
+        assertEqual "" (Right ListTopics) (parsePure ["--width", "60"]),
+      testCase "rewrap: prose lines fit the width" rewrapProseCase,
+      testCase "rewrap: indented blocks stay verbatim" rewrapIndentedCase,
+      testCase "rewrap: a word longer than the width gets its own line" $
+        assertEqual
+          ""
+          "a\nsupercalifragilistic\nb"
+          (rewrap 10 "a supercalifragilistic b"),
+      testCase "rewrap: every topic's prose fits 40 columns" rewrapTopicsCase,
+      testCase "renderTopic Nothing is the identity on every topic" $
+        mapM_
+          (\HelpTopic {name, content} -> assertEqual (Text.unpack name) content (renderTopic Nothing content))
+          helpTopics
     ]
 
 topicNames :: [Text]
@@ -64,3 +95,37 @@ parsePure args =
     Opt.Success a -> Right a
     Opt.Failure _ -> Left "parse failed"
     Opt.CompletionInvoked _ -> Left "unexpected completion"
+
+proseParagraph :: Text
+proseParagraph =
+  "shiki records every run in PostgreSQL with its service, command, status,\n\
+  \timing, and duration, so ad hoc operational work is easy to audit later.\n"
+
+rewrapProseCase :: Assertion
+rewrapProseCase = do
+  let out = rewrap 20 proseParagraph
+  mapM_
+    (\l -> assertBool ("line longer than 20: " <> show l) (Text.length l <= 20))
+    (Text.lines out)
+  assertEqual "words preserved" (Text.words proseParagraph) (Text.words out)
+
+rewrapIndentedCase :: Assertion
+rewrapIndentedCase = do
+  let block = "  shiki runs list --service ingest --limit 20\n  shiki runs show 3f2c1a9d"
+      body = proseParagraph <> "\n" <> block <> "\n"
+      out = rewrap 20 body
+  assertBool
+    ("indented block altered:\n" <> Text.unpack out)
+    (block `Text.isSuffixOf` out)
+
+rewrapTopicsCase :: Assertion
+rewrapTopicsCase = mapM_ check helpTopics
+  where
+    check HelpTopic {name, content} =
+      mapM_
+        ( \l ->
+            assertBool
+              (Text.unpack name <> ": prose line longer than 40: " <> show l)
+              ("  " `Text.isPrefixOf` l || Text.length l <= 40 || length (Text.words l) == 1)
+        )
+        (Text.lines (rewrap 40 content))

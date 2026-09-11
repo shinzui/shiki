@@ -13,8 +13,22 @@ works offline and there are no companion files to ship alongside
 
 ```text
 shiki help                  # print the topic index
-shiki help <TOPIC>          # print one topic verbatim
+shiki help <TOPIC>          # print one topic, fitted to the terminal
+shiki help <TOPIC> -w 72    # print one topic wrapped at 72 columns
 ```
+
+On a terminal, `shiki help <TOPIC>` re-flows the topic's prose paragraphs
+to the terminal width, capped at 140 columns so lines stay readable on a
+wide screen. `--width COLUMNS` (short `-w`) sets the width explicitly;
+an explicit width is not capped. Indented blocks — tables, examples, and
+transcripts — are never re-flowed, so their columns stay aligned. The
+re-flowed output separates sections with a single blank line.
+
+When standard output is not a terminal (`shiki help runs | less`,
+`shiki help runs > runs.txt`), the topic is printed verbatim: the bytes
+are exactly the embedded source file, so scripts see stable output.
+Pass `--width` to re-flow piped output anyway. `--width` without a topic
+is accepted and ignored, because the index is already short.
 
 Topic lookup is case-insensitive and tolerant of leading/trailing
 whitespace — `shiki help SERVICES` and `shiki help "  services  "` both
@@ -23,7 +37,7 @@ after printing `Unknown topic: <name>` and an `Available: …` list on
 stderr.
 
 `shiki help` with no argument exits `0`. There is no pager; for paging,
-pipe through `less`:
+pipe through `less` (add `--width` to keep the re-flowed layout):
 
 ```bash
 shiki help services | less

@@ -88,10 +88,10 @@ Milestone 3 — Record-shape conformance
 
 Milestone 4 — Terminal-aware help width
 
-- [ ] Add `terminal-size` to `shiki-cli`; extend `HelpCommand` with a `--width` option; add `resolveWidth`, `renderTopic`, and `rewrap` to `Shiki.Cli.Help`.
-- [ ] Extend `shiki-cli/test/Shiki/Cli/HelpSpec.hs` with parser and wrap tests.
-- [ ] Update `docs/user/help.md`, `docs/user/commands.md` (if it lists help flags), and `CHANGELOG.md`.
-- [ ] Piped output is byte-identical to the source file; `--width 40` keeps every prose line at or under 40 columns; commit.
+- [x] (2026-09-11 20:05Z) Add `terminal-size` to `shiki-cli` (Hackage confirmed 0.3.4 is the newest release); extend `HelpCommand` with a `--width` option; add `resolveWidth`, `renderTopic`, and `rewrap` to `Shiki.Cli.Help`, and export `maxAutoWidth` as well.
+- [x] (2026-09-11 20:10Z) Extend `shiki-cli/test/Shiki/Cli/HelpSpec.hs` with parser and wrap tests (eight new cases; the suite now has 50).
+- [x] (2026-09-11 20:15Z) Update `docs/user/help.md` and `CHANGELOG.md`. `docs/user/commands.md` has no `shiki help` section, so it needs no change.
+- [x] (2026-09-11 20:15Z) Piped output is byte-identical to the source file for all six topics; `--width 40` keeps every prose line at or under 40 columns; a pseudo-terminal check shows auto-detection (see Surprises & Discoveries); commit.
 
 Milestone 5 — Shell completions
 
@@ -213,6 +213,19 @@ Milestone 7 — Release conformance audit, ADR, and Nix build
   `clusterRef`, `credStatus`) before the first build, so no `-Wname-shadowing` warning
   appeared. GHC did not warn about unused selectors on the unexported records
   (`NamedContext`, `ExecCredentialResponse`, and others) now read only through labels.
+
+- (Implementation, M4) terminal-size derives `Generic` for `Window` behind a CPP guard
+  (`#if __GLASGOW_HASKELL__ >= 702`), so `win ^. #width` works on GHC 9.12, as the plan
+  assumed. Auto-detection was checked without an interactive session by running the
+  binary under `script`, which allocates a pseudo-terminal:
+
+  ```text
+  $ for c in 80 200; do script -q /dev/null sh -c "stty cols $c; shiki help runs" | … ; done
+  cols=80 max-prose-line=80
+  cols=200 max-prose-line=135
+  ```
+
+  At 200 columns the cap applies, and the longest packed line (135) stays under 140.
 
 
 ## Decision Log
