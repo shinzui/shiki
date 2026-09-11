@@ -21,25 +21,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   accept the `ID` positional as optional; omitting it opens an `fzf` picker
   populated from the 50 most recent recorded runs. `shiki service show`
   accepts `NAME` as optional; omitting it opens an `fzf` picker populated
-  from `services/*.dhall`. When `fzf` is not on `PATH` (or no interactive
-  terminal is attached), shiki falls back to the existing "argument
-  required" error path.
+  from `services/*.dhall`. When `fzf` is not on `PATH` (or `/dev/tty`
+  cannot be opened), shiki exits 1 with
+  `shiki: no run id given and fzf is not available` (or the service
+  equivalent) instead.
 
-Smoke transcript (the box is fzf's TUI; the JSON is the existing
-`runs show` output for the chosen row):
+Smoke transcript (the rows above the prompt are fzf's interface; the JSON is
+the `runs show` output for the chosen row):
 
 ```text
 $ shiki runs show
-> 3f2c1a9d  2026-05-27 17:22:11  ingest  Succeeded  12s  exit=0  echo hello
-  51a40b22  2026-05-27 17:19:08  ingest  Succeeded  03s  exit=0  echo hi
-  2/2
-> run>
+▌ 7a01bc22  2026-05-28 09:01:00  a-much-longer-service  failed     2m5s      2     migrate
+▌ 3f2c1a9d  2026-05-27 17:22:11  ingest                 succeeded  12s       0     reindex --batch 100
+  ID        STARTED              SERVICE                STATUS     DURATION  EXIT  COMMAND
+  2/2 ─────────────────────────────────────────────────────────────────────
+run>
 
 {
-  "runId": "3f2c1a9d-…",
-  "serviceName": "ingest",
-  "status": "Succeeded",
-  …
+    "runId": "3f2c1a9d-…",
+    "serviceName": "ingest",
+    "status": "Succeeded",
+    …
 }
 ```
 
@@ -54,6 +56,22 @@ $ shiki runs show
   scripts keep working when an upgrade moves the binary.
 
 ### Changed
+
+- fix(shiki-cli): EP-10 — run and service resolution errors print on stderr:
+  `no run matching <id>`, `ambiguous id prefix <id>`, and every picker message
+  (`shiki: no runs recorded yet`, `shiki: no service configs found in
+  services/`, and the fzf ones). `shiki runs show abc | jq` no longer feeds an
+  error message to `jq`. `shiki runs list` still prints `(no runs recorded
+  yet)` on stdout with exit 0.
+- feat(shiki-cli): EP-10 — the run picker aligns its rows in the same columns as
+  `shiki runs list`, under a row of column titles.
+- fix(shiki-cli): EP-10 — `shiki runs analyze` with no id no longer selects a
+  lone run by itself; the picker always waits for Enter and its header warns
+  that Enter overwrites the stored error summary.
+- fix(shiki-cli): EP-10 — with no id and no usable fzf, the `runs` commands fail
+  before connecting to the database, running migrations, or loading the
+  Kubernetes config. A picked run is used as fetched instead of being looked
+  up again by id text.
 
 - feat(shiki-cli): `shiki --help` lists the global `--db`, `--db-schema`, and
   `--env` flags under an `Environment` heading, and `shiki agent assist --help`
@@ -78,6 +96,13 @@ $ shiki runs show
   claude or codex CLI cannot express instead of launching it.
 
 ### Fixed
+
+- fix(shiki-cli): EP-10 — a picker query that matches nothing now reports
+  `shiki: no run matches the picker query` (or `shiki: no service matches the
+  picker query`) instead of claiming that no runs, or no service configs,
+  exist.
+- fix(shiki-cli): `shiki runs list` no longer hangs forever when the table has
+  rows. The column-width computation took the length of an infinite list.
 
 - fix(shiki-core): migrations no longer run `CREATE SCHEMA IF NOT EXISTS` or
   `create table if not exists schema_migrations` when those objects already

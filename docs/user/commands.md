@@ -43,37 +43,59 @@ only print text embedded in the binary.
 
 ## Interactive selection (fzf)
 
-The read-only subcommands that take a positional `ID` or `NAME` accept
-that argument as optional. When it is omitted, shiki opens a fuzzy
-picker via the local `fzf` binary, lists the candidates from the
-canonical source (PostgreSQL for runs, the `services/` directory for
-configs), and replaces the missing positional with whatever the
-operator picks. Precedence is **positional > fzf > error**; passing the
-positional always skips the picker.
+The subcommands that take a positional `ID` or `NAME` accept that argument as
+optional. When it is omitted, shiki opens a fuzzy picker via the local `fzf`
+binary, lists the candidates from the canonical source (PostgreSQL for runs,
+the `services/` directory for configs), and uses whatever the operator picks.
+Precedence is **positional > fzf > error**; passing the positional always
+skips the picker.
 
-The picker is available when:
+The picker needs two things:
 
-1. `fzf` is on `PATH` (shiki probes once at startup with
-   `findExecutable`), and
-2. shiki has an interactive keyboard — either stdin is a terminal, or
-   `/dev/tty` can be opened.
+1. `fzf` on `PATH`, and
+2. an openable `/dev/tty`. fzf reads keys from and draws on the terminal
+   device, not through shiki's stdin and stdout, so a piped stdin or stdout
+   is fine (`shiki runs show | jq` works), while a terminal stdin without a
+   usable `/dev/tty` is not enough.
 
-If neither holds, omitting the positional exits with
-`shiki: no run id given and fzf is not available` (or the equivalent
-service message) on stderr and exit code `1`. The non-interactive
-transcript-driven form (`shiki runs show <prefix>`) is unchanged.
+shiki checks this only when the positional is missing, and for the `runs`
+commands it checks **before** connecting to the database, running migrations,
+or loading the Kubernetes config, so an unusable picker fails fast even when
+the database is unreachable.
 
-Hitting Esc inside the picker cancels without an error message and
-exits `1` (Unix convention for cancelled interactive input). Ctrl-C is
-delegated to fzf via `delegate_ctlc`, so it cancels the picker rather
-than killing shiki.
+The run picker shows the 50 newest runs of the routed database, aligned in the
+same columns as `shiki runs list` under a row of column titles. The service
+picker lists the `services/*.dhall` basenames in lexical order.
+
+The read-only pickers (`runs show`, `runs logs`, `runs error`, `service
+show`) select a lone candidate without drawing the picker. `runs analyze`
+always asks, even for a single run, and its header warns that Enter re-runs
+analysis and overwrites the stored error summary, because analysis writes to
+the database and may call a paid model backend.
+
+Every resolution failure is printed on **stderr** and exits `1`:
+
+| Situation | Message |
+|-----------|---------|
+| No positional and fzf cannot run | `shiki: no run id given and fzf is not available` / `shiki: no service name given and fzf is not available` |
+| The `runs` table is empty | `shiki: no runs recorded yet` |
+| No `services/*.dhall` files | `shiki: no service configs found in services/` |
+| The picker query matches nothing and Enter is pressed | `shiki: no run matches the picker query` / `shiki: no service matches the picker query` |
+| fzf itself fails | `shiki: fzf: <reason>` |
+| A typed id prefix matches no run | `no run matching <id>` |
+| A typed id prefix matches several runs | `ambiguous id prefix <id>` |
+
+Esc or Ctrl-C inside the picker cancels silently and exits `1` (Unix
+convention for cancelled interactive input). Ctrl-C is delegated to fzf, so
+it cancels the picker rather than killing shiki.
 
 The subcommands that honour this convention:
 
-- `shiki runs show [ID]` — picker shows the 50 most recent runs.
+- `shiki runs show [ID]` — picker over the 50 newest runs.
 - `shiki runs logs [ID]` — same picker.
 - `shiki runs error [ID]` — same picker.
-- `shiki runs analyze [ID]` — same picker, then runs the analyzer.
+- `shiki runs analyze [ID]` — same picker, never auto-selected, then runs the
+  analyzer.
 - `shiki service show [NAME]` — picker over `services/*.dhall`.
 
 ## `shiki run`
@@ -122,13 +144,15 @@ shiki runs list [--service NAME] [--limit N]
 
 Columns: `ID` (8-char prefix), `STARTED`, `SERVICE`, `STATUS`,
 `DURATION`, `EXIT`, `COMMAND`. An empty result prints
-`(no runs recorded yet)`.
+`(no runs recorded yet)` on stdout and exits 0 — an empty list is not an
+error here.
 
 ## `shiki runs show [ID]`
 
 Print one `runs` row as pretty JSON. `ID` may be the full UUID or any
-unambiguous 8+ character prefix. Empty match → `no run matching <id>` and
-exit 1; multiple matches → `ambiguous id prefix <id>` and exit 1.
+unambiguous 8+ character prefix. Empty match → `no run matching <id>` on
+stderr and exit 1; multiple matches → `ambiguous id prefix <id>` on stderr
+and exit 1.
 
 If `ID` is omitted, shiki opens an `fzf` picker over the 50 most recent
 runs; see [Interactive selection (fzf)](#interactive-selection-fzf).
@@ -142,7 +166,8 @@ code, timestamps, duration, the captured `logTail`, `errorMessage`,
 
 Print just the captured log tail. Rows with no logs (no `log_tail`)
 print `(no log captured)`. `ID` is optional — omit it to pick from
-an `fzf` picker.
+an `fzf` picker. Id resolution failures (`no run matching <id>`,
+`ambiguous id prefix <id>`) print on stderr and exit 1.
 
 The tail is captured at run-finalize time: shiki fetches up to 1 000
 lines / 256 KiB of the failing pod's logs into memory, persists the
@@ -155,7 +180,8 @@ the wait-path; the stored tail is what `shiki runs analyze` reads later.
 Print just the one-line `error_summary`. Rows with no summary print
 `(no summary)`. Successful runs never have a summary by contract — see
 [Error analysis](./error-analysis.md) for why. `ID` is optional — omit
-it to pick from an `fzf` picker.
+it to pick from an `fzf` picker. Id resolution failures print on stderr and
+exit 1, as for `runs show`.
 
 ## `shiki runs analyze`
 
@@ -166,7 +192,11 @@ Re-run the analyzer over a stored run's `log_tail` and overwrite
 shiki runs analyze [ID] [--analyzer heuristic|baikai:<model-id>|none]
 ```
 
-`ID` is optional — omit it to pick from an `fzf` picker.
+`ID` is optional — omit it to pick from an `fzf` picker. Unlike the
+read-only pickers, this one never selects a lone run by itself: it always
+waits for Enter, and its header says that Enter overwrites the stored error
+summary. Id resolution failures print on stderr and exit 1, as for
+`runs show`.
 
 Backend resolution:
 
@@ -189,8 +219,9 @@ JSON. Touches neither the database nor the cluster — useful for
 sanity-checking a config change before running anything.
 
 `NAME` is optional — omit it to pick from an `fzf` picker over
-`services/*.dhall`. With no `.dhall` files present, shiki prints
-`(no service configs found in services/)` and exits 1.
+`services/*.dhall`; a lone file is shown without drawing the picker. With no
+`.dhall` files present, shiki prints
+`shiki: no service configs found in services/` on stderr and exits 1.
 
 This subcommand is exempt from the global `--db`, `--db-schema`, and `--env`
 options; they are still accepted but unused.

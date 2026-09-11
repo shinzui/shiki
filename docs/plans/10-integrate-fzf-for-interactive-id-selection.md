@@ -24,13 +24,16 @@ provenance:
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries,
 Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
-**Status (2026-09-11): reopened.** Milestones 1–5 landed on 2026-05-28 (commits `811c9db`,
+**Status (2026-09-11): complete.** Milestones 1–5 landed on 2026-05-28 (commits `811c9db`,
 `818e39b`, `cd32aa6`, `aa111b2`, `d51aecc`) and deliver the feature. An architecture review
 on 2026-09-11 found a real bug (a picker query that matches nothing reports "no runs
 recorded yet"), a stringly-typed seam between the picker and the command handlers, fzf
-detection in the wrong place, and several smaller defects. Milestones 6–10 fix all of
-them. Milestones 1–5 describe the first implementation; where they disagree with
-milestones 6–10, milestones 6–10 win.
+detection in the wrong place, and several smaller defects. Milestones 6–10 (commits
+`66f8de2`, `2ccbeac`, `8ea5426`, `b18ef30`, and the M10 commit) fix all of them, plus a
+pre-existing hang in `shiki runs list` found along the way. Milestones 1–5 describe the
+first implementation; where they disagree with milestones 6–10, milestones 6–10 win. The
+durable decisions are recorded in
+[ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md).
 
 
 ## Purpose / Big Picture
@@ -249,12 +252,21 @@ This section must always reflect the actual current state of the work.
 
 ### M10 — Docs, help topic, changelog, retrospective
 
-- [ ] Update `docs/user/commands.md` ("Interactive selection (fzf)" and the five command
-      entries).
-- [ ] Mention the picker in `shiki-cli/data/help/runs.md`.
-- [ ] Add `Changed` / `Fixed` entries to `CHANGELOG.md`.
-- [ ] Run `nix fmt`, `cabal test all`, and the full acceptance matrix; record evidence.
-- [ ] Fill in Outcomes & Retrospective and the ADR distillation note; commit.
+- [x] Update `docs/user/commands.md` ("Interactive selection (fzf)" and the five command
+      entries, plus the `runs list` empty-table note). [2026-09-11]
+- [x] Mention the picker in `shiki-cli/data/help/runs.md` (and correct its "read-only"
+      claim: `analyze` writes). [2026-09-11]
+- [x] List the Template-Haskell-embedded `data/help/*.md` and `data/prompts/*.md` under
+      `extra-source-files` in `shiki-cli/shiki-cli.cabal`, so editing a help topic rebuilds
+      the binary (see Surprises). [2026-09-11]
+- [x] Add `Changed` / `Fixed` entries to `CHANGELOG.md` and refresh the EP-10 smoke
+      transcript. [2026-09-11]
+- [x] Run `nix fmt` (it also reformatted an unrelated, never-formatted
+      `shiki-core/src/Shiki/Analysis/Backend.hs`; restored, see Surprises), `cabal test all`
+      (`All 33 tests passed`, `All 92 tests passed`), and the full acceptance matrix; record
+      evidence. [2026-09-11]
+- [x] Write [ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md); fill
+      in Outcomes & Retrospective; commit. [2026-09-11]
 
 
 ## Surprises & Discoveries
@@ -373,6 +385,25 @@ implementation. Provide concise evidence.
   An empty table never reaches `renderTable`, so `(no runs recorded yet)` still worked. The
   M7 acceptance check "byte-identical to before" therefore has no "before" to compare
   against; see the Decision Log.
+
+- 2026-09-11 (build): After editing `shiki-cli/data/help/runs.md`, `cabal build` reported
+  nothing to do and `shiki help runs` still printed the old text, even after `touch`ing
+  `shiki-cli/src/Shiki/Cli/Help.hs`. The topics are embedded with file-embed's
+  `embedStringFile`, which registers the file with GHC, but cabal only re-invokes GHC when a
+  file it monitors changes, and it does not monitor `data-files`. Listing the embedded files
+  under `extra-source-files` fixed it: the next build printed
+  `Compiling Shiki.Cli.Help [data/help/runs.md changed]`. Clean builds (including the Nix
+  build) were never affected.
+
+- 2026-09-11: `nix fmt` rewrote `shiki-core/src/Shiki/Analysis/Backend.hs`, which this plan
+  does not touch: that module was never run through fourmolu, and the pre-commit treefmt hook
+  only checks staged files. The change was restored so this plan's commits stay scoped; a
+  separate formatting commit can apply it.
+
+- 2026-09-11: `docs/adr/` now exists. Commit `5264bf0` added
+  [ADR 1](../adr/1-follow-haskell-jitsurei-conventions.md) after this plan was reopened, so
+  the plan's "no ADR corpus" statements were out of date. `mori.dhall` still declares no
+  profiled ADR bundle, so ADRs follow the plain Markdown convention of ADR 1.
 
 
 ## Decision Log
@@ -580,6 +611,25 @@ Record every decision made while working on the plan.
   with, so the unit test and a live run over seeded rows are the acceptance.
   Date: 2026-09-11.
 
+- Decision: List `data/help/*.md` and `data/prompts/*.md` under `extra-source-files` in
+  `shiki-cli/shiki-cli.cabal`, with a comment saying why.
+  Rationale: M10 edits a help topic, and without this an incremental build keeps serving
+  the old text (see Surprises). It is a one-stanza build fix with no effect on clean builds,
+  and the comment documents the gotcha where the next person editing the cabal file will see
+  it, so it is not promoted to an ADR.
+  Date: 2026-09-11.
+
+- Decision: Promote the resolver design to
+  [ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md) (positional >
+  picker > explicit error; decide the target before acquiring resources; return the entity
+  plus a typed failure rendered on stderr in one place; fzf availability is binary plus
+  `/dev/tty`; auto-select only for read-only pickers; interactive affordances stay in
+  `shiki-cli`).
+  Rationale: These govern every future picker (`shiki run [SERVICE]`, `agent assist` run
+  selection), not just this plan. The execution details (fake-fzf tests, the throwaway
+  database, the `computeWidths` fix) stay here.
+  Date: 2026-09-11.
+
 
 ## Outcomes & Retrospective
 
@@ -625,11 +675,55 @@ re-query: scheduled in milestones 6–10. Still open and out of scope: `shiki ru
 selection, `shiki agent assist` run selection, and anchoring `services/` to the project
 root (see the Decision Log).
 
-**ADR distillation.** The repository has no ADR corpus (`docs/adr/` is absent and
-`mori.dhall` declares no ADR bundle). Candidates for promotion once one exists, to be
-revisited in M10: interactive affordances live in `shiki-cli`; an omitted positional
-resolves as positional > picker > explicit error, decided before any expensive resource is
-acquired; resolvers return entities plus a typed failure rendered in one place.
+**ADR distillation.** At the time, the repository had no ADR corpus. Candidates for
+promotion, to be revisited in M10: interactive affordances live in `shiki-cli`; an omitted
+positional resolves as positional > picker > explicit error, decided before any expensive
+resource is acquired; resolvers return entities plus a typed failure rendered in one place.
+
+### 2026-09-11 — Milestones 6–10 complete
+
+**Outcome.** Every row of the acceptance matrix holds, checked against a live PostgreSQL 18
+database with the interactive rows driven through tmux (evidence under Validation and
+Acceptance). A picker query that matches nothing now says so; the `runs` pickers fail
+before any database work when fzf cannot run; the run picker's rows are aligned under the
+`runs list` titles; `runs analyze` always asks and says what Enter does; every resolution
+failure goes to stderr from one renderer per entity; and a picked run is used as fetched.
+`CliEnv` no longer carries fzf state. The CLI suite grew from 62 to 92 tests, including
+end-to-end `runFzf` tests against a fake fzf script, which the first implementation had
+ruled out.
+
+**What matched the plan.** The milestone split held: each of M6–M9 built warning-free, kept
+the suite green, and was one commit. fzf's `--header-lines=1` rendered the title row through
+`--with-nth` exactly above the rows on the first try, so M7's fallback to an unaligned
+`withHeader` was not needed. The monomorphic `(CliEnv -> IO ()) -> IO ()` continuation was
+enough for `runRuns`.
+
+**What deviated.** `shiki runs list` turned out to hang on any non-empty table (a bug from
+EP-5), so M7 fixed `computeWidths` instead of moving it unchanged, and its acceptance became
+a live table plus a regression test rather than a byte-for-byte diff. Status text is
+lowercase (`succeeded`), not the capitalized form the plan assumed. The checkout's
+PostgreSQL 17 data directory cannot start under the dev shell's PostgreSQL 18, so manual
+checks used a throwaway cluster. Help topics did not rebuild after an edit until the
+embedded files were listed as `extra-source-files`. `nix fmt` touched an unrelated module,
+which was restored.
+
+**Gaps / follow-ups.** Still open and out of scope: `shiki run [SERVICE]` selection,
+`shiki agent assist` run selection, anchoring `services/` to the project root, and friendlier
+messages for a missing service config (`service show <missing>` prints a raw `IOException`)
+and an unreachable database with a positional id (a raw `ErrorCall`). Also for the user:
+`db/db` needs a PostgreSQL 17 to 18 upgrade (or re-initialization) before `just up` works
+again, and `shiki-core/src/Shiki/Analysis/Backend.hs` needs a formatting pass.
+
+**Lesson.** Two of the bugs fixed here hid behind the success path. The no-match message was
+wrong because the resolver's return type could not tell cases apart, and the `runs list` hang
+lived in code that had only ever been run against an empty table. Typed outcomes and a test
+that renders a real row would each have caught one of them.
+
+**ADR distillation.** Done:
+[ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md) records the
+resolver design. The `extra-source-files` gotcha is documented in a comment in
+`shiki-cli/shiki-cli.cabal` instead (see the Decision Log). Execution details stay in this
+plan.
 
 
 ## Context and Orientation
@@ -664,8 +758,13 @@ Prelude; a module that uses `#label` syntax must also write
 imported explicitly. Haskell is formatted with fourmolu (`fourmolu.yaml`) and cabal files
 with cabal-gild; `nix fmt` runs both.
 
-**Architecture Decision Records.** No relevant ADR exists: there is no `docs/adr/`
-directory and `mori.dhall` declares no ADR bundle.
+**Architecture Decision Records.** `docs/adr/` holds plain Markdown ADRs (`mori.dhall`
+declares no profiled ADR bundle). [ADR 1](../adr/1-follow-haskell-jitsurei-conventions.md)
+records the haskell-jitsurei conventions summarized in the previous paragraph (unprefixed
+strict fields read with `^. #field`, a per-module `import Data.Generics.Labels ()`, a
+warning-free build) and lists fzf integration among the adopted CLI patterns.
+[ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md) was written by
+this plan's M10 and records the resolver design of milestones 6–9.
 
 **How a command reaches its handler.** `shiki-cli/src/Shiki/Cli.hs` defines:
 
@@ -1380,6 +1479,12 @@ newest runs in fzf (requires fzf and a terminal; see `docs/user/commands.md`). K
 within the file's existing width so `shiki help runs` re-flows cleanly; `HelpSpec` must
 stay green.
 
+**File `shiki-cli/shiki-cli.cabal`.** The help topics are embedded into the binary at
+compile time (`embedStringFile` in `shiki-cli/src/Shiki/Cli/Help.hs`), and cabal does not
+watch `data-files`, so an incremental build keeps the old text. Add an
+`extra-source-files` stanza listing `data/help/*.md` and `data/prompts/*.md`, with a comment
+saying why; `cabal build` then prints `Compiling Shiki.Cli.Help [data/help/runs.md changed]`.
+
 **File `CHANGELOG.md`.** Under `## [Unreleased]` add to `### Changed`: run and service
 resolution errors (`no run matching`, `ambiguous id prefix`, picker messages) print on
 stderr; the run picker shows aligned `runs list` columns under a title row; `runs analyze`
@@ -1834,3 +1939,12 @@ The `Command` type in `Shiki.Cli` keeps `ServiceShow !(Maybe Text)`.
   the refresh: the run picker never rendered ANSI colours, and fzf does not draw on stderr.
   Condensed the Plan of Work text for completed milestones 1–5, whose full excerpts are
   superseded by milestones 6–10.
+
+- 2026-09-11 — Implemented milestones 6–10. Recorded two surprises that changed the work: a
+  pre-existing `shiki runs list` hang (M7 now fixes `computeWidths`, and its acceptance and
+  matrix row 13 no longer compare against a "before" capture) and stale embedded help topics
+  (M10 adds `extra-source-files`). Also recorded the PostgreSQL 17/18 data-directory mismatch
+  and the throwaway test database, the lowercase status text, `nix fmt` touching an unrelated
+  file, and the now-existing ADR corpus. Updated Context and Orientation to cite ADR 1 and
+  ADR 2, added evidence for every acceptance row, marked the plan complete, and wrote the
+  retrospective.

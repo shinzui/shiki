@@ -3,7 +3,8 @@ SHIKI RUNS
 
 Every invocation of 'shiki run <service> -- ARGS' records one row in the
 'runs' table of the configured PostgreSQL database. The 'runs' family of
-subcommands queries that table read-only.
+subcommands queries that table; only 'analyze' writes, replacing a run's
+error_summary.
 
 
 RUN LIFECYCLE
@@ -60,13 +61,19 @@ QUERYING RUNS
   shiki runs analyze <id>               Re-run an analyzer over log_tail
                                         (see 'shiki help analyzers').
 
+Omit <id> on show, logs, error, or analyze to pick from the 50 newest runs
+in an fzf picker (requires fzf on PATH and a terminal). show, logs, and
+error take a lone run without asking; analyze always asks, because it
+overwrites the stored error summary. See docs/user/commands.md.
+
 
 ID PREFIX CONVENTIONS
 
 Every 'runs' subcommand that takes an <id> accepts the full UUID or any
 unambiguous prefix. The default table view prints the first 8 characters
 of each row's UUID; that 8-character prefix is the convention. Empty
-matches and ambiguous prefixes both exit non-zero.
+matches and ambiguous prefixes both print a message on stderr and exit
+non-zero.
 
 
 Full reference: docs/user/getting-started.md, docs/user/commands.md
