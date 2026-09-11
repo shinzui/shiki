@@ -1,3 +1,14 @@
+---
+type: Reference
+title: "Service configuration"
+description: "Reference every field of a services/<name>.dhall service configuration and how shiki turns it into a one-off Kubernetes Job."
+docId: DOC-9
+tags: [shiki, configuration, dhall, kubernetes]
+generated:
+  by: human:nadeem
+  at: 2026-06-04T22:36:40Z
+---
+
 # Service configuration
 
 shiki reads one **Dhall file per service** from `services/<name>.dhall`

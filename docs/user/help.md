@@ -1,3 +1,14 @@
+---
+type: Reference
+title: "Help command"
+description: "Reference the in-terminal shiki help reader: usage, width fitting, piped output, topic lookup rules, and the shipped topic catalog."
+docId: DOC-6
+tags: [shiki, cli, help, topics]
+generated:
+  by: human:nadeem
+  at: 2026-09-11T22:39:25Z
+---
+
 # Help command
 
 `shiki help` is the in-terminal index and reader for curated topic guides
@@ -45,10 +56,15 @@ shiki help services | less
 
 ## Topics
 
-The shipped catalog mirrors the operator-guide pages under `docs/user/`
-one-to-one. Each in-terminal topic is a condensed restatement of one
-user-guide page; `docs/user/<page>.md` remains the canonical reference,
-and every topic ends with a `Full reference:` line pointing back to it.
+Six topics ship today. Each is a condensed restatement of the
+operator-guide material under `docs/user/`; those pages remain the
+canonical reference, and every topic ends with a `Full reference:` line
+pointing back to the page (or pages) it condenses. The catalog is not a
+one-to-one mirror of `docs/user/` — it covers the concepts an operator
+looks up mid-session, so there is no topic for
+[project configuration](./project-config.md),
+[getting started](./getting-started.md), the
+[commands reference](./commands.md) as a whole, or this page.
 
 | Topic       | Description                              | Full reference                          |
 |-------------|------------------------------------------|-----------------------------------------|

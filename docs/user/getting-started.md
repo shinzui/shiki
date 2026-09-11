@@ -1,3 +1,14 @@
+---
+type: Tutorial
+title: "Getting started"
+description: "Take a fresh checkout to a first recorded shiki run: prerequisites, the dev shell, local Postgres, cluster authentication, a service config, and run inspection."
+docId: DOC-5
+tags: [shiki, getting-started, kubernetes, postgresql]
+generated:
+  by: human:nadeem
+  at: 2026-09-11T22:39:25Z
+---
+
 # Getting started
 
 This guide takes you from a fresh checkout to your first recorded
@@ -26,13 +37,14 @@ You need three things on your machine:
 nix develop          # or: direnv allow, if you use direnv
 ```
 
-The shell hook in `flake.nix` exports a project-local Postgres
-configuration:
+The dev-shell hook (in [`nix/haskell.nix`](../../nix/haskell.nix), which
+`flake.nix` imports) exports a project-local Postgres configuration:
 
 | Variable                 | Value                                                 |
 |--------------------------|-------------------------------------------------------|
 | `PGHOST`                 | `$PWD/db`                                             |
 | `PGDATA`                 | `$PWD/db/db`                                          |
+| `PGLOG`                  | `$PWD/db/postgres.log`                                |
 | `PGDATABASE`             | `shiki`                                               |
 | `PG_CONNECTION_STRING`   | `postgresql://<url-encoded PGHOST>/shiki`             |
 
@@ -125,7 +137,8 @@ Walkthrough of what shiki does between the `--` and the first log line:
 2. Reads the live Deployment named in `detectFromDeployment` and
    captures the image digest plus other fields it cannot infer from the
    Dhall config.
-3. Generates a unique Job name (`<service>-<timestamp>-<rand>`).
+3. Generates a unique Job name
+   (`<service>-oneoff-YYYYMMDD-HHMMSS-<6 random lowercase letters>`).
 4. Inserts a row into `runs` with status `pending`, then flips it to
    `running`.
 5. Submits the Job to Kubernetes.
@@ -166,12 +179,12 @@ context's user determines how shiki proves who it is. shiki supports:
   `client.authentication.k8s.io` contract, which is how current GKE kubeconfigs
   authenticate via **`gke-gcloud-auth-plugin`**.
 
-For an exec-plugin user, shiki runs the plugin the same way `kubectl` does:
-once per invocation it executes the configured `command` (passing
-`KUBERNETES_EXEC_INFO` when the stanza sets `provideClusterInfo: true`), reads
-the `ExecCredential` it prints, and uses the returned bearer token for every API
-call. So if `kubectl get deploy -n <ns> <name>` works against your GKE cluster,
-`shiki` works too — with your unmodified kubeconfig and no manual token juggling.
+For an exec-plugin user, shiki runs the plugin the same way `kubectl` does: it
+executes the configured `command` (passing `KUBERNETES_EXEC_INFO` when the
+stanza sets `provideClusterInfo: true`), reads the `ExecCredential` it prints,
+and uses the returned bearer token for its API calls. So if
+`kubectl get deploy -n <ns> <name>` works against your GKE cluster, `shiki`
+works too — with your unmodified kubeconfig and no manual token juggling.
 
 This requires the plugin binary on your `PATH`. For GKE:
 
@@ -186,10 +199,24 @@ Notes and current limits:
   sets `spec.interactive = false`. A plugin configured with
   `interactiveMode: Always` is refused with a clear error, since there is no
   terminal to prompt on. GKE's default `IfAvailable` is fine.
-- shiki resolves a **fresh** credential on every invocation rather than caching
-  tokens on disk; it is a short-lived CLI making a handful of calls per process.
+- shiki resolves a credential at startup and **never caches tokens on disk**.
   Any caching the plugin itself does (for example `gcloud`'s own token cache)
   still applies.
+- An exec-plugin credential is **renewed in-process when it expires**. This
+  matters for `shiki run`, which blocks for as long as the Job takes:
+  `gke-gcloud-auth-plugin` hands out whatever is left of a one-hour token, not
+  a fresh hour, so a long run routinely outlives the token it started with. If
+  the API server answers `401`, shiki re-runs the plugin, retries the call
+  once, and keeps the new credential for everything after it. A second `401` is
+  taken at face value — that is an identity that genuinely lacks access, not an
+  expired token. Renewal applies only to exec-plugin users, because those are
+  the credentials shiki mints itself; client-certificate, OIDC, and in-cluster
+  service-account auth behave exactly as before.
+- A **failed status read is not a failed run**. While waiting, shiki tolerates
+  up to 5 consecutive errors reading the Job's status — resetting the count on
+  any successful read — before giving up, so an API-server blip does not
+  mislabel a Job that is still running. Ctrl-C and the timeout still interrupt
+  the wait immediately.
 - The **client-certificate** form of an exec response
   (`status.clientCertificateData` / `clientKeyData`) is not yet supported and is
   rejected with an explicit message; GKE returns a token, which is supported.

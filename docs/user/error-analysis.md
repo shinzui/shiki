@@ -1,3 +1,14 @@
+---
+type: Explanation
+title: "Error analysis"
+description: "Explain the difference between a run's Kubernetes error and its log-derived error summary, and how to choose between the Heuristic, Baikai, and None analyzers."
+docId: DOC-4
+tags: [shiki, analyzers, errors, observability]
+generated:
+  by: human:nadeem
+  at: 2026-09-11T22:39:25Z
+---
+
 # Error analysis
 
 Every failed run carries **two distinct error signals** on its `runs`
@@ -58,16 +69,26 @@ summary at all.
 
 Runs through the local
 [`shinzui/baikai`](https://github.com/shinzui/baikai-project) library.
-Picks the right provider from the model id prefix:
+The model id is a **baikai catalog id**, and shiki dispatches only the
+ids it has been taught — the registry is deliberately narrow so a typo
+in `--analyzer=baikai:...` fails loudly instead of silently falling back
+to some default model:
 
-| Model id prefix       | Provider   | API key                |
-|-----------------------|------------|------------------------|
-| `anthropic_*`         | Anthropic  | `ANTHROPIC_API_KEY`    |
-| `openai_*`            | OpenAI     | `OPENAI_API_KEY`       |
+| Model id                       | Provider   | API key             |
+|--------------------------------|------------|---------------------|
+| `anthropic_claude_haiku_4_5`   | Anthropic  | `ANTHROPIC_API_KEY` |
+| `anthropic_claude_sonnet_4_6`  | Anthropic  | `ANTHROPIC_API_KEY` |
+| `openai_gpt_4o_mini`           | OpenAI     | `OPENAI_API_KEY`    |
+
+Any other id — including a real baikai catalog id this build does not
+list — is rejected at dispatch time with
+`shiki: baikai backend failed: unknown baikai model: <id>`. Adding one is
+a source change to `Shiki.Analysis.Baikai`, not configuration.
 
 The key is read from the environment when shiki's internal
 `Options.apiKey` is unset (which it always is — there is currently no
-flag for inlining a key).
+flag for inlining a key). shiki asks for at most 256 output tokens at
+temperature `0.0` and caps the stored summary at 512 characters.
 
 ### None
 
@@ -123,8 +144,11 @@ Notable error paths:
 - `shiki: unknown analyzer override: ...` — typo in `--analyzer`.
   Accepted forms: `heuristic`, `none`, `baikai:<model-id>` with a
   non-empty model id.
+- `shiki: baikai backend failed: unknown baikai model: <id>` — the model
+  id is not one of the three this build dispatches (see
+  [Baikai (LLM)](#baikai-llm)). Caught before any network call.
 - `shiki: baikai backend failed: ...` — the Baikai library itself
-  rejected the request (bad API key, model id, network failure, …).
+  rejected the request (bad API key, network failure, provider error, …).
 - `(no logs captured; cannot analyze)` — the row has `log_tail = NULL`
   (e.g. submission itself failed before logs existed).
 

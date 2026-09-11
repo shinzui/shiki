@@ -1,3 +1,14 @@
+---
+type: Navigation
+title: "shiki user guide"
+description: "Route operators to the shiki getting-started tutorial, command reference, configuration pages, and analysis guides."
+docId: DOC-1
+tags: [shiki, navigation, user-guide]
+generated:
+  by: human:nadeem
+  at: 2026-09-11T22:39:25Z
+---
+
 # shiki user guide
 
 Operator-facing documentation for [`shiki`](../../README.md) — the CLI for
@@ -13,8 +24,8 @@ durable run history in PostgreSQL.
   topic reader; the fastest way to look up shiki concepts without leaving
   the terminal.
 - **[Commands](./commands.md)** — every subcommand and flag, the global
-  `--db` / `--db-schema` / `--env` options, and the environment variables
-  they read.
+  `--db` / `--db-schema` / `--env` / `--version` options, and the
+  environment variables they read.
 - **[Project configuration](./project-config.md)** — project-local
   `shiki.dhall`, named environments, `shiki config show`, and
   environment-aware database routing.

@@ -1,3 +1,14 @@
+---
+type: Reference
+title: "Project Configuration"
+description: "Reference the project-local shiki.dhall file format, named environments, environment selection order, and database connection precedence."
+docId: DOC-7
+tags: [shiki, configuration, dhall, environments]
+generated:
+  by: human:nadeem
+  at: 2026-06-11T20:19:47Z
+---
+
 # Project Configuration
 
 `shiki.dhall` is a project-local configuration file. Place it at the root of a checkout

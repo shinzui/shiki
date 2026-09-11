@@ -1,10 +1,22 @@
+---
+type: Reference
+title: "Agent assist"
+description: "Reference the shiki agent assist providers, preloaded session context, per-provider safety policy, flags, and exit behavior."
+docId: DOC-2
+tags: [shiki, agent, llm, cli]
+generated:
+  by: human:nadeem
+  at: 2026-09-11T22:39:25Z
+---
+
 # Agent assist
 
 `shiki agent assist` opens an AI session preloaded with shiki's current
 view of the operator's local state. The agent then drives shiki's own
 subcommands on the operator's behalf — `shiki run`, `shiki runs list`,
 `shiki runs error`, `shiki runs analyze`, `shiki service show`, plus a
-few read-only shell verbs — through a hard-coded allowed-tool list.
+few read-only shell verbs — inside the safety policy shiki picks for the
+provider. See [Session safety policy](#session-safety-policy).
 
 ## Quick start
 
@@ -99,10 +111,16 @@ shiki: unknown agent provider '<x>'. Expected one of: claude-cli, codex-cli, ant
 
 …before any context-gathering or subprocess work happens.
 
-## The allowed-tool list
+## Session safety policy
 
-The two interactive providers (`claude-cli`, `codex-cli`) ship with a
-hard-coded allowed-tool list so each session has the same defense-in-depth:
+The two interactive providers express safety differently, because the two
+CLIs do. shiki picks the policy for you; neither is configurable from the
+shiki command line.
+
+### `claude-cli` — a hard-coded allowed-tool list
+
+`shiki agent assist --provider claude-cli` launches `claude` with this
+allowed-tool list:
 
 - `Bash(shiki *)` — drive any shiki subcommand.
 - `Bash(kubectl get *)` — read-only cluster inspection.
@@ -114,9 +132,16 @@ The list is scoped to verbs an operator would not be surprised to see
 issued on their behalf. Anything else (`kubectl apply`, `kubectl
 delete`, `rm`, …) still prompts inside the agent CLI as usual.
 
-The Codex CLI provider additionally sets sandbox mode to
-`workspace-write` with approval-on-request, the same default Codex uses
-when you launch it by hand.
+### `codex-cli` — a sandbox, not a tool list
+
+`shiki agent assist --provider codex-cli` launches `codex` with sandbox
+mode `workspace-write` and approval-on-request — the same default Codex
+uses when you launch it by hand. The allowed-tool list above does **not**
+apply to this provider; Codex's own sandbox and approval prompts are what
+bound the session.
+
+If a launcher cannot express the safety policy shiki asked for, it refuses
+without spawning anything and prints `shiki: <reason>` on stderr.
 
 ## All flags
 

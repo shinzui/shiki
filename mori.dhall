@@ -1,6 +1,6 @@
 let Schema =
-      https://raw.githubusercontent.com/shinzui/mori-schema/026ae74331e5c516542af1dd96f041c658ed4621/package.dhall
-        sha256:18258ef583580a897f4af3e7c86db0342afb42fb40efc535b217ba1089230141
+      https://raw.githubusercontent.com/shinzui/mori-schema/3522f4a51181d73c9c90fc27a7c0838bd29ae95f/package.dhall
+        sha256:dcb19e2312e790bad14e622cc98a1281cd2298c5b564a2f0d0534d3c718d8803
 
 in  Schema.Project::{
     , project = Schema.ProjectIdentity::{
@@ -40,6 +40,7 @@ in  Schema.Project::{
               , kind = Some Schema.DependencyKind.ThirdParty
               , source = Some Schema.DependencySource.Hackage
               , scope = Some Schema.DependencyScope.Test
+              , versionConstraint = None Text
               }
           , Schema.Dependency.WithAugmentation
               { name = "UnkindPartition/tasty"
@@ -48,6 +49,7 @@ in  Schema.Project::{
               , kind = Some Schema.DependencyKind.ThirdParty
               , source = Some Schema.DependencySource.Hackage
               , scope = Some Schema.DependencyScope.Test
+              , versionConstraint = None Text
               }
           ]
         }
@@ -70,6 +72,7 @@ in  Schema.Project::{
               , kind = Some Schema.DependencyKind.ThirdParty
               , source = Some Schema.DependencySource.Hackage
               , scope = Some Schema.DependencyScope.Test
+              , versionConstraint = None Text
               }
           , Schema.Dependency.WithAugmentation
               { name = "UnkindPartition/tasty"
@@ -78,6 +81,7 @@ in  Schema.Project::{
               , kind = Some Schema.DependencyKind.ThirdParty
               , source = Some Schema.DependencySource.Hackage
               , scope = Some Schema.DependencyScope.Test
+              , versionConstraint = None Text
               }
           , Schema.Dependency.WithAugmentation
               { name = "haskell-hvr/uuid"
@@ -86,6 +90,7 @@ in  Schema.Project::{
               , kind = Some Schema.DependencyKind.ThirdParty
               , source = Some Schema.DependencySource.Hackage
               , scope = Some Schema.DependencyScope.Test
+              , versionConstraint = None Text
               }
           ]
         }
@@ -105,5 +110,26 @@ in  Schema.Project::{
       , "haskell-hvr/uuid"
       , "kazu-yamamoto/crypton"
       , "jappeace/ram"
+      ]
+    , okfBundles =
+      [ Schema.OkfBundle::{
+        , name = "user-documentation"
+        , path = "docs/user"
+        , profile = Some "mori/user-documentation-profile.dhall"
+        , profileBinding = Some
+            ( Schema.ProfileBinding.Published
+                Schema.PinnedImport::{
+                , publisher = "shinzui/okf-profiles"
+                , publisherRef = Some
+                    Schema.MoriRef::{ namespace = "shinzui", name = "okf-profiles" }
+                , export = Some "documentation.userDocumentation"
+                , version = Some "v0.13.1"
+                , pin = Some
+                    "sha256:3be4c39d128ef8a21e39d7ae4eaef29097801b343ab5672caaf7e30186a8f91a"
+                }
+            )
+        , okfVersion = "0.2"
+        , description = Some "Reader-facing product documentation"
+        }
       ]
     }

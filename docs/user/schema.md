@@ -1,3 +1,14 @@
+---
+type: Reference
+title: "Database schema"
+description: "Reference shiki's PostgreSQL runs table, its indexes, migration bookkeeping, restricted-role grants, schema-name overrides, and the migration out of public."
+docId: DOC-8
+tags: [shiki, postgresql, schema, migrations]
+generated:
+  by: human:nadeem
+  at: 2026-09-11T22:39:25Z
+---
+
 # Database schema
 
 shiki keeps its tables in a dedicated PostgreSQL schema (`shiki` by
@@ -18,7 +29,7 @@ One row per submitted run. Written by `shiki run`, read by the
 | `service_name`         | `text`         | The `name` field from the service's Dhall config.                                                                                                          |
 | `command`              | `text[]`       | Everything passed after `--` on the `shiki run` command line.                                                                                              |
 | `namespace`            | `text`         | The namespace the Job was submitted into (may differ from the service default if `--namespace` was used).                                                  |
-| `job_name`             | `text`         | `<service>-<timestamp>-<rand>` — unique per run.                                                                                                            |
+| `job_name`             | `text`         | `<service>-oneoff-YYYYMMDD-HHMMSS-<6 random lowercase letters>` — unique per run.                                                                                                            |
 | `image`                | `text`         | Image digest read from the live Deployment at submit time. `NULL` only if introspection itself failed.                                                     |
 | `status`               | `text`         | One of `pending`, `running`, `succeeded`, `failed`. Enforced by `CHECK` constraint.                                                                        |
 | `exit_code`            | `integer`      | The container's exit code on `succeeded` / `failed`; `NULL` on `pending` / `running` and on failures that happened before the container could exit.        |

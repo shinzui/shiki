@@ -1,3 +1,14 @@
+---
+type: Reference
+title: "Commands reference"
+description: "Reference every shiki subcommand, its flags, the global database and environment options, the fzf pickers, and the environment variables shiki reads."
+docId: DOC-3
+tags: [shiki, cli, commands, reference]
+generated:
+  by: human:nadeem
+  at: 2026-09-11T22:39:25Z
+---
+
 # Commands reference
 
 Every subcommand `shiki` exposes today, the flags it accepts, and the
@@ -32,6 +43,13 @@ shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI
 The `nix develop` shell hook exports `PG_CONNECTION_STRING` for the local
 dev database. `--db-schema` is independent from database selection: it picks
 the schema inside whichever database the precedence above selected.
+
+`shiki --version` prints `shiki v<package-version> (<short-commit>)`, for
+example `shiki v0.1.0.0 (a23b53e)`. The commit is the 7-character SHA the
+binary was built from; it is omitted entirely when no build-time Git
+information was available. Like the other global options, `--version` is
+accepted anywhere on the command line and short-circuits before any
+subcommand runs.
 
 shiki applies any pending migrations on every invocation (after acquiring
 the pool, before running the subcommand handler). There is no separate
@@ -121,9 +139,11 @@ shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...
   limit), or submission itself threw. In every failure path shiki writes
   a `failed` row before exiting.
 
-**Output:** one line on success (`run <id> Succeeded job=<job-name>`) or
-failure (`FAILED run <id>: <message>`). With `--no-wait`, prints
-`submitted job <job-name> (run <id>)`.
+**Output:** one line. A Job that ran to a verdict prints
+`run <id> Succeeded job=<job-name>` or `run <id> Failed job=<job-name>`.
+A run that never got a verdict — submission threw, the API call failed,
+polling died — prints `FAILED run <id>: <message>` instead. With
+`--no-wait`, prints `submitted job <job-name> (run <id>)`.
 
 The wait-path timeout is 96 hours (345 600 seconds) of polling at 5-second
 intervals. Jobs that exceed this exit as `JobTimedOut` and record
@@ -206,9 +226,12 @@ Backend resolution:
 3. Otherwise `Heuristic` (e.g. the Dhall file was deleted after the
    original run).
 
-The Baikai backend reads `ANTHROPIC_API_KEY` for `anthropic_*` model ids
-and `OPENAI_API_KEY` for `openai_*` ids. `--analyzer none` exits with
-`shiki: analyzer disabled (backend = None)`.
+`baikai:<model-id>` takes a baikai catalog id, and only three are
+dispatched: `anthropic_claude_haiku_4_5`, `anthropic_claude_sonnet_4_6`
+(both reading `ANTHROPIC_API_KEY`), and `openai_gpt_4o_mini` (reading
+`OPENAI_API_KEY`). Any other id fails with
+`shiki: baikai backend failed: unknown baikai model: <id>`.
+`--analyzer none` exits with `shiki: analyzer disabled (backend = None)`.
 
 Rows with no captured logs print `(no logs captured; cannot analyze)`.
 
@@ -315,5 +338,5 @@ Bash completion needs a Bash built with programmable completion (the
 | `SHIKI_ENV`               | `config show`, `run`, `runs`, `agent` | Active project environment when `--env` is absent.                      |
 | `SHIKI_AGENT_PROVIDER`    | `shiki agent assist`   | One of `claude-cli`, `codex-cli`, `anthropic`, `openai`.                |
 | `SHIKI_AGENT_MODEL`       | `shiki agent assist`   | Provider-specific model id.                                            |
-| `ANTHROPIC_API_KEY`       | `runs analyze --analyzer=baikai:anthropic_*`, `agent assist --provider=anthropic` | One-shot API path only; CLI providers use the local CLI's own auth.  |
-| `OPENAI_API_KEY`          | `runs analyze --analyzer=baikai:openai_*`, `agent assist --provider=openai` | Same.                                                                  |
+| `ANTHROPIC_API_KEY`       | `runs analyze --analyzer=baikai:anthropic_...`, `agent assist --provider=anthropic` | One-shot API path only; CLI providers use the local CLI's own auth.  |
+| `OPENAI_API_KEY`          | `runs analyze --analyzer=baikai:openai_...`, `agent assist --provider=openai` | Same.                                                                  |
