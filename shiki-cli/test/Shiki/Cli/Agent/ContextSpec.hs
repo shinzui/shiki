@@ -5,6 +5,7 @@ where
 
 import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Time (getCurrentTime)
 import Data.UUID qualified as UUID
@@ -14,11 +15,7 @@ import Hasql.Pool (Pool)
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)
-import Shiki.Cli.Agent.Context
-  ( AgentContext (..),
-    ServiceSummary (..),
-    gatherAgentContext,
-  )
+import Shiki.Cli.Agent.Context (gatherAgentContext)
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
     acquirePool,
@@ -34,6 +31,7 @@ import Shiki.Persistence.Run
   )
 import Shiki.Persistence.RunStatus (RunStatus (Succeeded))
 import Shiki.Persistence.Schema (Schema, defaultSchema, mkSchema)
+import Shiki.Prelude ((^.))
 import System.Directory
   ( createDirectory,
     withCurrentDirectory,
@@ -90,29 +88,29 @@ tests =
               withCurrentDirectory tmp $
                 gatherAgentContext pool defaultSchema
 
-            case services ctx of
+            case ctx ^. #services of
               [svc] -> do
-                assertEqual "good service name" "foo" (name svc)
-                assertEqual "good service analyzer" "heuristic" (analyzer svc)
+                assertEqual "good service name" "foo" (svc ^. #name)
+                assertEqual "good service analyzer" "heuristic" (svc ^. #analyzer)
               other ->
                 fail ("expected exactly one service, got: " <> show other)
             assertBool
               "bad service path in errors"
               ( any
                   (\p -> "bad.dhall" `Text.isSuffixOf` Text.pack p)
-                  (serviceLoadErrors ctx)
+                  (ctx ^. #serviceLoadErrors)
               )
-            assertEqual "one recent run" 1 (length (recentRuns ctx))
-            assertEqual "schema name" "shiki" (schemaName ctx)
-            assertEqual "cluster placeholder" "unknown" (cluster ctx),
+            assertEqual "one recent run" 1 (length (ctx ^. #recentRuns))
+            assertEqual "schema name" "shiki" (ctx ^. #schemaName)
+            assertEqual "cluster placeholder" "unknown" (ctx ^. #cluster),
       testCase "missing services/ dir is not an error" $
         withSchemaPool $ \pool ->
           withSystemTempDirectory "shiki-context-empty" $ \tmp -> do
             ctx <-
               withCurrentDirectory tmp $
                 gatherAgentContext pool defaultSchema
-            assertEqual "no services" [] (services ctx)
-            assertEqual "no errors" [] (serviceLoadErrors ctx)
+            assertEqual "no services" [] (ctx ^. #services)
+            assertEqual "no errors" [] (ctx ^. #serviceLoadErrors)
     ]
 
 -- | A minimal Dhall record that satisfies 'ServiceConfig'. Inlined

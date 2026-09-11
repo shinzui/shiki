@@ -12,6 +12,7 @@ where
 
 import Control.Concurrent.STM (atomically, newTVar)
 import Control.Exception (try)
+import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Yaml qualified as Yaml
 import Kubernetes.Client.Config
@@ -30,7 +31,6 @@ import Kubernetes.OpenAPI qualified as K8s
 import Network.HTTP.Client (Manager)
 import Shiki.K8s.ExecCredential
   ( KubeConfigError (..),
-    ResolvedContext (..),
     readKubeConfigExecAuth,
     runExecCredential,
   )
@@ -79,10 +79,10 @@ loadClientConfig src@(KubeConfigFile path) = do
     -- Could not resolve a context/cluster/user — let the library try; it has
     -- the same inputs and fails (or falls back) identically to today.
     Left (KubeConfigError _) -> mkFromLibrary src
-    Right rc -> case resolvedExec rc of
+    Right rc -> case rc ^. #exec of
       Nothing -> mkFromLibrary src
       Just execAuth -> do
-        token <- runExecCredential execAuth (resolvedCluster rc)
+        token <- runExecCredential execAuth (rc ^. #cluster)
         kubeCfg <- Yaml.decodeFileThrow path
         mkFromToken kubeCfg (takeDirectory path) token
 loadClientConfig src@KubeConfigCluster = mkFromLibrary src

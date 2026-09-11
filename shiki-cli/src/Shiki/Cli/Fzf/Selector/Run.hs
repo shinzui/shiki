@@ -70,8 +70,8 @@ selectorRowLimit = 50
 formatRunCandidate :: RunRecord -> Candidate (RunId, RunRecord)
 formatRunCandidate r =
   Candidate
-    { candidateDisplay = Text.intercalate "  " columns,
-      candidateValue = (r ^. #runId, r)
+    { display = Text.intercalate "  " columns,
+      value = (r ^. #runId, r)
     }
   where
     columns =

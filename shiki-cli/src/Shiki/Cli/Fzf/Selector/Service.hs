@@ -61,7 +61,7 @@ selectService cfg
         Right [] -> pure ServiceNoneFound
         Right entries -> do
           let candidates =
-                [ Candidate {candidateDisplay = n, candidateValue = n}
+                [ Candidate {display = n, value = n}
                 | n <- entries
                 ]
           res <- runFzf cfg defaultServiceOpts candidates

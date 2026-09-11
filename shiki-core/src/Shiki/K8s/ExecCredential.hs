@@ -40,6 +40,7 @@ import Data.Aeson
 import Data.Aeson.Types (Parser)
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Lazy.Char8 qualified as BLC
+import Data.Generics.Labels ()
 import Data.List qualified as List
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
@@ -69,14 +70,14 @@ data InteractiveMode = Never | IfAvailable | Always
 data ExecAuth = ExecAuth
   { -- | e.g. @client.authentication.k8s.io/v1beta1@; echoed in the request and
     --   expected back in the response.
-    execApiVersion :: !Text,
-    execCommand :: !Text,
-    execArgs :: ![Text],
+    apiVersion :: !Text,
+    command :: !Text,
+    args :: ![Text],
     -- | extra @name=value@ pairs overlaid on the plugin's environment.
-    execEnv :: ![(Text, Text)],
+    environment :: ![(Text, Text)],
     -- | when 'True', pass @KUBERNETES_EXEC_INFO@ describing the cluster.
-    execProvideClusterInfo :: !Bool,
-    execInteractiveMode :: !InteractiveMode
+    provideClusterInfo :: !Bool,
+    interactiveMode :: !InteractiveMode
   }
   deriving stock (Eq, Show, Generic)
 
@@ -85,21 +86,21 @@ data ExecAuth = ExecAuth
 --   from here. shiki uses this for the plugin request; the actual client TLS
 --   is built from the library's own @Config@ in 'Shiki.K8s.Client'.
 data ClusterRef = ClusterRef
-  { clusterServer :: !Text,
+  { server :: !Text,
     -- | base64 PEM (@certificate-authority-data@).
-    clusterCAData :: !(Maybe Text),
+    caData :: !(Maybe Text),
     -- | path (@certificate-authority@), relative to the kubeconfig directory.
-    clusterCAFile :: !(Maybe FilePath),
-    clusterInsecureSkipTLS :: !Bool
+    caFile :: !(Maybe FilePath),
+    insecureSkipTls :: !Bool
   }
   deriving stock (Eq, Show, Generic)
 
 -- | The selected context resolved to its cluster and (optional) exec auth.
---   @resolvedExec = Nothing@ means the user is not an exec user, so the caller
+--   @exec = Nothing@ means the user is not an exec user, so the caller
 --   falls back to the library's normal auth path.
 data ResolvedContext = ResolvedContext
-  { resolvedCluster :: !ClusterRef,
-    resolvedExec :: !(Maybe ExecAuth)
+  { cluster :: !ClusterRef,
+    exec :: !(Maybe ExecAuth)
   }
   deriving stock (Eq, Show, Generic)
 
@@ -112,34 +113,34 @@ newtype KubeConfigError = KubeConfigError Text
 --   fields we need are modelled; aeson ignores the rest, so a full real-world
 --   kubeconfig decodes fine.
 data KubeConfigDoc = KubeConfigDoc
-  { kcCurrentContext :: !(Maybe Text),
-    kcContexts :: ![NamedContext],
-    kcClusters :: ![NamedCluster],
-    kcUsers :: ![NamedUser]
+  { currentContext :: !(Maybe Text),
+    contexts :: ![NamedContext],
+    clusters :: ![NamedCluster],
+    users :: ![NamedUser]
   }
   deriving stock (Eq, Show, Generic)
 
 data NamedContext = NamedContext
-  { ncName :: !Text,
-    ncContext :: !ContextRef
+  { name :: !Text,
+    context :: !ContextRef
   }
   deriving stock (Eq, Show, Generic)
 
 data ContextRef = ContextRef
-  { crCluster :: !Text,
-    crUser :: !Text
+  { cluster :: !Text,
+    user :: !Text
   }
   deriving stock (Eq, Show, Generic)
 
 data NamedCluster = NamedCluster
-  { nclName :: !Text,
-    nclCluster :: !ClusterRef
+  { name :: !Text,
+    cluster :: !ClusterRef
   }
   deriving stock (Eq, Show, Generic)
 
 data NamedUser = NamedUser
-  { nuName :: !Text,
-    nuExec :: !(Maybe ExecAuth)
+  { name :: !Text,
+    exec :: !(Maybe ExecAuth)
   }
   deriving stock (Eq, Show, Generic)
 
@@ -173,28 +174,28 @@ instance FromJSON ClusterRef where
 
 instance FromJSON NamedUser where
   parseJSON = withObject "user entry" $ \o -> do
-    name <- o .: "name"
-    user <- o .: "user"
-    mexec <- user .:? "exec"
-    pure (NamedUser name mexec)
+    userName <- o .: "name"
+    userEntry <- o .: "user"
+    mexec <- userEntry .:? "exec"
+    pure (NamedUser userName mexec)
 
 instance FromJSON ExecAuth where
   parseJSON = withObject "exec" $ \o -> do
-    apiVersion <- o .: "apiVersion"
-    command <- o .: "command"
-    args <- fromMaybe [] <$> o .:? "args"
+    apiVer <- o .: "apiVersion"
+    cmd <- o .: "command"
+    argv <- fromMaybe [] <$> o .:? "args"
     rawEnv <- fromMaybe [] <$> o .:? "env"
     envPairs <- traverse parseEnvPair rawEnv
     provide <- fromMaybe False <$> o .:? "provideClusterInfo"
     mode <- o .:? "interactiveMode" >>= maybe (pure IfAvailable) parseInteractiveMode
     pure
       ExecAuth
-        { execApiVersion = apiVersion,
-          execCommand = command,
-          execArgs = args,
-          execEnv = envPairs,
-          execProvideClusterInfo = provide,
-          execInteractiveMode = mode
+        { apiVersion = apiVer,
+          command = cmd,
+          args = argv,
+          environment = envPairs,
+          provideClusterInfo = provide,
+          interactiveMode = mode
         }
 
 parseEnvPair :: Value -> Parser (Text, Text)
@@ -212,23 +213,23 @@ parseInteractiveMode t = case t of
 --   and exec auth. A missing context/cluster/user yields a descriptive 'Left'.
 execAuthForContext :: Maybe Text -> KubeConfigDoc -> Either Text ResolvedContext
 execAuthForContext mname doc = do
-  ctxName <- case mname <|> kcCurrentContext doc of
+  ctxName <- case mname <|> doc ^. #currentContext of
     Just n -> Right n
     Nothing -> Left "kubeconfig has no current-context and no context was specified"
   ctx <-
-    findBy ncName ctxName (kcContexts doc) $
+    findBy (^. #name) ctxName (doc ^. #contexts) $
       "no context named " <> ctxName
-  let ref = ncContext ctx
-  cluster <-
-    findBy nclName (crCluster ref) (kcClusters doc) $
-      "context " <> ctxName <> " references unknown cluster " <> crCluster ref
-  user <-
-    findBy nuName (crUser ref) (kcUsers doc) $
-      "context " <> ctxName <> " references unknown user " <> crUser ref
+  let ref = ctx ^. #context
+  namedCluster <-
+    findBy (^. #name) (ref ^. #cluster) (doc ^. #clusters) $
+      "context " <> ctxName <> " references unknown cluster " <> ref ^. #cluster
+  namedUser <-
+    findBy (^. #name) (ref ^. #user) (doc ^. #users) $
+      "context " <> ctxName <> " references unknown user " <> ref ^. #user
   Right
     ResolvedContext
-      { resolvedCluster = nclCluster cluster,
-        resolvedExec = nuExec user
+      { cluster = namedCluster ^. #cluster,
+        exec = namedUser ^. #exec
       }
 
 findBy :: (a -> Text) -> Text -> [a] -> Text -> Either Text a
@@ -250,12 +251,12 @@ readKubeConfigExecAuth path mname = do
 
 -- | The @status@ block of an @ExecCredential@ response.
 data ExecCredentialStatus = ExecCredentialStatus
-  { statusToken :: !(Maybe Text),
-    statusClientCertData :: !(Maybe Text),
-    statusClientKeyData :: !(Maybe Text),
+  { token :: !(Maybe Text),
+    clientCertData :: !(Maybe Text),
+    clientKeyData :: !(Maybe Text),
     -- | parsed but currently ignored (shiki is short-lived; see the plan's
     --   Decision Log). Kept so a future long-running mode could cache.
-    statusExpirationTimestamp :: !(Maybe Text)
+    expirationTimestamp :: !(Maybe Text)
   }
   deriving stock (Eq, Show, Generic)
 
@@ -268,9 +269,9 @@ instance FromJSON ExecCredentialStatus where
       <*> o .:? "expirationTimestamp"
 
 data ExecCredentialResponse = ExecCredentialResponse
-  { ecrApiVersion :: !(Maybe Text),
-    ecrKind :: !(Maybe Text),
-    ecrStatus :: !(Maybe ExecCredentialStatus)
+  { apiVersion :: !(Maybe Text),
+    kind :: !(Maybe Text),
+    status :: !(Maybe ExecCredentialStatus)
   }
   deriving stock (Eq, Show, Generic)
 
@@ -303,17 +304,17 @@ data ExecCredentialError
 -- | Run the credential plugin per the @client.authentication.k8s.io@ contract
 --   and return the bearer token. Throws 'ExecCredentialError' on any failure.
 runExecCredential :: ExecAuth -> ClusterRef -> IO Text
-runExecCredential execAuth cluster = do
-  when (execInteractiveMode execAuth == Always) $
-    throwIO (ExecPluginInteractiveRefused (execCommand execAuth))
-  childEnv <- buildChildEnv execAuth cluster
-  let cmd = T.unpack (execCommand execAuth)
-      args = map T.unpack (execArgs execAuth)
-      createProc = (proc cmd args) {env = Just childEnv}
+runExecCredential execAuth clusterRef = do
+  when (execAuth ^. #interactiveMode == Always) $
+    throwIO (ExecPluginInteractiveRefused (execAuth ^. #command))
+  childEnv <- buildChildEnv execAuth clusterRef
+  let cmd = T.unpack (execAuth ^. #command)
+      argv = map T.unpack (execAuth ^. #args)
+      createProc = (proc cmd argv) {env = Just childEnv}
   (code, out, err) <- readCreateProcessWithExitCode createProc ""
   case code of
     ExitFailure n ->
-      throwIO (ExecPluginFailed (execCommand execAuth) n (T.pack err))
+      throwIO (ExecPluginFailed (execAuth ^. #command) n (T.pack err))
     ExitSuccess ->
       case eitherDecode (BLC.pack out) of
         Left perr -> throwIO (ExecPluginUnparseable (T.pack out) perr)
@@ -323,12 +324,12 @@ runExecCredential execAuth cluster = do
 --   the exec @env@ pairs overlaid, plus @KUBERNETES_EXEC_INFO@ when
 --   @provideClusterInfo@ is set.
 buildChildEnv :: ExecAuth -> ClusterRef -> IO [(String, String)]
-buildChildEnv execAuth cluster = do
+buildChildEnv execAuth clusterRef = do
   parent <- getEnvironment
-  let overlay = [(T.unpack n, T.unpack v) | (n, v) <- execEnv execAuth]
+  let overlay = [(T.unpack n, T.unpack v) | (n, v) <- execAuth ^. #environment]
       execInfo
-        | execProvideClusterInfo execAuth =
-            [("KUBERNETES_EXEC_INFO", lazyUtf8ToString (encodeExecInfo execAuth cluster))]
+        | execAuth ^. #provideClusterInfo =
+            [("KUBERNETES_EXEC_INFO", lazyUtf8ToString (encodeExecInfo execAuth clusterRef))]
         | otherwise = []
   pure (mergeEnv parent (overlay <> execInfo))
 
@@ -341,20 +342,20 @@ mergeEnv base overrides =
 
 -- | The @ExecCredential@ /request/ written to @KUBERNETES_EXEC_INFO@.
 encodeExecInfo :: ExecAuth -> ClusterRef -> BL.ByteString
-encodeExecInfo execAuth cluster =
+encodeExecInfo execAuth clusterRef =
   encode $
     object
-      [ "apiVersion" .= execApiVersion execAuth,
+      [ "apiVersion" .= (execAuth ^. #apiVersion),
         "kind" .= ("ExecCredential" :: Text),
         "spec"
           .= object
             [ "cluster"
                 .= object
-                  ( ["server" .= clusterServer cluster]
+                  ( ["server" .= (clusterRef ^. #server)]
                       <> maybe
                         []
                         (\d -> ["certificate-authority-data" .= d])
-                        (clusterCAData cluster)
+                        (clusterRef ^. #caData)
                   ),
               "interactive" .= False
             ]
@@ -367,16 +368,16 @@ lazyUtf8ToString = TL.unpack . TLE.decodeUtf8
 --   cert-only and empty cases to explicit errors.
 extractToken :: ExecAuth -> ExecCredentialResponse -> IO Text
 extractToken execAuth resp = do
-  let cmd = execCommand execAuth
-  case ecrKind resp of
+  let cmd = execAuth ^. #command
+  case resp ^. #kind of
     Just "ExecCredential" -> pure ()
     _ -> throwIO (ExecCredentialProtocol cmd "response kind was not \"ExecCredential\"")
-  case ecrApiVersion resp of
-    Just v | v == execApiVersion execAuth -> pure ()
+  case resp ^. #apiVersion of
+    Just v | v == execAuth ^. #apiVersion -> pure ()
     _ -> throwIO (ExecCredentialProtocol cmd "response apiVersion missing or did not match the request")
-  status <- maybe (throwIO (ExecCredentialNoToken cmd)) pure (ecrStatus resp)
-  case statusToken status of
+  credStatus <- maybe (throwIO (ExecCredentialNoToken cmd)) pure (resp ^. #status)
+  case credStatus ^. #token of
     Just tok | not (T.null tok) -> pure tok
-    _ -> case (statusClientCertData status, statusClientKeyData status) of
+    _ -> case (credStatus ^. #clientCertData, credStatus ^. #clientKeyData) of
       (Just _, Just _) -> throwIO (ExecCredentialCertModeUnsupported cmd)
       _ -> throwIO (ExecCredentialNoToken cmd)

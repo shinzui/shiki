@@ -81,10 +81,10 @@ Milestone 2 — Per-module generic-lens labels
 
 Milestone 3 — Record-shape conformance
 
-- [ ] Unprefix and lens-access the records in `shiki-cli/src/Shiki/Cli/Fzf.hs` (`FzfConfig`, `FzfOpts`, `Candidate`) and update `Fzf/Selector/Run.hs`, `Fzf/Selector/Service.hs`, and `test/Shiki/Cli/Fzf/Selector/RunSpec.hs`.
-- [ ] Unprefix and lens-access the records in `shiki-core/src/Shiki/K8s/ExecCredential.hs` and update `shiki-core/src/Shiki/K8s/Client.hs` and `shiki-core/test/Shiki/K8s/ExecCredentialSpec.hs`.
-- [ ] Replace selector-function access in `shiki-cli/test/Shiki/Cli/Agent/ContextSpec.hs` with `^. #label`.
-- [ ] `cabal build all` and `cabal test all` pass with no new warnings; the prefixed-field grep prints nothing; commit.
+- [x] (2026-09-11 19:40Z) Unprefix and lens-access the records in `shiki-cli/src/Shiki/Cli/Fzf.hs` (`FzfConfig`, `FzfOpts`, `Candidate`) and update `Fzf/Selector/Run.hs`, `Fzf/Selector/Service.hs`, and `test/Shiki/Cli/Fzf/Selector/RunSpec.hs`.
+- [x] (2026-09-11 19:50Z) Unprefix and lens-access the records in `shiki-core/src/Shiki/K8s/ExecCredential.hs` and update `shiki-core/src/Shiki/K8s/Client.hs` and `shiki-core/test/Shiki/K8s/ExecCredentialSpec.hs`.
+- [x] (2026-09-11 19:40Z) Replace selector-function access in `shiki-cli/test/Shiki/Cli/Agent/ContextSpec.hs` with `^. #label`.
+- [x] (2026-09-11 19:55Z) `cabal build all` and `cabal test all` pass (33 and 42 tests); a clean rebuild reports 11 warnings, all from the baseline list (one fewer, because `ExecCredentialSpec` now uses its `Shiki.Prelude` import); the prefixed-field grep prints nothing; commit.
 
 Milestone 4 — Terminal-aware help width
 
@@ -194,6 +194,25 @@ Milestone 7 — Release conformance audit, ADR, and Nix build
   5's Zsh script contains `"#compdef shiki"`, and the loop would demand a labels import
   in `Completions.hs` for it. Such a hit is a false positive, to be recognized and
   ignored rather than silenced with an unneeded import.
+
+- (Implementation, M3) The two `shiki-cli` test modules that gained `^. #label` reads,
+  `RunSpec.hs` and `ContextSpec.hs`, do not import `Shiki.Prelude`, so `^.` was not in
+  scope as the plan assumed. They now import `Shiki.Prelude ((^.))`. With the selectors
+  gone, their `Candidate (..)`, `AgentContext (..)`, and `ServiceSummary (..)` imports
+  became redundant and were dropped, as was `ResolvedContext (..)` in
+  `shiki-core/src/Shiki/K8s/Client.hs` and `ExecCredentialSpec.hs`. Generic-lens labels
+  need only the `Generic` instance, not the field names in scope.
+  `shiki-cli/src/Shiki/Cli/Fzf/Selector/Service.hs` builds a `Candidate` with record
+  syntax but reads no labels, so it needs no labels import.
+
+- (Implementation, M3) Renaming fields to plain words made several locals in
+  `ExecCredential.hs` shadow the new top-level field selectors (`apiVersion`, `command`,
+  `args` in the `FromJSON ExecAuth` parser; `name` and `user` in the `NamedUser` parser;
+  `cluster`, `user`, and `status` in the resolver and runner). They were renamed
+  (`apiVer`, `cmd`, `argv`, `userName`, `userEntry`, `namedCluster`, `namedUser`,
+  `clusterRef`, `credStatus`) before the first build, so no `-Wname-shadowing` warning
+  appeared. GHC did not warn about unused selectors on the unexported records
+  (`NamedContext`, `ExecCredentialResponse`, and others) now read only through labels.
 
 
 ## Decision Log

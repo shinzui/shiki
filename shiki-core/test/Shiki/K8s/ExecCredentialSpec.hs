@@ -1,13 +1,13 @@
 module Shiki.K8s.ExecCredentialSpec (tests) where
 
 import Control.Exception (try)
+import Data.Generics.Labels ()
 import Data.Text qualified as T
 import Shiki.K8s.ExecCredential
   ( ClusterRef (..),
     ExecAuth (..),
     ExecCredentialError (..),
     InteractiveMode (..),
-    ResolvedContext (..),
     readKubeConfigExecAuth,
     runExecCredential,
   )
@@ -47,21 +47,21 @@ fixture name = (</> name) <$> fixturesDir
 execAuthFor :: FilePath -> Bool -> ExecAuth
 execAuthFor scriptPath provide =
   ExecAuth
-    { execApiVersion = "client.authentication.k8s.io/v1beta1",
-      execCommand = T.pack scriptPath,
-      execArgs = [],
-      execEnv = [],
-      execProvideClusterInfo = provide,
-      execInteractiveMode = IfAvailable
+    { apiVersion = "client.authentication.k8s.io/v1beta1",
+      command = T.pack scriptPath,
+      args = [],
+      environment = [],
+      provideClusterInfo = provide,
+      interactiveMode = IfAvailable
     }
 
 dummyCluster :: ClusterRef
 dummyCluster =
   ClusterRef
-    { clusterServer = "https://34.x.y.z",
-      clusterCAData = Just "QkFTRTY0Q0E=",
-      clusterCAFile = Nothing,
-      clusterInsecureSkipTLS = False
+    { server = "https://34.x.y.z",
+      caData = Just "QkFTRTY0Q0E=",
+      caFile = Nothing,
+      insecureSkipTls = False
     }
 
 tests :: TestTree
@@ -74,27 +74,27 @@ tests =
         assertEqual
           "cluster server"
           "https://34.x.y.z"
-          (clusterServer (resolvedCluster resolved))
+          (resolved ^. #cluster . #server)
         assertEqual
           "cluster CA data"
           (Just "QkFTRTY0Q0E=")
-          (clusterCAData (resolvedCluster resolved))
-        case resolvedExec resolved of
+          (resolved ^. #cluster . #caData)
+        case resolved ^. #exec of
           Nothing -> assertFailure "expected an exec user, got Nothing"
           Just execAuth -> do
-            assertEqual "command" "gke-gcloud-auth-plugin" (execCommand execAuth)
-            assertEqual "args" [] (execArgs execAuth)
-            assertEqual "env" [] (execEnv execAuth)
-            assertBool "provideClusterInfo" (execProvideClusterInfo execAuth)
-            assertEqual "interactiveMode" IfAvailable (execInteractiveMode execAuth),
+            assertEqual "command" "gke-gcloud-auth-plugin" (execAuth ^. #command)
+            assertEqual "args" [] (execAuth ^. #args)
+            assertEqual "env" [] (execAuth ^. #environment)
+            assertBool "provideClusterInfo" (execAuth ^. #provideClusterInfo)
+            assertEqual "interactiveMode" IfAvailable (execAuth ^. #interactiveMode),
       testCase "resolves token user to Nothing" $ do
         path <- fixture "kubeconfig-token.yaml"
         resolved <- readKubeConfigExecAuth path Nothing
-        assertEqual "no exec auth" Nothing (resolvedExec resolved)
+        assertEqual "no exec auth" Nothing (resolved ^. #exec)
         assertEqual
           "cluster server"
           "https://10.0.0.1"
-          (clusterServer (resolvedCluster resolved)),
+          (resolved ^. #cluster . #server),
       testCase "runExecCredential returns the plugin token" $ do
         script <- fixture "fake-exec-plugin.sh"
         token <- runExecCredential (execAuthFor script True) dummyCluster

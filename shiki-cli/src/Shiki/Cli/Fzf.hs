@@ -31,6 +31,7 @@ module Shiki.Cli.Fzf
 where
 
 import Control.Exception (SomeException, try)
+import Data.Generics.Labels ()
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
@@ -59,12 +60,12 @@ import System.Process
   )
 
 -- | A snapshot of the local fzf availability captured once per CLI
---   invocation. @fzfBinary@ is the resolved absolute path to the binary
+--   invocation. @binary@ is the resolved absolute path to the binary
 --   if it was found on @PATH@, or the literal @\"fzf\"@ if not (still
---   recorded for diagnostics; 'fzfAvailable' is the source of truth).
+--   recorded for diagnostics; @available@ is the source of truth).
 data FzfConfig = FzfConfig
-  { fzfBinary :: !FilePath,
-    fzfAvailable :: !Bool,
+  { binary :: !FilePath,
+    available :: !Bool,
     stdinIsTerminal :: !Bool,
     stdoutIsTerminal :: !Bool,
     ttyAvailable :: !Bool
@@ -82,8 +83,8 @@ detectFzfConfig = do
   ttyOk <- probeTty
   pure
     FzfConfig
-      { fzfBinary = fromMaybe "fzf" mPath,
-        fzfAvailable = isJust mPath,
+      { binary = fromMaybe "fzf" mPath,
+        available = isJust mPath,
         stdinIsTerminal = inTty,
         stdoutIsTerminal = outTty,
         ttyAvailable = ttyOk
@@ -98,61 +99,61 @@ detectFzfConfig = do
 --   keyboard somehow (real stdin terminal or a usable @\/dev\/tty@).
 isFzfAvailable :: FzfConfig -> Bool
 isFzfAvailable cfg =
-  fzfAvailable cfg && (stdinIsTerminal cfg || ttyAvailable cfg)
+  cfg ^. #available && (cfg ^. #stdinIsTerminal || cfg ^. #ttyAvailable)
 
 -- | Right-biased option bundle; combine via @<>@ in caller modules.
 data FzfOpts = FzfOpts
-  { fzfPrompt :: !(Maybe Text),
-    fzfHeader :: !(Maybe Text),
-    fzfHeight :: !(Maybe Text),
-    fzfAnsi :: !Bool,
-    fzfNoSort :: !Bool
+  { prompt :: !(Maybe Text),
+    header :: !(Maybe Text),
+    height :: !(Maybe Text),
+    ansi :: !Bool,
+    noSort :: !Bool
   }
   deriving stock (Generic, Eq, Show)
 
 instance Semigroup FzfOpts where
   a <> b =
     FzfOpts
-      { fzfPrompt = fzfPrompt b <|> fzfPrompt a,
-        fzfHeader = fzfHeader b <|> fzfHeader a,
-        fzfHeight = fzfHeight b <|> fzfHeight a,
-        fzfAnsi = fzfAnsi a || fzfAnsi b,
-        fzfNoSort = fzfNoSort a || fzfNoSort b
+      { prompt = b ^. #prompt <|> a ^. #prompt,
+        header = b ^. #header <|> a ^. #header,
+        height = b ^. #height <|> a ^. #height,
+        ansi = a ^. #ansi || b ^. #ansi,
+        noSort = a ^. #noSort || b ^. #noSort
       }
 
 instance Monoid FzfOpts where
   mempty =
     FzfOpts
-      { fzfPrompt = Nothing,
-        fzfHeader = Nothing,
-        fzfHeight = Nothing,
-        fzfAnsi = False,
-        fzfNoSort = False
+      { prompt = Nothing,
+        header = Nothing,
+        height = Nothing,
+        ansi = False,
+        noSort = False
       }
 
 withPrompt :: Text -> FzfOpts
-withPrompt t = mempty {fzfPrompt = Just t}
+withPrompt t = mempty & #prompt ?~ t
 
 withHeader :: Text -> FzfOpts
-withHeader t = mempty {fzfHeader = Just t}
+withHeader t = mempty & #header ?~ t
 
 withHeight :: Text -> FzfOpts
-withHeight t = mempty {fzfHeight = Just t}
+withHeight t = mempty & #height ?~ t
 
 withAnsi :: FzfOpts
-withAnsi = mempty {fzfAnsi = True}
+withAnsi = mempty & #ansi .~ True
 
 withNoSort :: FzfOpts
-withNoSort = mempty {fzfNoSort = True}
+withNoSort = mempty & #noSort .~ True
 
--- | One row presented to the operator. @candidateDisplay@ is what fzf
---   shows; @candidateValue@ is the value handed back to the caller when
+-- | One row presented to the operator. @display@ is what fzf
+--   shows; @value@ is the value handed back to the caller when
 --   the row is chosen.
 data Candidate a = Candidate
-  { candidateDisplay :: !Text,
-    candidateValue :: !a
+  { display :: !Text,
+    value :: !a
   }
-  deriving stock (Functor)
+  deriving stock (Generic, Functor)
 
 -- | The four states fzf invocation can land in.
 data FzfResult a
@@ -184,15 +185,15 @@ runFzf cfg opts candidates
   | not (isFzfAvailable cfg) = pure (FzfError "fzf not available")
   | otherwise = do
       let numbered = zip [0 :: Int ..] candidates
-          valueByIndex = Map.fromList [(i, candidateValue c) | (i, c) <- numbered]
+          valueByIndex = Map.fromList [(i, c ^. #value) | (i, c) <- numbered]
           stdinPayload =
             Text.unlines
-              [ Text.pack (show i) <> "\t" <> candidateDisplay c
+              [ Text.pack (show i) <> "\t" <> c ^. #display
               | (i, c) <- numbered
               ]
           args = ["-1", "--with-nth=2.."] <> optsToArgs opts
           cp =
-            (proc (fzfBinary cfg) args)
+            (proc (cfg ^. #binary) args)
               { std_in = CreatePipe,
                 std_out = CreatePipe,
                 std_err = Inherit,
@@ -233,9 +234,9 @@ runFzf cfg opts candidates
 optsToArgs :: FzfOpts -> [String]
 optsToArgs o =
   concat
-    [ maybe [] (\t -> ["--prompt", Text.unpack t]) (fzfPrompt o),
-      maybe [] (\t -> ["--header", Text.unpack t]) (fzfHeader o),
-      maybe [] (\t -> ["--height", Text.unpack t]) (fzfHeight o),
-      ["--ansi" | fzfAnsi o],
-      ["--no-sort" | fzfNoSort o]
+    [ maybe [] (\t -> ["--prompt", Text.unpack t]) (o ^. #prompt),
+      maybe [] (\t -> ["--header", Text.unpack t]) (o ^. #header),
+      maybe [] (\t -> ["--height", Text.unpack t]) (o ^. #height),
+      ["--ansi" | o ^. #ansi],
+      ["--no-sort" | o ^. #noSort]
     ]

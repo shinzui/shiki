@@ -4,13 +4,14 @@ module Shiki.Cli.Fzf.Selector.RunSpec
 where
 
 import Data.Aeson qualified as Aeson
+import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Time qualified as Time
 import Data.UUID qualified as UUID
-import Shiki.Cli.Fzf (Candidate (..))
 import Shiki.Cli.Fzf.Selector.Run (formatRunCandidate)
 import Shiki.Persistence.Run (RunId (..), RunRecord (..))
 import Shiki.Persistence.RunStatus (RunStatus (..))
+import Shiki.Prelude ((^.))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
@@ -22,20 +23,20 @@ tests =
         let c = formatRunCandidate fixtureRow
         assertBool
           "display must not contain embedded newlines"
-          (not (Text.any (== '\n') (candidateDisplay c))),
+          (not (Text.any (== '\n') (c ^. #display))),
       testCase "formatRunCandidate embeds the 8-char id prefix" $ do
         let c = formatRunCandidate fixtureRow
         assertBool
-          ("expected id prefix in display: " <> Text.unpack (candidateDisplay c))
-          (Text.isInfixOf "3f2c1a9d" (candidateDisplay c)),
+          ("expected id prefix in display: " <> Text.unpack (c ^. #display))
+          (Text.isInfixOf "3f2c1a9d" (c ^. #display)),
       testCase "formatRunCandidate includes service name and command" $ do
         let c = formatRunCandidate fixtureRow
         assertBool
           "service name appears"
-          (Text.isInfixOf "ingest" (candidateDisplay c))
+          (Text.isInfixOf "ingest" (c ^. #display))
         assertBool
           "command appears"
-          (Text.isInfixOf "reindex" (candidateDisplay c))
+          (Text.isInfixOf "reindex" (c ^. #display))
     ]
 
 fixtureRow :: RunRecord
