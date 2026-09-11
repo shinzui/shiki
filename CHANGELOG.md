@@ -42,3 +42,13 @@ $ shiki runs show
   …
 }
 ```
+
+### Fixed
+
+- fix(shiki-core): migrations no longer run `CREATE SCHEMA IF NOT EXISTS` or
+  `create table if not exists schema_migrations` when those objects already
+  exist. PostgreSQL checks creation privileges before existence, so a role
+  without `CREATE` on the database failed on every invocation even against a
+  bootstrapped schema. A role with only `USAGE` on the schema, `SELECT` on
+  `schema_migrations`, and `SELECT, INSERT, UPDATE` on `runs` can now record
+  runs.

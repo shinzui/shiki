@@ -18,6 +18,20 @@ TABLES
                            hasql-migration; do not edit by hand.
 
 
+RESTRICTED ROLES
+
+Migrations only create the schema and schema_migrations when missing.
+Once a privileged role has run shiki once, a narrower role can record
+runs without any CREATE privilege:
+
+  GRANT USAGE ON SCHEMA shiki TO some_role;
+  GRANT SELECT ON shiki.schema_migrations TO some_role;
+  GRANT SELECT, INSERT, UPDATE ON shiki.runs TO some_role;
+
+It cannot apply new migrations; after a shiki upgrade that adds one, run
+shiki once as the owning role first.
+
+
 OVERRIDING THE SCHEMA NAME
 
 Two ways, in priority order:

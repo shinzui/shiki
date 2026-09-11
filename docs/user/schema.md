@@ -48,6 +48,25 @@ migrations live under
 [`shiki-core/sql/migrations/`](../../shiki-core/sql/migrations/) and run
 in lexicographic order on the next CLI invocation.
 
+## Recording runs with a restricted role
+
+Migrations only create the schema and `schema_migrations` when they are
+missing, so once a role that is allowed to create them has bootstrapped
+the schema (by running any `shiki` subcommand once), a much narrower role
+can record runs. It needs no `CREATE` privilege on the database or the
+schema:
+
+```sql
+GRANT USAGE ON SCHEMA shiki TO some_role;
+GRANT SELECT ON shiki.schema_migrations TO some_role;
+GRANT SELECT, INSERT, UPDATE ON shiki.runs TO some_role;
+```
+
+Such a role cannot apply a new migration, because altering `runs` needs
+the table owner. After upgrading to a shiki release that ships a new
+migration, run any `shiki` subcommand once as the owning role before the
+restricted role uses it again.
+
 ## Schema-name override
 
 The default schema is `shiki`. Override it three ways, in precedence
