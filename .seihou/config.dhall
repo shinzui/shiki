@@ -1,4 +1,6 @@
 { `git.repoName` = "shiki"
+, `nix.builtin-package` = "false"
+, `nix.haskell-nix` = "true"
 , `nix.postgresql` = "true"
 , `nix.process-compose` = "true"
 , `project.description` = "hiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took."

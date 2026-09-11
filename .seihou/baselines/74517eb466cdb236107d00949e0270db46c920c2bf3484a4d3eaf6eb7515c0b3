@@ -31,27 +31,6 @@
       inputs.haskell-nix-dev.follows = "haskell-nix-dev";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-
-    # ---- PROJECT-SPECIFIC INPUTS ----
-    # Not module-owned. flake inputs must be declared here (Nix cannot declare
-    # them from an imported ./flake.module.nix), so these live in the managed
-    # flake.nix and will surface as a conflict on the next nix-haskell-flake
-    # migration — resolve it by accepting the new template and re-adding these.
-    # Consumed by ./flake.module.nix (see ./nix/haskell-overlay.nix).
-    kubernetes-api-src = {
-      url = "github:shinzui/kubernetes-api-project/2db0fd55d03424b3b2b7f733511b7b06b18752cd";
-      flake = false;
-    };
-
-    jose-jwt-src = {
-      url = "github:tekul/jose-jwt/95697890390f696cdcf43fbfe8d67f7262fd72bf";
-      flake = false;
-    };
-
-    hoauth2-src = {
-      url = "github:shinzui/hoauth2/3fa57f9ffe6baa6ed98d58919481ebb33f3f4d0d";
-      flake = false;
-    };
   };
 
   # The haskell-nix-dev base flake's binary cache, so the first `nix develop` downloads
