@@ -2,6 +2,7 @@ module Main (main) where
 
 import Shiki.Analysis.BackendSpec qualified as BackendSpec
 import Shiki.Analysis.HeuristicSpec qualified as HeuristicSpec
+import Shiki.K8s.CredentialExpirySpec qualified as CredentialExpirySpec
 import Shiki.K8s.ExecCredentialSpec qualified as ExecCredentialSpec
 import Shiki.K8s.JobBuilderSpec qualified as JobBuilderSpec
 import Shiki.Persistence.ErrorSummaryColumnSpec qualified as ErrorSummaryColumnSpec
@@ -25,6 +26,7 @@ main =
         RunListSpec.tests,
         JobBuilderSpec.tests,
         ExecCredentialSpec.tests,
+        CredentialExpirySpec.tests,
         SchemaSpec.tests,
         SchemaIsolationSpec.tests,
         RestrictedRoleSpec.tests,

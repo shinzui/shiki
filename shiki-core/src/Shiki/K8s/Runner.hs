@@ -8,11 +8,20 @@ module Shiki.K8s.Runner
     JobInputs (..),
     submitJob,
     runJob,
+    waitForCompletionWith,
+    maxConsecutiveStatusFailures,
   )
 where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (Exception, throwIO)
+import Control.Exception
+  ( Exception,
+    SomeAsyncException,
+    SomeException,
+    fromException,
+    throwIO,
+    try,
+  )
 import Data.Generics.Labels ()
 import Data.Time.Clock (diffUTCTime)
 import Kubernetes.OpenAPI qualified as K8s
@@ -20,7 +29,7 @@ import Kubernetes.OpenAPI.API.BatchV1 qualified as BatchV1
 import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 import Shiki.Analysis.Backend (AnalyzerKind (..), runAnalyzer)
 import Shiki.Analysis.Backend qualified as Analyzer
-import Shiki.K8s.Client (ClientEnv (..))
+import Shiki.K8s.Client (ClientEnv (..), dispatchK8s)
 import Shiki.K8s.Introspection (DeploymentSnapshot, Namespace (..))
 import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
 import Shiki.K8s.Logs (FetchedLogs, fetchJobPodLogs)
@@ -76,7 +85,7 @@ submitJob env svc snap inputs = do
           (K8s.Accept K8s.MimeJSON)
           job
           (K8s.Namespace (unNamespace (inputs ^. #namespace)))
-  resp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) req
+  resp <- dispatchK8s env req
   case K8s.mimeResult resp of
     Left err -> throwIO (JobSubmitFailed (show err))
     Right _ -> pure ()
@@ -141,19 +150,48 @@ exitCodeForPhase = \case
   JobFailed _ -> Just 1
   JobTimedOut -> Nothing
 
+-- | How many status reads may fail in a row before the wait gives up.
+--
+--   A read that fails is not a Job that failed: a credential can expire
+--   mid-wait, or the API server can blip, while the Job runs on untouched.
+--   Treating the first such error as a failed run mislabels a healthy import
+--   and abandons the wait, so tolerate a few and keep polling.
+maxConsecutiveStatusFailures :: Int
+maxConsecutiveStatusFailures = 5
+
 waitForCompletion ::
   ClientEnv -> JobInputs -> UTCTime -> Int -> Int -> IO JobPhase
-waitForCompletion env inputs startedAt pollSec timeoutSec = go
+waitForCompletion env inputs =
+  waitForCompletionWith (readJobStatus env inputs)
+
+-- | The polling loop, with the status read injected so it can be driven
+--   from a test.
+waitForCompletionWith ::
+  -- | Read the Job status; may throw.
+  IO K8s.V1JobStatus ->
+  UTCTime ->
+  -- | poll interval, seconds
+  Int ->
+  -- | overall timeout, seconds
+  Int ->
+  IO JobPhase
+waitForCompletionWith readStatus startedAt pollSec timeoutSec = go 0
   where
-    go = do
+    go failures = do
       now <- getCurrentTime
       if realToFrac (diffUTCTime now startedAt) > (fromIntegral timeoutSec :: Double)
         then pure JobTimedOut
-        else do
-          status <- readJobStatus env inputs
-          case interpret status of
-            Nothing -> threadDelay (pollSec * 1_000_000) >> go
-            Just phs -> pure phs
+        else
+          try @SomeException readStatus >>= \case
+            Left err
+              | Just asyncErr <- fromException @SomeAsyncException err -> throwIO asyncErr
+              | failures + 1 >= maxConsecutiveStatusFailures -> throwIO err
+              | otherwise -> wait >> go (failures + 1)
+            Right status -> case interpret status of
+              Nothing -> wait >> go 0
+              Just phs -> pure phs
+
+    wait = threadDelay (pollSec * 1_000_000)
 
     interpret :: K8s.V1JobStatus -> Maybe JobPhase
     interpret s = case (s ^. K8sLens.v1JobStatusSucceededL, s ^. K8sLens.v1JobStatusFailedL) of
@@ -173,7 +211,7 @@ readJobStatus env inputs = do
           (K8s.Accept K8s.MimeJSON)
           (K8s.Name (inputs ^. #jobName))
           (K8s.Namespace (unNamespace (inputs ^. #namespace)))
-  resp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) req
+  resp <- dispatchK8s env req
   job <- case K8s.mimeResult resp of
     Left err -> throwIO (JobStatusReadFailed (inputs ^. #jobName) (show err))
     Right j -> pure j

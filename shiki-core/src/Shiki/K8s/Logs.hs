@@ -26,7 +26,7 @@ import Data.Text qualified as Text
 import Kubernetes.OpenAPI qualified as K8s
 import Kubernetes.OpenAPI.API.CoreV1 qualified as CoreV1
 import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
-import Shiki.K8s.Client (ClientEnv (..))
+import Shiki.K8s.Client (ClientEnv (..), dispatchK8s)
 import Shiki.K8s.Introspection (Namespace (..))
 import Shiki.Prelude
 
@@ -80,7 +80,7 @@ fetchJobPodLogs env ns jobName = do
           (K8s.Accept K8s.MimeJSON)
           (K8s.Namespace (unNamespace ns))
           `K8s.applyOptionalParam` K8s.LabelSelector ("job-name=" <> jobName)
-  listResp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) listReq
+  listResp <- dispatchK8s env listReq
   case K8s.mimeResult listResp of
     Left err -> pure (Left (PodListFailed jobName (show err)))
     Right pl -> case pl ^. K8sLens.v1PodListItemsL of
@@ -98,7 +98,7 @@ fetchPodLog env ns nm = do
           (K8s.Name nm)
           (K8s.Namespace (unNamespace ns))
           `K8s.applyOptionalParam` K8s.TailLines analysisLineCap
-  logResp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) logReq
+  logResp <- dispatchK8s env logReq
   case K8s.mimeResult logResp of
     Left err -> pure (Left (PodLogReadFailed nm (show err)))
     Right txt ->

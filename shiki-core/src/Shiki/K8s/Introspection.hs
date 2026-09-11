@@ -20,7 +20,7 @@ import Data.Maybe (mapMaybe)
 import Kubernetes.OpenAPI qualified as K8s
 import Kubernetes.OpenAPI.API.AppsV1 qualified as AppsV1
 import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
-import Shiki.K8s.Client (ClientEnv (..))
+import Shiki.K8s.Client (ClientEnv (..), dispatchK8s)
 import Shiki.Prelude hiding (Strict)
 
 -- | A Kubernetes namespace, wrapped so it can't be confused with a
@@ -82,7 +82,7 @@ inspectDeployment env ns dep containerName = do
           (K8s.Accept K8s.MimeJSON)
           (K8s.Name (unDeploymentName dep))
           (K8s.Namespace (unNamespace ns))
-  resp <- K8s.dispatchMime (env ^. #httpManager) (env ^. #clientConfig) req
+  resp <- dispatchK8s env req
   deployment <- case K8s.mimeResult resp of
     Left err -> throwIO (DeploymentReadFailed ns dep (show err))
     Right d -> pure d

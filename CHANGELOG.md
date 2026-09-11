@@ -97,6 +97,16 @@ run>
 
 ### Fixed
 
+- fix(shiki-core): a Kubernetes credential that expires mid-run no longer
+  fails the run. shiki minted an exec-plugin token once, when it built the
+  client, and reused it for the whole wait; GKE's plugin hands out what is
+  left of a one-hour token, so a long `shiki run` eventually polled with a
+  dead token, got `401 Unauthorized`, and recorded a healthy Job as failed
+  with no exit code. Every Kubernetes call now goes through `dispatchK8s`,
+  which mints a fresh credential and retries once on a 401. The polling loop
+  also tolerates up to `maxConsecutiveStatusFailures` consecutive status-read
+  errors, since a read that fails is not a Job that failed.
+
 - fix(shiki-cli): EP-10 — a picker query that matches nothing now reports
   `shiki: no run matches the picker query` (or `shiki: no service matches the
   picker query`) instead of claiming that no runs, or no service configs,
