@@ -28,10 +28,10 @@ import Shiki.Cli.Fzf
     FzfResult (..),
     isFzfAvailable,
     runFzf,
-    withAnsi,
     withHeight,
     withNoSort,
     withPrompt,
+    withSelectOne,
   )
 import Shiki.Persistence.Run
   ( RunId (..),
@@ -51,10 +51,11 @@ data RunSelection
   | RunSelectionError !Text
 
 -- | The default fzf options for run pickers: @run> @ prompt, 40% height,
---   ANSI colour rendering on, sort disabled (we pre-sort by recency).
+--   sort disabled (we pre-sort by recency), a lone run picked without
+--   asking.
 defaultRunOpts :: FzfOpts
 defaultRunOpts =
-  withPrompt "run> " <> withHeight "40%" <> withAnsi <> withNoSort
+  withPrompt "run> " <> withHeight "40%" <> withNoSort <> withSelectOne
 
 -- | How many rows to surface in the picker. 50 is bigger than the 20
 --   default of @runs list@ because fuzzy search is more useful with

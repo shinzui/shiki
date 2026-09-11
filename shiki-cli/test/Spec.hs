@@ -7,6 +7,7 @@ import Shiki.Cli.Agent.ProviderSpec qualified as ProviderSpec
 import Shiki.Cli.ConfigInitSpec qualified as ConfigInitSpec
 import Shiki.Cli.EnvRoutingSpec qualified as EnvRoutingSpec
 import Shiki.Cli.Fzf.Selector.RunSpec qualified as RunSelectorSpec
+import Shiki.Cli.FzfSpec qualified as FzfSpec
 import Shiki.Cli.HelpSpec qualified as HelpSpec
 import Shiki.Cli.ParserSpec qualified as ParserSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
@@ -34,6 +35,7 @@ main =
           HelpSpec.tests,
           ParserSpec.tests,
           VersionSpec.tests,
+          FzfSpec.tests,
           RunSelectorSpec.tests,
           ProjectSpec.tests
         ]

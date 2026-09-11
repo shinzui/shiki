@@ -26,6 +26,7 @@ import Shiki.Cli.Fzf
     withHeight,
     withNoSort,
     withPrompt,
+    withSelectOne,
   )
 import Shiki.Prelude
 import System.Directory (doesDirectoryExist, listDirectory)
@@ -46,7 +47,7 @@ data ServiceSelection
 
 defaultServiceOpts :: FzfOpts
 defaultServiceOpts =
-  withPrompt "service> " <> withHeight "40%" <> withNoSort
+  withPrompt "service> " <> withHeight "40%" <> withNoSort <> withSelectOne
 
 -- | Enumerate @services/*.dhall@ in lexical order and hand the basenames
 --   (minus the @.dhall@ extension) to fzf.

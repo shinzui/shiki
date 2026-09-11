@@ -1,10 +1,10 @@
 -- | Core abstraction for invoking @fzf@ as a subprocess from shiki.
 --
---   Detection happens once per CLI invocation ('detectFzfConfig'); the
---   resulting 'FzfConfig' is threaded through 'Shiki.Cli.Env.CliEnv' so
---   each handler sees the same snapshot. 'runFzf' is the only function
---   that actually spawns @fzf@: callers build a list of 'Candidate'
---   values and a 'FzfOpts' bundle, get back a 'FzfResult'.
+--   Detection happens per call site, only when a command actually needs a
+--   picker ('detectFzfConfig'). 'runFzf' is the only function that
+--   actually spawns @fzf@: callers build a list of 'Candidate' values and
+--   a 'FzfOpts' bundle, get back a 'FzfResult'. Every flag beyond the
+--   hidden index column is driven by 'FzfOpts'.
 --
 --   The interface deliberately stays narrow — single-select with hidden
 --   index column, no preview, no expect-keys. Selector modules
@@ -22,6 +22,8 @@ module Shiki.Cli.Fzf
     withHeight,
     withAnsi,
     withNoSort,
+    withSelectOne,
+    withHeaderRow,
 
     -- * Selection
     Candidate (..),
@@ -30,10 +32,11 @@ module Shiki.Cli.Fzf
   )
 where
 
-import Control.Exception (SomeException, try)
+import Control.Exception (IOException, try)
 import Data.Generics.Labels ()
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (maybeToList)
 import Data.Text qualified as Text
 import Data.Text.Read qualified as TextRead
 import Shiki.Prelude
@@ -44,12 +47,9 @@ import System.IO
     IOMode (..),
     hClose,
     hGetContents,
-    hIsTerminalDevice,
     hPutStr,
     hSetBuffering,
     openFile,
-    stdin,
-    stdout,
   )
 import System.Process
   ( CreateProcess (..),
@@ -59,47 +59,40 @@ import System.Process
     waitForProcess,
   )
 
--- | A snapshot of the local fzf availability captured once per CLI
---   invocation. @binary@ is the resolved absolute path to the binary
---   if it was found on @PATH@, or the literal @\"fzf\"@ if not (still
---   recorded for diagnostics; @available@ is the source of truth).
+-- | A snapshot of the local fzf availability. @binary@ is the resolved
+--   absolute path to the binary if it was found on @PATH@, or the literal
+--   @\"fzf\"@ if not (still recorded for diagnostics; @available@ is the
+--   source of truth).
 data FzfConfig = FzfConfig
   { binary :: !FilePath,
     available :: !Bool,
-    stdinIsTerminal :: !Bool,
-    stdoutIsTerminal :: !Bool,
     ttyAvailable :: !Bool
   }
   deriving stock (Generic, Eq, Show)
 
--- | Probe the operator environment: look for @fzf@ on @PATH@, check
---   whether stdin and stdout are terminal devices, and try to open
---   @\/dev\/tty@ as a fallback for piped invocations.
+-- | Probe the operator environment: look for @fzf@ on @PATH@ and try to
+--   open @\/dev\/tty@, which is where fzf reads keys and draws its
+--   interface.
 detectFzfConfig :: IO FzfConfig
 detectFzfConfig = do
   mPath <- findExecutable "fzf"
-  inTty <- hIsTerminalDevice stdin
-  outTty <- hIsTerminalDevice stdout
   ttyOk <- probeTty
   pure
     FzfConfig
       { binary = fromMaybe "fzf" mPath,
         available = isJust mPath,
-        stdinIsTerminal = inTty,
-        stdoutIsTerminal = outTty,
         ttyAvailable = ttyOk
       }
   where
     probeTty :: IO Bool
     probeTty = do
-      r <- try @SomeException (openFile "/dev/tty" ReadMode >>= hClose)
+      r <- try @IOException (openFile "/dev/tty" ReadMode >>= hClose)
       pure (either (const False) (const True) r)
 
--- | @True@ when the binary exists AND we can deliver an interactive
---   keyboard somehow (real stdin terminal or a usable @\/dev\/tty@).
+-- | fzf reads keys from @\/dev\/tty@ (its stdin is our pipe), so it can run
+--   exactly when the binary exists and @\/dev\/tty@ opens.
 isFzfAvailable :: FzfConfig -> Bool
-isFzfAvailable cfg =
-  cfg ^. #available && (cfg ^. #stdinIsTerminal || cfg ^. #ttyAvailable)
+isFzfAvailable cfg = cfg ^. #available && cfg ^. #ttyAvailable
 
 -- | Right-biased option bundle; combine via @<>@ in caller modules.
 data FzfOpts = FzfOpts
@@ -107,7 +100,9 @@ data FzfOpts = FzfOpts
     header :: !(Maybe Text),
     height :: !(Maybe Text),
     ansi :: !Bool,
-    noSort :: !Bool
+    noSort :: !Bool,
+    selectOne :: !Bool,
+    headerRow :: !(Maybe Text)
   }
   deriving stock (Generic, Eq, Show)
 
@@ -118,7 +113,9 @@ instance Semigroup FzfOpts where
         header = b ^. #header <|> a ^. #header,
         height = b ^. #height <|> a ^. #height,
         ansi = a ^. #ansi || b ^. #ansi,
-        noSort = a ^. #noSort || b ^. #noSort
+        noSort = a ^. #noSort || b ^. #noSort,
+        selectOne = a ^. #selectOne || b ^. #selectOne,
+        headerRow = b ^. #headerRow <|> a ^. #headerRow
       }
 
 instance Monoid FzfOpts where
@@ -128,7 +125,9 @@ instance Monoid FzfOpts where
         header = Nothing,
         height = Nothing,
         ansi = False,
-        noSort = False
+        noSort = False,
+        selectOne = False,
+        headerRow = Nothing
       }
 
 withPrompt :: Text -> FzfOpts
@@ -146,6 +145,16 @@ withAnsi = mempty & #ansi .~ True
 withNoSort :: FzfOpts
 withNoSort = mempty & #noSort .~ True
 
+-- | Accept the only candidate without drawing the picker (fzf's @-1@).
+withSelectOne :: FzfOpts
+withSelectOne = mempty & #selectOne .~ True
+
+-- | A line of column titles shown above the candidates. It is sent as the
+--   first input line and marked with @--header-lines=1@, so fzf renders it
+--   through the same @--with-nth@ as the rows and never returns it.
+withHeaderRow :: Text -> FzfOpts
+withHeaderRow t = mempty & #headerRow ?~ t
+
 -- | One row presented to the operator. @display@ is what fzf
 --   shows; @value@ is the value handed back to the caller when
 --   the row is chosen.
@@ -161,7 +170,7 @@ data FzfResult a
   | FzfNoMatch
   | FzfCancelled
   | FzfError !Text
-  deriving stock (Functor)
+  deriving stock (Eq, Show, Functor)
 
 -- | Spawn fzf and let the operator pick one candidate.
 --
@@ -169,16 +178,21 @@ data FzfResult a
 --
 --   * Each candidate is fed to fzf as @\"<index>\\t<display>\"@; we pass
 --     @--with-nth=2..@ so the index column is hidden but used to look
---     the value back up.
+--     the value back up. A header row, when set, is sent first as
+--     @\"-\\t<titles>\"@ with @--header-lines=1@; fzf never prints a
+--     header line, so its unparseable index cannot come back.
 --   * @delegate_ctlc = True@ on the 'CreateProcess' so Ctrl-C reaches
 --     fzf (exit 130 → 'FzfCancelled') instead of killing shiki.
---   * @std_err = Inherit@ so fzf's TUI renders to the terminal.
+--   * fzf draws on and reads keys from the terminal via @\/dev\/tty@;
+--     @std_err = Inherit@ only lets fzf's own error messages through.
 --   * @std_out@ is piped, read lazily via 'hGetContents', then
 --     'waitForProcess' forces the read.
 --   * Empty candidate list short-circuits to 'FzfNoMatch' so we never
 --     spawn fzf with no input.
 --   * 'isFzfAvailable' is checked defensively; callers should have
 --     gated on it already.
+--   * Only 'IOException' (spawn failure, broken pipe) becomes 'FzfError';
+--     asynchronous exceptions such as @UserInterrupt@ propagate.
 runFzf :: FzfConfig -> FzfOpts -> [Candidate a] -> IO (FzfResult a)
 runFzf cfg opts candidates
   | null candidates = pure FzfNoMatch
@@ -188,10 +202,10 @@ runFzf cfg opts candidates
           valueByIndex = Map.fromList [(i, c ^. #value) | (i, c) <- numbered]
           stdinPayload =
             Text.unlines
-              [ Text.pack (show i) <> "\t" <> c ^. #display
-              | (i, c) <- numbered
-              ]
-          args = ["-1", "--with-nth=2.."] <> optsToArgs opts
+              ( ["-\t" <> row | row <- maybeToList (opts ^. #headerRow)]
+                  <> [Text.pack (show i) <> "\t" <> c ^. #display | (i, c) <- numbered]
+              )
+          args = "--with-nth=2.." : optsToArgs opts
           cp =
             (proc (cfg ^. #binary) args)
               { std_in = CreatePipe,
@@ -199,7 +213,7 @@ runFzf cfg opts candidates
                 std_err = Inherit,
                 delegate_ctlc = True
               }
-      r <- try @SomeException $ do
+      r <- try @IOException $ do
         (Just hin, Just hout, _, ph) <- createProcess cp
         hSetBuffering hin NoBuffering
         hPutStr hin (Text.unpack stdinPayload)
@@ -238,5 +252,7 @@ optsToArgs o =
       maybe [] (\t -> ["--header", Text.unpack t]) (o ^. #header),
       maybe [] (\t -> ["--height", Text.unpack t]) (o ^. #height),
       ["--ansi" | o ^. #ansi],
-      ["--no-sort" | o ^. #noSort]
+      ["--no-sort" | o ^. #noSort],
+      ["-1" | o ^. #selectOne],
+      ["--header-lines=1" | isJust (o ^. #headerRow)]
     ]

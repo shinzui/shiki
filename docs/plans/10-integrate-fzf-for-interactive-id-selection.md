@@ -12,6 +12,11 @@ provenance:
       at: 2026-09-11T19:24:00Z
       mode: "update"
       note: "Refresh completed plan against HEAD d0686f7: current field names, nix fmt restored, mori URI, Esc exit code, re-verified evidence"
+    - model: "claude-opus-5[1m]"
+      harness: "claude-code"
+      at: 2026-09-11T19:58:55Z
+      mode: "implement"
+      note: "Implement milestones 6-10: hardened fzf core, shared run formatting, typed two-phase resolvers"
 ---
 
 # Integrate fzf for interactive ID selection
@@ -182,17 +187,20 @@ This section must always reflect the actual current state of the work.
 
 ### M6 — Harden the fzf core
 
-- [ ] Drop `stdinIsTerminal` and `stdoutIsTerminal` from `FzfConfig`; make
-      `isFzfAvailable` require `available && ttyAvailable`.
-- [ ] Add `selectOne :: Bool` (`withSelectOne`) and `headerRow :: Maybe Text`
+- [x] Drop `stdinIsTerminal` and `stdoutIsTerminal` from `FzfConfig`; make
+      `isFzfAvailable` require `available && ttyAvailable`. [2026-09-11]
+- [x] Add `selectOne :: Bool` (`withSelectOne`) and `headerRow :: Maybe Text`
       (`withHeaderRow`) to `FzfOpts`; stop hard-coding `-1` in `runFzf`; emit the header row
-      as the first stdin line with `--header-lines=1`.
-- [ ] Catch only `IOException` in `runFzf` instead of `SomeException`.
-- [ ] Keep behaviour identical: add `withSelectOne` to the run and service picker options
-      and drop the no-op `withAnsi` from the run picker options.
-- [ ] Add `shiki-cli/test/Shiki/Cli/FzfSpec.hs` (fake-fzf subprocess tests and the
+      as the first stdin line with `--header-lines=1`. [2026-09-11]
+- [x] Catch only `IOException` in `runFzf` instead of `SomeException` (also in the
+      `/dev/tty` probe). [2026-09-11]
+- [x] Keep behaviour identical: add `withSelectOne` to the run and service picker options
+      and drop the no-op `withAnsi` from the run picker options. [2026-09-11]
+- [x] Add `shiki-cli/test/Shiki/Cli/FzfSpec.hs` (fake-fzf subprocess tests and the
       `isFzfAvailable` truth table); wire it into `Spec.hs` and the cabal test stanza.
-- [ ] `cabal build all` warning-free and `cabal test shiki-cli-test` green; commit.
+      `FzfResult` now derives `Eq` and `Show`. [2026-09-11]
+- [x] `cabal build all` warning-free and `cabal test shiki-cli-test` green
+      (`All 73 tests passed`); commit. [2026-09-11]
 
 ### M7 — Share run formatting between `runs list` and the picker
 
@@ -333,6 +341,29 @@ implementation. Provide concise evidence.
   prints it immediately. The same flag makes `shiki runs analyze` with one recorded run
   re-analyze it without the operator confirming anything; analysis overwrites
   `error_summary` and, with a `baikai:<model>` analyzer, calls a paid model.
+
+- 2026-09-11 (implementation, environment): `just up` could not start the checkout's
+  database. `db/postgres.log` says `The data directory was initialized by PostgreSQL version
+  17, which is not compatible with this version 18.6` — the dev shell moved to PostgreSQL 18
+  while `db/db` is still a 17 cluster. The data directory was left untouched. Manual checks
+  used a throwaway PostgreSQL 18 cluster instead (`initdb` into a scratch directory,
+  `pg_ctl start -o "-c listen_addresses=127.0.0.1 -p 54329"`, `createdb shiki`) passed to
+  shiki with `--db postgresql://shiki@127.0.0.1:54329/shiki`, and seeded with three rows by
+  `INSERT` (Kubernetes is not needed to read runs): `3f2c1a9d…` `ingest` succeeded,
+  `7a01bc22…` `a-much-longer-service` failed, `c9d8e7f6…` `worker` running.
+
+- 2026-09-11 (bug, pre-existing since EP-5 commit `2b51e13`): `shiki runs list` never
+  terminates once the table holds a row. `computeWidths` folds from `repeat 0`, and its
+  `zipWithLong` pads both lists to `max (length xs) (length ys)`, so `length` runs over an
+  infinite (cyclic) list. The first seven widths are computed lazily, which is why the bug
+  hid: `formatRow widths cols = zipWith pad widths cols` then asks `widths` for an eighth
+  element before noticing `cols` is exhausted, and that forces the `length`. The loop does
+  not allocate, so even `System.Timeout.timeout` cannot interrupt it. Evidence: with three
+  seeded rows, `shiki --db … runs list` printed nothing and hung while `pg_stat_activity`
+  showed its connection `idle` after the `SELECT`; an isolated copy printed `[3,6` and hung.
+  An empty table never reaches `renderTable`, so `(no runs recorded yet)` still worked. The
+  M7 acceptance check "byte-identical to before" therefore has no "before" to compare
+  against; see the Decision Log.
 
 
 ## Decision Log
@@ -527,6 +558,17 @@ Record every decision made while working on the plan.
   context builder all share the convention. Changing one without the others would make the
   picker disagree with the command it feeds. It belongs to a plan that anchors every
   service lookup at once.
+  Date: 2026-09-11.
+
+- Decision: Fix `computeWidths` in M7 (fold from `[]` instead of `repeat 0`) rather than
+  move it "unchanged", and replace M7's "byte-identical `runs list`" check with a check
+  against the documented table layout plus a unit test that renders a table.
+  Rationale: The moved helper hangs on any non-empty table (see Surprises), and M7 makes
+  the picker call it too, so moving it unchanged would make every picker with a row hang.
+  Folding from `[]` gives the widest cell per column for the rows given, which is what the
+  function was always meant to compute; the table layout (cells padded to column width,
+  joined by two spaces) is unchanged. There was no terminating "before" output to compare
+  with, so the unit test and a live run over seeded rows are the acceptance.
   Date: 2026-09-11.
 
 

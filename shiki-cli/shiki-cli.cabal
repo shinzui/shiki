@@ -122,6 +122,7 @@ test-suite shiki-cli-test
     Shiki.Cli.ConfigInitSpec
     Shiki.Cli.EnvRoutingSpec
     Shiki.Cli.Fzf.Selector.RunSpec
+    Shiki.Cli.FzfSpec
     Shiki.Cli.HelpSpec
     Shiki.Cli.ParserSpec
     Shiki.Cli.ProjectSpec
