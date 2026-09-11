@@ -110,10 +110,10 @@ Milestone 6 — Option groups and help-on-empty
 Milestone 7 — Release conformance audit, ADR, and Nix build
 
 - [x] (2026-09-11 21:00Z) Clear the pre-existing GHC warnings (12 at baseline, 11 after M3; see Surprises & Discoveries) so a clean rebuild is warning-free. The `dependentTestGroup` replacement needs tasty 1.5.4, so `shiki-cli-test` now bounds `tasty >=1.5.4 && <1.6`.
-- [ ] Run the full conformance audit and record the transcript in this plan.
-- [ ] `nix build .#shiki` succeeds; exercise `--version`, `completions`, `help --width` on `./result/bin/shiki`.
-- [ ] Create `docs/adr/1-follow-haskell-jitsurei-conventions.md`.
-- [ ] Fill in Outcomes & Retrospective; commit.
+- [x] (2026-09-11 21:20Z) Run the full conformance audit and record the transcript in this plan (Outcomes & Retrospective).
+- [x] (2026-09-11 21:15Z) `nix build .#shiki` succeeds; exercise `--version`, `completions`, `help --width`, grouped help, and bare `shiki` on `./result/bin/shiki`. A build of the committed revision (`nix build "git+file://$PWD?rev=$(git rev-parse HEAD)#shiki"`) prints `shiki v0.1.0.0 (d0686f7)`.
+- [x] (2026-09-11 21:25Z) Create `docs/adr/1-follow-haskell-jitsurei-conventions.md`.
+- [x] (2026-09-11 21:30Z) Fill in Outcomes & Retrospective; commit.
 
 
 ## Surprises & Discoveries
@@ -437,7 +437,113 @@ Milestone 7 — Release conformance audit, ADR, and Nix build
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+Completed 2026-09-11. Every milestone landed as planned, in nine commits on `master`: a
+formatting-only commit, one commit per milestone, and a warning-cleanup commit in
+Milestone 7. The release source now passes the catalog checklist. `cabal build all` is
+warning-free on a clean rebuild. `cabal test all` passes with 33 `shiki-core` tests
+(unchanged) and 62 `shiki-cli` tests (up from 42). `nix build .#shiki` produces a binary
+that shows all three user-visible behaviors.
+
+What an operator gets, observed on the Nix-built binary:
+
+```text
+$ ./result/bin/shiki --version                        # committed-revision build
+shiki v0.1.0.0 (d0686f7)
+$ ./result/bin/shiki completions zsh | head -1
+#compdef shiki
+$ ./result/bin/shiki help runs | cmp - shiki-cli/data/help/runs.md && echo identical
+identical
+$ ./result/bin/shiki help runs --width 60 | awk '!/^  / && length($0) > 60' | wc -l
+       0
+$ ./result/bin/shiki agent assist --help | grep -E '^(Provider|Session context)'
+Provider
+Session context
+$ ./result/bin/shiki >/dev/null 2>&1; echo "bare exit=$?"
+bare exit=1                                           # after printing the full help page
+$ PATH=./result/bin:$PATH /bin/bash -c 'eval "$(shiki completions bash)"; COMP_WORDS=(shiki ru); COMP_CWORD=1; _shiki_completions; printf "%s\n" "${COMPREPLY[@]}"'
+runs
+run
+```
+
+Conformance audit on the final tree (Milestone 7). Empty sections mean the command
+printed nothing, which is the expected result:
+
+```text
+$ grep -nE '^(common|library|executable|test-suite|benchmark)\b|^\s*import:' shiki-core/shiki-core.cabal shiki-cli/shiki-cli.cabal
+shiki-cli/shiki-cli.cabal:20:common common
+shiki-cli/shiki-cli.cabal:41:library
+shiki-cli/shiki-cli.cabal:42:  import: common
+shiki-cli/shiki-cli.cabal:94:executable shiki
+shiki-cli/shiki-cli.cabal:95:  import: common
+shiki-cli/shiki-cli.cabal:107:test-suite shiki-cli-test
+shiki-cli/shiki-cli.cabal:108:  import: common
+shiki-core/shiki-core.cabal:28:common common
+shiki-core/shiki-core.cabal:49:library
+shiki-core/shiki-core.cabal:50:  import: common
+shiki-core/shiki-core.cabal:106:executable shiki-run-once
+shiki-core/shiki-core.cabal:107:  import: common
+shiki-core/shiki-core.cabal:116:test-suite shiki-core-test
+shiki-core/shiki-core.cabal:117:  import: common
+$ grep -nE 'default-language|tested-with|base >=' shiki-core/shiki-core.cabal shiki-cli/shiki-cli.cabal
+shiki-core/shiki-core.cabal:16:tested-with: ghc ==9.12.4
+shiki-core/shiki-core.cabal:41:  default-language: GHC2024
+shiki-core/shiki-core.cabal:80:    base >=4.21 && <5,
+shiki-core/shiki-core.cabal:111:    base >=4.21 && <5,
+shiki-core/shiki-core.cabal:143:    base >=4.21 && <5,
+shiki-cli/shiki-cli.cabal:14:tested-with: ghc ==9.12.4
+shiki-cli/shiki-cli.cabal:33:  default-language: GHC2024
+shiki-cli/shiki-cli.cabal:75:    base >=4.21 && <5,
+shiki-cli/shiki-cli.cabal:104:    base >=4.21 && <5,
+shiki-cli/shiki-cli.cabal:132:    base >=4.21 && <5,
+$ grep -nA5 default-extensions shiki-core/shiki-core.cabal shiki-cli/shiki-cli.cabal   # both identical
+  default-extensions: DeriveAnyClass DuplicateRecordFields MultilineStrings OverloadedLabels OverloadedStrings
+$ git grep -nE '^import qualified ' -- '*.hs'
+$ git grep -n 'import "' -- '*.hs' | grep -v '^shiki-core/src/Shiki/Prelude.hs:'
+$ git grep -n PackageImports -- '*.hs' '*.cabal'
+shiki-core/src/Shiki/Prelude.hs:1:{-# LANGUAGE PackageImports #-}
+$ git grep -n '^import.*Data.Generics.Labels' -- shiki-core/src/Shiki/Prelude.hs
+$ <label-usage loop from Concrete Steps, Milestone 2>
+MISSING labels import: shiki-cli/src/Shiki/Cli/Completions.hs     # false positive: "#compdef" in a string
+MISSING labels import: shiki-cli/test/Shiki/Cli/ParserSpec.hs     # false positive: "#compdef" in a string
+$ <prefix grep from Concrete Steps, Milestone 3>
+$ git grep -nE '^[[:space:]]*[,{][[:space:]]*[a-z][A-Za-z0-9_]*[[:space:]]*::[[:space:]]*[^![:space:]]' -- '*.hs'   # lazy record fields
+$ git grep -nE '^\s*deriving\s*\(' -- '*.hs'                                                                     # deriving without a strategy
+$ cabal build all   # after removing dist-newstyle/build/*/*/shiki-{core,cli}-0.1.0.0
+(no GHC warnings)
+$ cabal test all
+All 33 tests passed
+Test suite shiki-core-test: PASS
+All 62 tests passed
+Test suite shiki-cli-test: PASS
+```
+
+Already-adopted patterns, re-verified: `Shiki.Cli.Fzf` still passes `--with-nth=2..` and
+`-1`, sets `delegate_ctlc = True`, maps exit 130 to cancel, and probes `/dev/tty`.
+`shiki runs show --help` still reads `Usage: shiki runs show [ID]` with the fzf fallback.
+`shiki help` lists six topics, and `shiki agent assist` keeps `--debug`. A live fzf
+selection was not exercised, because it needs a database and a cluster, and this plan
+touches neither.
+
+What remains: nothing in scope. The patterns excluded in the Decision Log (Servant, stdin,
+clipboard, aliases, hierarchical config, per-command agent config, the skill registry)
+can be revisited if shiki grows the matching surface. Fish completion was not
+syntax-checked, because `fish` is not installed here. The protocol it relies on is the one
+the Bash and Zsh checks and the `ParserSpec` protocol tests exercise.
+
+Lessons:
+
+- The catalog drifted under the project within two months. Recording the adoption as an
+  ADR (`docs/adr/1-follow-haskell-jitsurei-conventions.md`) gives the next catalog change
+  an explicit place to land, instead of leaving it buried in EP-1's Decision Log.
+- A formatter that runs on whole staged files turns a mechanical rewrite of partially
+  formatted code into an unreviewable diff. Formatting first, in its own commit, fixed
+  that cheaply.
+- Plain-word field names (`name`, `cluster`, `status`) are what the record standard
+  wants, but they collide with idiomatic local variable names. Expect `-Wname-shadowing`
+  work whenever prefixes come off.
+- Grep-based conformance checks need anchoring. Two of the plan's own checks
+  (`PackageImports` and the prelude labels grep) matched documentation and comments until
+  they were anchored or scoped to code.
 
 
 ## Context and Orientation
@@ -1476,7 +1582,8 @@ nix build .#shiki
 ```
 
 Expected: every stanza line is followed by `import: common`. Both packages show
-`default-language: GHC2024`, `tested-with: GHC ==9.12.4`, and `base >=4.21`. The greps
+`default-language: GHC2024`, `tested-with: ghc ==9.12.4` (cabal-gild writes the compiler
+name in lower case), and `base >=4.21`. The greps
 print nothing except the prelude pragma. The version line reads
 `shiki v0.1.0.0 (<7-char sha>)`. The completion line reads `#compdef shiki`. The help
 excerpt is wrapped at 60 columns or fewer.
@@ -1623,3 +1730,14 @@ names listed in Milestone 3. The exported functions `execAuthForContext`,
 
 New test module `shiki-cli/test/Shiki/Cli/ParserSpec.hs` exports `tests :: TestTree`
 and is registered in `shiki-cli/shiki-cli.cabal` and `shiki-cli/test/Spec.hs`.
+
+
+## Revision Notes
+
+- 2026-09-11 (implementation, claude-opus-5[1m]): Implemented all seven milestones. During
+  implementation, the Concrete Steps and Milestone 7 audit commands were adjusted, and
+  the reasons are recorded in Surprises & Discoveries. The `PackageImports` grep is scoped
+  to `'*.hs' '*.cabal'`, the prelude labels grep is anchored to import lines, and the
+  expected `tested-with` line uses cabal-gild's lower-case `ghc`. Two Progress items were
+  added: a formatting-only pre-commit in Milestone 1, and clearing the pre-existing GHC
+  warnings in Milestone 7. The matching Decision Log entries explain both.
