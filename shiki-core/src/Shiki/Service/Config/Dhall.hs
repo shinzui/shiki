@@ -14,6 +14,7 @@ module Shiki.Service.Config.Dhall
   )
 where
 
+import Dhall qualified
 import Shiki.Service.Config
   ( AnalyzerBackend,
     ContainerImageSource,
@@ -24,7 +25,6 @@ import Shiki.Service.Config
     ServiceConfig,
     ServiceName (..),
   )
-import "dhall" Dhall qualified
 
 loadServiceConfig :: FilePath -> IO ServiceConfig
 loadServiceConfig = Dhall.inputFile Dhall.auto

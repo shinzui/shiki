@@ -9,6 +9,34 @@ module Shiki.Cli.Runs
   )
 where
 
+import Control.Exception (IOException, try)
+import Data.Aeson.Encode.Pretty qualified as AesonPretty
+import Data.ByteString.Lazy.Char8 qualified as BL8
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
+import Data.Time.Format qualified as TimeFmt
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement)
+import Options.Applicative
+  ( Parser,
+    argument,
+    auto,
+    help,
+    hsubparser,
+    info,
+    long,
+    metavar,
+    option,
+    optional,
+    progDesc,
+    short,
+    showDefault,
+    str,
+    strOption,
+    value,
+  )
+import Options.Applicative qualified as Opt
 import Shiki.Analysis.Backend
   ( AnalyzerError (..),
     AnalyzerKind (..),
@@ -29,36 +57,8 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.RunStatus (runStatusToText)
 import Shiki.Prelude hiding (argument)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import "aeson-pretty" Data.Aeson.Encode.Pretty qualified as AesonPretty
-import "base" Control.Exception (IOException, try)
-import "base" System.Exit (exitFailure)
-import "base" System.IO (hPutStrLn, stderr)
-import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "optparse-applicative" Options.Applicative
-  ( Parser,
-    argument,
-    auto,
-    help,
-    hsubparser,
-    info,
-    long,
-    metavar,
-    option,
-    optional,
-    progDesc,
-    short,
-    showDefault,
-    str,
-    strOption,
-    value,
-  )
-import "optparse-applicative" Options.Applicative qualified as Opt
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
-import "time" Data.Time.Format qualified as TimeFmt
+import System.Exit (exitFailure)
+import System.IO (hPutStrLn, stderr)
 
 data RunsCommand
   = RunsList !(Maybe Text) !Int

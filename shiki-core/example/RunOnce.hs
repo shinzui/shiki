@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Data.Text qualified as Text
 import Shiki.K8s.Client (loadDefaultClientConfig)
 import Shiki.K8s.Introspection
   ( DeploymentName (..),
@@ -10,8 +11,7 @@ import Shiki.K8s.JobBuilder (JobInputs (..), generateJobName)
 import Shiki.K8s.Runner (runJob)
 import Shiki.Prelude
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import "base" System.Environment (getArgs)
-import "text" Data.Text qualified as Text
+import System.Environment (getArgs)
 
 -- | Live-cluster smoke test for the Job runner. Loads
 --   @services\/\<service\>.dhall@, talks to the operator's current kube

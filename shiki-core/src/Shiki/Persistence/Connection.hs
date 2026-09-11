@@ -9,13 +9,13 @@ module Shiki.Persistence.Connection
   )
 where
 
+import Data.Time.Clock (DiffTime)
+import Hasql.Connection.Settings qualified as ConnSettings
+import Hasql.Pool qualified as Pool
+import Hasql.Pool.Config qualified as PoolConfig
+import Hasql.Session qualified as Session
 import Shiki.Persistence.Schema (Schema, quoteSchema)
 import Shiki.Prelude
-import "hasql" Hasql.Connection.Settings qualified as ConnSettings
-import "hasql" Hasql.Session qualified as Session
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "hasql-pool" Hasql.Pool.Config qualified as PoolConfig
-import "time" Data.Time.Clock (DiffTime)
 
 newtype ConnectionString = ConnectionString {unConnectionString :: Text}
   deriving stock (Generic, Eq, Show)

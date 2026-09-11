@@ -9,22 +9,22 @@ module Shiki.Persistence.Migration
   )
 where
 
-import Paths_shiki_core qualified as Paths
-import Shiki.Persistence.Schema (Schema, quoteSchema, schemaText)
-import Shiki.Prelude
-import "hasql" Hasql.Decoders qualified as Decoders
-import "hasql" Hasql.Encoders qualified as Encoders
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement, preparable)
-import "hasql-migration" Hasql.Migration qualified as Migration
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "hasql-transaction" Hasql.Transaction qualified as Transaction
-import "hasql-transaction" Hasql.Transaction.Sessions
+import Data.Text.Encoding qualified as Text.Encoding
+import Hasql.Decoders qualified as Decoders
+import Hasql.Encoders qualified as Encoders
+import Hasql.Migration qualified as Migration
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement, preparable)
+import Hasql.Transaction qualified as Transaction
+import Hasql.Transaction.Sessions
   ( IsolationLevel (Serializable),
     Mode (Write),
     transaction,
   )
-import "text" Data.Text.Encoding qualified as Text.Encoding
+import Paths_shiki_core qualified as Paths
+import Shiki.Persistence.Schema (Schema, quoteSchema, schemaText)
+import Shiki.Prelude
 
 -- | Absolute path of the SQL migrations directory bundled with this
 --   package, resolved via cabal's @data-files@ machinery.

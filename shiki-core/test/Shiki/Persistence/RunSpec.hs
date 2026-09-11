@@ -1,5 +1,9 @@
 module Shiki.Persistence.RunSpec (tests) where
 
+import Data.Aeson qualified as Aeson
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement)
 import Shiki.Persistence.Run
   ( NewRun (..),
     RunCompletion (..),
@@ -15,12 +19,8 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Persistence.TestPg (withSchemaPool)
 import Shiki.Prelude
-import "aeson" Data.Aeson qualified as Aeson
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

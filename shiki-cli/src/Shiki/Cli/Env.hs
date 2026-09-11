@@ -11,14 +11,14 @@ module Shiki.Cli.Env
   )
 where
 
+import Control.Exception (bracket)
+import Hasql.Pool qualified as Pool
 import Shiki.Cli.Fzf (FzfConfig, detectFzfConfig)
 import Shiki.K8s.Client (ClientEnv, loadDefaultClientConfig)
 import Shiki.Persistence.Connection (ConnectionString, acquirePool, releasePool)
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (Schema)
 import Shiki.Prelude
-import "base" Control.Exception (bracket)
-import "hasql-pool" Hasql.Pool qualified as Pool
 
 data CliEnv = CliEnv
   { pool :: !Pool.Pool,

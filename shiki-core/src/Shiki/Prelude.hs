@@ -1,3 +1,5 @@
+{-# LANGUAGE PackageImports #-}
+
 -- | Project-wide prelude for shiki. Re-exports the common vocabulary used
 --   by every module: lens operators, generic-lens labels, basic types,
 --   MonadIO, aeson, time. Modules in this project should import

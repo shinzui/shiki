@@ -21,13 +21,13 @@ module Shiki.K8s.Logs
   )
 where
 
+import Data.Text qualified as Text
+import Kubernetes.OpenAPI qualified as K8s
+import Kubernetes.OpenAPI.API.CoreV1 qualified as CoreV1
+import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 import Shiki.K8s.Client (ClientEnv (..))
 import Shiki.K8s.Introspection (Namespace (..))
 import Shiki.Prelude
-import "kubernetes-api" Kubernetes.OpenAPI qualified as K8s
-import "kubernetes-api" Kubernetes.OpenAPI.API.CoreV1 qualified as CoreV1
-import "kubernetes-api" Kubernetes.OpenAPI.ModelLens qualified as K8sLens
-import "text" Data.Text qualified as Text
 
 -- | The pair of log slices the runner cares about: the wider buffer
 --   shown to the analyzer and the narrower tail persisted into the

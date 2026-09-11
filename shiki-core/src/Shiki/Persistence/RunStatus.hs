@@ -10,8 +10,8 @@ module Shiki.Persistence.RunStatus
   )
 where
 
+import Data.Text qualified as Text
 import Shiki.Prelude
-import "text" Data.Text qualified as Text
 
 data RunStatus
   = Pending

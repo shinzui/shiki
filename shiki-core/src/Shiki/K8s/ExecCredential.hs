@@ -26,8 +26,8 @@ module Shiki.K8s.ExecCredential
   )
 where
 
-import Shiki.Prelude hiding ((.=))
-import "aeson" Data.Aeson
+import Control.Exception (Exception, throwIO)
+import Data.Aeson
   ( Value,
     eitherDecode,
     encode,
@@ -37,22 +37,22 @@ import "aeson" Data.Aeson
     (.:?),
     (.=),
   )
-import "aeson" Data.Aeson.Types (Parser)
-import "base" Control.Exception (Exception, throwIO)
-import "base" Data.List qualified as List
-import "base" System.Environment (getEnvironment)
-import "base" System.Exit (ExitCode (..))
-import "bytestring" Data.ByteString.Lazy qualified as BL
-import "bytestring" Data.ByteString.Lazy.Char8 qualified as BLC
-import "process" System.Process
+import Data.Aeson.Types (Parser)
+import Data.ByteString.Lazy qualified as BL
+import Data.ByteString.Lazy.Char8 qualified as BLC
+import Data.List qualified as List
+import Data.Text qualified as T
+import Data.Text.Lazy qualified as TL
+import Data.Text.Lazy.Encoding qualified as TLE
+import Data.Yaml qualified as Yaml
+import Shiki.Prelude hiding ((.=))
+import System.Environment (getEnvironment)
+import System.Exit (ExitCode (..))
+import System.Process
   ( CreateProcess (env),
     proc,
     readCreateProcessWithExitCode,
   )
-import "text" Data.Text qualified as T
-import "text" Data.Text.Lazy qualified as TL
-import "text" Data.Text.Lazy.Encoding qualified as TLE
-import "yaml" Data.Yaml qualified as Yaml
 
 -- ---------------------------------------------------------------------------
 -- M1: kubeconfig exec-stanza model + resolver

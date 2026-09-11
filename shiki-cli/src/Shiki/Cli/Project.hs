@@ -13,14 +13,14 @@ module Shiki.Cli.Project
   )
 where
 
+import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
 import Shiki.Prelude
 import Shiki.Project.Config (Environment (..), ProjectConfig (..))
 import Shiki.Project.Config.Dhall (loadProjectConfig)
-import "base" System.Environment (lookupEnv)
-import "containers" Data.Map.Strict qualified as Map
-import "directory" System.Directory (doesFileExist, getCurrentDirectory)
-import "filepath" System.FilePath (takeDirectory, (</>))
-import "text" Data.Text qualified as Text
+import System.Directory (doesFileExist, getCurrentDirectory)
+import System.Environment (lookupEnv)
+import System.FilePath (takeDirectory, (</>))
 
 -- | Where the active environment name came from. Used by @config show@ to
 --   tell the operator why a particular environment is active.

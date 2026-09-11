@@ -8,13 +8,13 @@ module Shiki.Cli.ConfigInit
   )
 where
 
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
 import Shiki.Prelude
-import "base" System.Exit (exitFailure)
-import "base" System.IO (hClose, openTempFile, stderr)
-import "directory" System.Directory (doesFileExist, renameFile)
-import "filepath" System.FilePath (takeDirectory)
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
+import System.Directory (doesFileExist, renameFile)
+import System.Exit (exitFailure)
+import System.FilePath (takeDirectory)
+import System.IO (hClose, openTempFile, stderr)
 
 data ConfigInitOptions = ConfigInitOptions
   { schemaRef :: !Text,

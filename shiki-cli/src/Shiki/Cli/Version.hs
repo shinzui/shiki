@@ -9,11 +9,11 @@ module Shiki.Cli.Version
   )
 where
 
+import Data.Text qualified as Text
+import Data.Version (showVersion)
+import GitHash (GitInfo, giHash, tGitInfoCwdTry)
 import Paths_shiki_cli (version)
 import Shiki.Prelude
-import "base" Data.Version (showVersion)
-import "githash" GitHash (GitInfo, giHash, tGitInfoCwdTry)
-import "text" Data.Text qualified as Text
 
 appVersion :: Text
 appVersion = Text.pack (showVersion version)

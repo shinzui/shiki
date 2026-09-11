@@ -3,13 +3,13 @@ module Shiki.Cli.VersionSpec
   )
 where
 
+import Data.List (isInfixOf)
+import Options.Applicative qualified as Opt
 import Shiki.Cli (parserInfo)
 import Shiki.Cli.Version (formatVersionWithGit)
-import "base" Data.List (isInfixOf)
-import "base" System.Exit (ExitCode (..))
-import "optparse-applicative" Options.Applicative qualified as Opt
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+import System.Exit (ExitCode (..))
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

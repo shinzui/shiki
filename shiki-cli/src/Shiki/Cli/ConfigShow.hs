@@ -7,6 +7,9 @@ module Shiki.Cli.ConfigShow
   )
 where
 
+import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
 import Shiki.Cli.Project
   ( EnvSelectionSource (..),
     discoverProjectConfigPath,
@@ -14,9 +17,6 @@ import Shiki.Cli.Project
     resolveActiveEnvironmentName,
   )
 import Shiki.Prelude
-import "containers" Data.Map.Strict qualified as Map
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
 
 -- | Render a connection string with any password masked. Handles the URI
 --   form (@scheme://user:PASSWORD@host/...@) by replacing the password run

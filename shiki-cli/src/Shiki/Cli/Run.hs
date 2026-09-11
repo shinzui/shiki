@@ -12,6 +12,28 @@ module Shiki.Cli.Run
   )
 where
 
+import Control.Exception (SomeException, try)
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
+import Data.Time.Clock (diffUTCTime)
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement)
+import Options.Applicative
+  ( Parser,
+    argument,
+    help,
+    long,
+    many,
+    metavar,
+    optional,
+    short,
+    showDefault,
+    str,
+    strOption,
+    switch,
+    value,
+  )
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.K8s.Introspection
   ( DeploymentName (..),
@@ -39,29 +61,7 @@ import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Prelude hiding (Strict, argument)
 import Shiki.Service.Config (ServiceConfig, ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import "base" Control.Exception (SomeException, try)
-import "base" System.Exit (exitFailure)
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "optparse-applicative" Options.Applicative
-  ( Parser,
-    argument,
-    help,
-    long,
-    many,
-    metavar,
-    optional,
-    short,
-    showDefault,
-    str,
-    strOption,
-    switch,
-    value,
-  )
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
-import "time" Data.Time.Clock (diffUTCTime)
+import System.Exit (exitFailure)
 
 data RunOptions = RunOptions
   { service :: !Text,

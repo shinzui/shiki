@@ -1,5 +1,12 @@
 module Shiki.Cli.EnvRoutingSpec (tests) where
 
+import Control.Exception (SomeException, bracket, try)
+import Data.Aeson qualified as Aeson
+import Data.Text qualified as Text
+import EphemeralPg qualified as EpPg
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement)
 import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
@@ -16,18 +23,11 @@ import Shiki.Persistence.Run
   )
 import Shiki.Persistence.Schema (defaultSchema)
 import Shiki.Prelude
-import "aeson" Data.Aeson qualified as Aeson
-import "base" Control.Exception (SomeException, bracket, try)
-import "base" System.Environment (lookupEnv, setEnv, unsetEnv)
-import "directory" System.Directory (getCurrentDirectory, setCurrentDirectory)
-import "ephemeral-pg" EphemeralPg qualified as EpPg
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
-import "temporary" System.IO.Temp (withSystemTempDirectory)
-import "text" Data.Text qualified as Text
+import System.Directory (getCurrentDirectory, setCurrentDirectory)
+import System.Environment (lookupEnv, setEnv, unsetEnv)
+import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

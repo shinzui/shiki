@@ -8,8 +8,7 @@ module Shiki.Analysis.Baikai
   )
 where
 
-import Shiki.Prelude
-import "baikai" Baikai
+import Baikai
   ( BaikaiError,
     Response,
     completeRequest,
@@ -22,15 +21,16 @@ import "baikai" Baikai
     systemPrompt,
     temperature,
   )
-import "baikai" Baikai.Content (AssistantContent (..), TextContent (..))
-import "baikai" Baikai.Message (user)
-import "baikai" Baikai.Model (Model)
-import "baikai" Baikai.Models.Generated qualified as Models
-import "baikai-claude" Baikai.Provider.Claude.Api qualified as ClaudeApi
-import "baikai-openai" Baikai.Provider.OpenAI.Api qualified as OpenAIApi
-import "base" Control.Exception (SomeException, try)
-import "text" Data.Text qualified as Text
-import "vector" Data.Vector qualified as V
+import Baikai.Content (AssistantContent (..), TextContent (..))
+import Baikai.Message (user)
+import Baikai.Model (Model)
+import Baikai.Models.Generated qualified as Models
+import Baikai.Provider.Claude.Api qualified as ClaudeApi
+import Baikai.Provider.OpenAI.Api qualified as OpenAIApi
+import Control.Exception (SomeException, try)
+import Data.Text qualified as Text
+import Data.Vector qualified as V
+import Shiki.Prelude
 
 -- | Hand-curated list of baikai catalog ids this build of shiki knows
 --   how to dispatch. Extend by adding a case to 'lookupModel' below;

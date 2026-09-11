@@ -8,11 +8,11 @@ module Shiki.Cli.Config
   )
 where
 
+import Data.Text qualified as Text
 import Shiki.Cli.Project (resolveActiveEnvironment)
 import Shiki.Persistence.Connection (ConnectionString (..))
 import Shiki.Prelude
-import "base" System.Environment (lookupEnv)
-import "text" Data.Text qualified as Text
+import System.Environment (lookupEnv)
 
 -- | Pick a 'ConnectionString' from the @--db@ flag, then the active
 --   environment in @shiki.dhall@, then environment variables. Errors out

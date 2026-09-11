@@ -8,6 +8,13 @@ module Shiki.K8s.JobBuilder
   )
 where
 
+import Control.Monad (replicateM)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
+import Data.Time.Format qualified as TimeFmt
+import Kubernetes.OpenAPI.CustomTypes (Quantity (..))
+import Kubernetes.OpenAPI.Model qualified as K8s
 import Shiki.K8s.Introspection (DeploymentSnapshot, EnvBinding (..), Namespace (..))
 import Shiki.Prelude
 import Shiki.Service.Config
@@ -19,14 +26,7 @@ import Shiki.Service.Config
     ServiceConfig,
     ServiceName (..),
   )
-import "base" Control.Monad (replicateM)
-import "containers" Data.Map.Strict (Map)
-import "containers" Data.Map.Strict qualified as Map
-import "kubernetes-api" Kubernetes.OpenAPI.CustomTypes (Quantity (..))
-import "kubernetes-api" Kubernetes.OpenAPI.Model qualified as K8s
-import "random" System.Random qualified as Random
-import "text" Data.Text qualified as Text
-import "time" Data.Time.Format qualified as TimeFmt
+import System.Random qualified as Random
 
 -- | Per-invocation inputs that are not part of the static service
 --   config: the cluster namespace to target, the CLI args to hand to

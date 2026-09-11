@@ -12,6 +12,10 @@ module Shiki.Cli.Fzf.Selector.Service
   )
 where
 
+import Control.Exception (IOException, try)
+import Data.List (sort)
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
 import Shiki.Cli.Fzf
   ( Candidate (..),
     FzfConfig,
@@ -24,13 +28,9 @@ import Shiki.Cli.Fzf
     withPrompt,
   )
 import Shiki.Prelude
-import "base" Control.Exception (IOException, try)
-import "base" Data.List (sort)
-import "base" System.IO (hPutStrLn, stderr)
-import "directory" System.Directory (doesDirectoryExist, listDirectory)
-import "filepath" System.FilePath (takeExtension, takeFileName, (-<.>))
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
+import System.Directory (doesDirectoryExist, listDirectory)
+import System.FilePath (takeExtension, takeFileName, (-<.>))
+import System.IO (hPutStrLn, stderr)
 
 -- | Hard-coded location for service configs, matching the existing
 --   @serviceShowHandler@ in "Shiki.Cli".

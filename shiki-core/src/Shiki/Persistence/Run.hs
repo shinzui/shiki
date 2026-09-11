@@ -26,19 +26,19 @@ module Shiki.Persistence.Run
   )
 where
 
+import Data.Aeson qualified as Aeson
+import Data.Functor.Contravariant ((>$<))
+import Data.UUID (UUID)
+import Data.UUID.V4 qualified as UUIDv4
+import Hasql.Decoders qualified as Decoders
+import Hasql.Encoders qualified as Encoders
+import Hasql.Statement (Statement, preparable)
 import Shiki.Persistence.RunStatus
   ( RunStatus (Pending),
     runStatusFromText,
     runStatusToText,
   )
 import Shiki.Prelude
-import "aeson" Data.Aeson qualified as Aeson
-import "base" Data.Functor.Contravariant ((>$<))
-import "hasql" Hasql.Decoders qualified as Decoders
-import "hasql" Hasql.Encoders qualified as Encoders
-import "hasql" Hasql.Statement (Statement, preparable)
-import "uuid" Data.UUID (UUID)
-import "uuid" Data.UUID.V4 qualified as UUIDv4
 
 newtype RunId = RunId {unRunId :: UUID}
   deriving stock (Generic, Eq, Ord, Show)

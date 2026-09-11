@@ -6,10 +6,10 @@ module Shiki.Cli.Schema
   )
 where
 
+import Data.Text qualified as Text
 import Shiki.Persistence.Schema (Schema, defaultSchema, mkSchema)
 import Shiki.Prelude
-import "base" System.Environment (lookupEnv)
-import "text" Data.Text qualified as Text
+import System.Environment (lookupEnv)
 
 resolveSchema :: Maybe Text -> IO Schema
 resolveSchema = \case

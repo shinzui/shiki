@@ -30,10 +30,15 @@ module Shiki.Cli.Fzf
   )
 where
 
+import Control.Exception (SomeException, try)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
+import Data.Text.Read qualified as TextRead
 import Shiki.Prelude
-import "base" Control.Exception (SomeException, try)
-import "base" System.Exit (ExitCode (..))
-import "base" System.IO
+import System.Directory (findExecutable)
+import System.Exit (ExitCode (..))
+import System.IO
   ( BufferMode (..),
     IOMode (..),
     hClose,
@@ -45,18 +50,13 @@ import "base" System.IO
     stdin,
     stdout,
   )
-import "containers" Data.Map.Strict (Map)
-import "containers" Data.Map.Strict qualified as Map
-import "directory" System.Directory (findExecutable)
-import "process" System.Process
+import System.Process
   ( CreateProcess (..),
     StdStream (..),
     createProcess,
     proc,
     waitForProcess,
   )
-import "text" Data.Text qualified as Text
-import "text" Data.Text.Read qualified as TextRead
 
 -- | A snapshot of the local fzf availability captured once per CLI
 --   invocation. @fzfBinary@ is the resolved absolute path to the binary

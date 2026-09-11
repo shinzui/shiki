@@ -3,6 +3,15 @@
 --   not silently dropped.
 module Shiki.Persistence.ErrorSummaryColumnSpec (tests) where
 
+import Control.Exception (bracket)
+import Data.Functor.Contravariant ((>$<))
+import Data.Int (Int32)
+import EphemeralPg qualified as EpPg
+import Hasql.Decoders qualified as Decoders
+import Hasql.Encoders qualified as Encoders
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement, preparable)
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
     acquirePool,
@@ -12,17 +21,8 @@ import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (schemaText)
 import Shiki.Persistence.TestPg (freshSchema)
 import Shiki.Prelude
-import "base" Control.Exception (bracket)
-import "base" Data.Functor.Contravariant ((>$<))
-import "base" Data.Int (Int32)
-import "ephemeral-pg" EphemeralPg qualified as EpPg
-import "hasql" Hasql.Decoders qualified as Decoders
-import "hasql" Hasql.Encoders qualified as Encoders
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement, preparable)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =

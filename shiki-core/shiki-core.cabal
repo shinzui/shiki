@@ -13,6 +13,7 @@ author: Nadeem Bitar
 maintainer: nadeem@gmail.com
 copyright: (c) 2026 Nadeem Bitar
 build-type: Simple
+tested-with: ghc ==9.12.4
 extra-doc-files: ../CHANGELOG.md
 extra-source-files:
   ../schema/*.dhall
@@ -24,7 +25,7 @@ data-files:
   dhall/*.dhall
   sql/migrations/*.sql
 
-common common-options
+common common
   ghc-options:
     -Wall
     -Wcompat
@@ -44,10 +45,9 @@ common common-options
     MultilineStrings
     OverloadedLabels
     OverloadedStrings
-    PackageImports
 
 library
-  import: common-options
+  import: common
   hs-source-dirs: src
   exposed-modules:
     Shiki.Analysis.Backend
@@ -77,13 +77,13 @@ library
     baikai ^>=0.7,
     baikai-claude ^>=0.7,
     baikai-openai ^>=0.7,
-    base >=4.20 && <5,
+    base >=4.21 && <5,
     bytestring ^>=0.12,
     containers ^>=0.7,
     dhall ^>=1.42,
     directory ^>=1.3,
     filepath ^>=1.5,
-    generic-lens,
+    generic-lens >=2.2 && <2.4,
     hasql >=1.10,
     hasql-migration >=0.3,
     hasql-pool >=1.4,
@@ -104,16 +104,16 @@ library
     yaml ^>=0.11,
 
 executable shiki-run-once
-  import: common-options
+  import: common
   main-is: RunOnce.hs
   hs-source-dirs: example
   build-depends:
-    base >=4.20 && <5,
+    base >=4.21 && <5,
     shiki-core,
     text ^>=2.1,
 
 test-suite shiki-core-test
-  import: common-options
+  import: common
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   hs-source-dirs: test
@@ -139,7 +139,7 @@ test-suite shiki-core-test
 
   build-depends:
     aeson ^>=2.2,
-    base >=4.20 && <5,
+    base >=4.21 && <5,
     containers ^>=0.7,
     directory ^>=1.3,
     ephemeral-pg >=0.2,

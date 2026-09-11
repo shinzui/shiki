@@ -14,8 +14,8 @@ module Shiki.Project.Config.Dhall
   )
 where
 
+import Dhall qualified
 import Shiki.Project.Config (Environment, ProjectConfig)
-import "dhall" Dhall qualified
 
 loadProjectConfig :: FilePath -> IO ProjectConfig
 loadProjectConfig = Dhall.inputFile Dhall.auto

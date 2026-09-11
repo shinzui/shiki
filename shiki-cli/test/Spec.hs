@@ -10,8 +10,8 @@ import Shiki.Cli.Fzf.Selector.RunSpec qualified as RunSelectorSpec
 import Shiki.Cli.HelpSpec qualified as HelpSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
 import Shiki.Cli.VersionSpec qualified as VersionSpec
-import "tasty" Test.Tasty (defaultMain, localOption, testGroup)
-import "tasty" Test.Tasty.Runners (NumThreads (..))
+import Test.Tasty (defaultMain, localOption, testGroup)
+import Test.Tasty.Runners (NumThreads (..))
 
 -- | Run tests sequentially. 'Shiki.Cli.Agent.LaunchSpec' redirects the
 --   OS-level @stdout@ to capture output, which is fundamentally racy

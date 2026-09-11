@@ -3,10 +3,10 @@ module Shiki.Service.ConfigSpec (tests) where
 import Shiki.Prelude
 import Shiki.Service.Config (AnalyzerBackend (..), ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import "directory" System.Directory (doesDirectoryExist, getCurrentDirectory)
-import "filepath" System.FilePath (takeDirectory, (</>))
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
+import System.Directory (doesDirectoryExist, getCurrentDirectory)
+import System.FilePath (takeDirectory, (</>))
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 -- | Walk up from cwd until we find a directory containing @services\/@,
 --   then return @\<that dir\>\/services\/\<name\>.dhall@. The test suite is

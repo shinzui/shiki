@@ -1,9 +1,9 @@
 module Shiki.Analysis.HeuristicSpec (tests) where
 
+import Data.Text qualified as Text
 import Shiki.Analysis.Heuristic (summarizeFailure)
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
-import "text" Data.Text qualified as Text
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

@@ -12,8 +12,8 @@ module Shiki.Project.Config
   )
 where
 
+import Data.Map.Strict (Map)
 import Shiki.Prelude
-import "containers" Data.Map.Strict (Map)
 
 -- | The name of a shiki environment (e.g. @"staging"@). Wrapped so it
 --   cannot be confused with a Kubernetes namespace or any other free-form

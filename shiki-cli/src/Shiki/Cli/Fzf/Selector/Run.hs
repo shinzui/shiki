@@ -15,6 +15,11 @@ module Shiki.Cli.Fzf.Selector.Run
   )
 where
 
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
+import Data.Time.Format qualified as TimeFmt
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Cli.Fzf
   ( Candidate (..),
@@ -34,12 +39,7 @@ import Shiki.Persistence.Run
   )
 import Shiki.Persistence.RunStatus (runStatusToText)
 import Shiki.Prelude
-import "base" System.IO (hPutStrLn, stderr)
-import "hasql" Hasql.Session qualified as Session
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
-import "time" Data.Time.Format qualified as TimeFmt
+import System.IO (hPutStrLn, stderr)
 
 -- | The four states 'selectRun' can land in.
 data RunSelection

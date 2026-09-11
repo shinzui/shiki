@@ -1,5 +1,7 @@
 module Shiki.K8s.ExecCredentialSpec (tests) where
 
+import Control.Exception (try)
+import Data.Text qualified as T
 import Shiki.K8s.ExecCredential
   ( ClusterRef (..),
     ExecAuth (..),
@@ -10,12 +12,10 @@ import Shiki.K8s.ExecCredential
     runExecCredential,
   )
 import Shiki.Prelude
-import "base" Control.Exception (try)
-import "directory" System.Directory (doesDirectoryExist, getCurrentDirectory)
-import "filepath" System.FilePath (takeDirectory, (</>))
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
-import "text" Data.Text qualified as T
+import System.Directory (doesDirectoryExist, getCurrentDirectory)
+import System.FilePath (takeDirectory, (</>))
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
 
 -- | Locate @shiki-core/test/fixtures@ whether the suite is run from the
 --   package directory (cwd = @shiki-core/@) or the repo root, mirroring the

@@ -17,12 +17,7 @@ module Shiki.Cli.Agent.Launch
   )
 where
 
-import Shiki.Cli.Agent.Provider
-  ( AgentModelConfig (..),
-    AgentProvider (..),
-  )
-import Shiki.Prelude
-import "baikai" Baikai
+import Baikai
   ( Api (..),
     BaikaiError,
     Model,
@@ -34,36 +29,41 @@ import "baikai" Baikai
     flattenAssistantBlocks,
     responseError,
   )
-import "baikai" Baikai.Agent (AgentRenderError, renderAgentRenderError)
-import "baikai" Baikai.Content (AssistantContent (..), TextContent (..))
-import "baikai" Baikai.Context qualified as Context
-import "baikai" Baikai.Interactive
+import Baikai.Agent (AgentRenderError, renderAgentRenderError)
+import Baikai.Content (AssistantContent (..), TextContent (..))
+import Baikai.Context qualified as Context
+import Baikai.Interactive
   ( CodexApprovalPolicy (CodexApprovalOnRequest),
     CodexSandboxMode (CodexWorkspaceWrite),
     InteractiveLaunchResult (..),
     InteractiveSafety (ClaudeAllowedTools, CodexSandbox),
     interactiveLaunchRequest,
   )
-import "baikai" Baikai.Interactive qualified as Interactive
-import "baikai" Baikai.Message (user)
-import "baikai" Baikai.Model qualified as Model
-import "baikai-claude" Baikai.Provider.Claude.Api qualified as ClaudeApi
-import "baikai-claude" Baikai.Provider.Claude.Interactive
+import Baikai.Interactive qualified as Interactive
+import Baikai.Message (user)
+import Baikai.Model qualified as Model
+import Baikai.Provider.Claude.Api qualified as ClaudeApi
+import Baikai.Provider.Claude.Interactive
   ( defaultClaudeInteractiveConfig,
     launchClaudeInteractive,
   )
-import "baikai-openai" Baikai.Provider.OpenAI.Api qualified as OpenAIApi
-import "baikai-openai" Baikai.Provider.OpenAI.Interactive
+import Baikai.Provider.OpenAI.Api qualified as OpenAIApi
+import Baikai.Provider.OpenAI.Interactive
   ( defaultCodexInteractiveConfig,
     launchCodexInteractive,
   )
-import "base" Control.Exception (SomeException, try)
-import "base" System.Exit (ExitCode (..), exitFailure)
-import "base" System.IO (hPutStrLn, stderr)
-import "directory" System.Directory (findExecutable, getCurrentDirectory)
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
-import "vector" Data.Vector qualified as V
+import Control.Exception (SomeException, try)
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
+import Data.Vector qualified as V
+import Shiki.Cli.Agent.Provider
+  ( AgentModelConfig (..),
+    AgentProvider (..),
+  )
+import Shiki.Prelude
+import System.Directory (findExecutable, getCurrentDirectory)
+import System.Exit (ExitCode (..), exitFailure)
+import System.IO (hPutStrLn, stderr)
 
 -- | Inputs to one assist-session dispatch.
 data AssistDispatch = AssistDispatch

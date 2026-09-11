@@ -17,21 +17,21 @@ module Shiki.Cli.Help
   )
 where
 
-import Shiki.Prelude hiding (argument)
-import "base" Data.Foldable (traverse_)
-import "base" Data.List (find)
-import "base" System.Exit (exitFailure)
-import "base" System.IO (hPutStrLn, stderr)
-import "file-embed" Data.FileEmbed (embedStringFile)
-import "optparse-applicative" Options.Applicative
+import Data.FileEmbed (embedStringFile)
+import Data.Foldable (traverse_)
+import Data.List (find)
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
+import Options.Applicative
   ( Parser,
     argument,
     help,
     metavar,
     str,
   )
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
+import Shiki.Prelude hiding (argument)
+import System.Exit (exitFailure)
+import System.IO (hPutStrLn, stderr)
 
 data HelpTopic = HelpTopic
   { name :: !Text,

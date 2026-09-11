@@ -13,6 +13,10 @@ module Shiki.Cli.Agent.Prompt
   )
 where
 
+import Data.FileEmbed (embedStringFile)
+import Data.List (foldl')
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as TE
 import Shiki.Cli.Agent.Context
   ( AgentContext (..),
     ServiceSummary (..),
@@ -20,10 +24,6 @@ import Shiki.Cli.Agent.Context
 import Shiki.Persistence.Run (RunId (..), RunRecord)
 import Shiki.Persistence.RunStatus (runStatusToText)
 import Shiki.Prelude
-import "base" Data.List (foldl')
-import "file-embed" Data.FileEmbed (embedStringFile)
-import "text" Data.Text qualified as Text
-import "text" Data.Text.Encoding qualified as TE
 
 -- | The raw markdown template baked into the binary.
 defaultAssistPrompt :: Text

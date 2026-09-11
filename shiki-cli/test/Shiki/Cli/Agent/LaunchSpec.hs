@@ -3,11 +3,11 @@ module Shiki.Cli.Agent.LaunchSpec
   )
 where
 
+import GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import Shiki.Cli.Agent.Launch (AssistDispatch (..), runAssistSession)
 import Shiki.Cli.Agent.Provider (defaultAgentModelConfig)
-import "base" GHC.IO.Handle (hDuplicate, hDuplicateTo)
-import "base" System.Exit (ExitCode (..))
-import "base" System.IO
+import System.Exit (ExitCode (..))
+import System.IO
   ( IOMode (ReadMode, WriteMode),
     hClose,
     hGetContents,
@@ -15,9 +15,9 @@ import "base" System.IO
     stdout,
     withFile,
   )
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
-import "temporary" System.IO.Temp (withSystemTempFile)
+import System.IO.Temp (withSystemTempFile)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =

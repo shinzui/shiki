@@ -1,16 +1,16 @@
 module Shiki.K8s.JobBuilderSpec (tests) where
 
+import Data.Map.Strict qualified as Map
+import GHC.Stack (HasCallStack)
+import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 import Shiki.K8s.Introspection (DeploymentSnapshot (..), EnvBinding (..), Namespace (..))
 import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
 import Shiki.Prelude
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import "base" GHC.Stack (HasCallStack)
-import "containers" Data.Map.Strict qualified as Map
-import "directory" System.Directory (doesDirectoryExist, getCurrentDirectory)
-import "filepath" System.FilePath (takeDirectory, (</>))
-import "kubernetes-api" Kubernetes.OpenAPI.ModelLens qualified as K8sLens
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+import System.Directory (doesDirectoryExist, getCurrentDirectory)
+import System.FilePath (takeDirectory, (</>))
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 -- | Walk up from cwd to find a sibling @services/@ directory; mirrors the
 --   helper in 'Shiki.Service.ConfigSpec' so the test can be invoked from

@@ -3,6 +3,17 @@ module Shiki.Cli.Agent.ContextSpec
   )
 where
 
+import Control.Exception (bracket)
+import Data.Aeson qualified as Aeson
+import Data.Text qualified as Text
+import Data.Time (getCurrentTime)
+import Data.UUID qualified as UUID
+import Data.UUID.V4 qualified as UUIDv4
+import EphemeralPg qualified as EpPg
+import Hasql.Pool (Pool)
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement)
 import Shiki.Cli.Agent.Context
   ( AgentContext (..),
     ServiceSummary (..),
@@ -23,25 +34,14 @@ import Shiki.Persistence.Run
   )
 import Shiki.Persistence.RunStatus (RunStatus (Succeeded))
 import Shiki.Persistence.Schema (Schema, defaultSchema, mkSchema)
-import "aeson" Data.Aeson qualified as Aeson
-import "base" Control.Exception (bracket)
-import "directory" System.Directory
+import System.Directory
   ( createDirectory,
     withCurrentDirectory,
   )
-import "ephemeral-pg" EphemeralPg qualified as EpPg
-import "filepath" System.FilePath ((</>))
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement)
-import "hasql-pool" Hasql.Pool (Pool)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "tasty" Test.Tasty (DependencyType (..), TestTree, sequentialTestGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
-import "temporary" System.IO.Temp (withSystemTempDirectory)
-import "text" Data.Text qualified as Text
-import "time" Data.Time (getCurrentTime)
-import "uuid" Data.UUID qualified as UUID
-import "uuid" Data.UUID.V4 qualified as UUIDv4
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (DependencyType (..), TestTree, sequentialTestGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

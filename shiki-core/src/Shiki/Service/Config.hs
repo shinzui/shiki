@@ -18,8 +18,8 @@ module Shiki.Service.Config
   )
 where
 
+import Data.Map.Strict (Map)
 import Shiki.Prelude
-import "containers" Data.Map.Strict (Map)
 
 -- | The canonical short name of a microservice (e.g. @"mls-service-v2"@).
 --   Wrapped in a newtype so it cannot be confused with a Kubernetes

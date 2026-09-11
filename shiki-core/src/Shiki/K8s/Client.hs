@@ -10,21 +10,11 @@ module Shiki.K8s.Client
   )
 where
 
-import Shiki.K8s.ExecCredential
-  ( KubeConfigError (..),
-    ResolvedContext (..),
-    readKubeConfigExecAuth,
-    runExecCredential,
-  )
-import Shiki.Prelude
-import "base" Control.Exception (try)
-import "base" System.Environment (lookupEnv)
-import "containers" Data.Map.Strict qualified as Map
-import "directory" System.Directory (getHomeDirectory)
-import "filepath" System.FilePath (takeDirectory, (</>))
-import "http-client" Network.HTTP.Client (Manager)
-import "kubernetes-api" Kubernetes.OpenAPI qualified as K8s
-import "kubernetes-api-client" Kubernetes.Client.Config
+import Control.Concurrent.STM (atomically, newTVar)
+import Control.Exception (try)
+import Data.Map.Strict qualified as Map
+import Data.Yaml qualified as Yaml
+import Kubernetes.Client.Config
   ( KubeConfigSource (..),
     addCACertData,
     addCACertFile,
@@ -35,9 +25,19 @@ import "kubernetes-api-client" Kubernetes.Client.Config
     setTokenAuth,
     tlsValidation,
   )
-import "kubernetes-api-client" Kubernetes.Client.KubeConfig qualified as KC
-import "stm" Control.Concurrent.STM (atomically, newTVar)
-import "yaml" Data.Yaml qualified as Yaml
+import Kubernetes.Client.KubeConfig qualified as KC
+import Kubernetes.OpenAPI qualified as K8s
+import Network.HTTP.Client (Manager)
+import Shiki.K8s.ExecCredential
+  ( KubeConfigError (..),
+    ResolvedContext (..),
+    readKubeConfigExecAuth,
+    runExecCredential,
+  )
+import Shiki.Prelude
+import System.Directory (getHomeDirectory)
+import System.Environment (lookupEnv)
+import System.FilePath (takeDirectory, (</>))
 
 -- | A bundle of the HTTP connection 'Manager' and the typed
 --   'K8s.KubernetesClientConfig' that every API call needs. Built once

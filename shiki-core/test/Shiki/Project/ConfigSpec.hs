@@ -1,14 +1,14 @@
 module Shiki.Project.ConfigSpec (tests) where
 
+import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
 import Shiki.Project.Config (Environment (..), ProjectConfig (..))
 import Shiki.Project.Config.Dhall (loadProjectConfig)
-import "containers" Data.Map.Strict qualified as Map
-import "directory" System.Directory (canonicalizePath, createDirectory)
-import "filepath" System.FilePath ((</>))
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (testCase, (@?=))
-import "temporary" System.IO.Temp (withSystemTempDirectory)
-import "text" Data.Text qualified as Text
+import System.Directory (canonicalizePath, createDirectory)
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (testCase, (@?=))
 
 tests :: TestTree
 tests =

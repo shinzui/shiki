@@ -3,13 +3,13 @@ module Shiki.Cli.HelpSpec
   )
 where
 
+import Data.List (nub)
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Options.Applicative qualified as Opt
 import Shiki.Cli.Help (HelpCommand (..), HelpTopic (..), helpParser, helpTopics)
-import "base" Data.List (nub)
-import "optparse-applicative" Options.Applicative qualified as Opt
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (Assertion, assertBool, assertEqual, testCase)
-import "text" Data.Text (Text)
-import "text" Data.Text qualified as Text
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (Assertion, assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

@@ -14,8 +14,8 @@ module Shiki.Cli.Agent.Provider
   )
 where
 
+import Data.Text qualified as Text
 import Shiki.Prelude
-import "text" Data.Text qualified as Text
 
 data AgentProvider
   = ClaudeCli

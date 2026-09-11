@@ -1,14 +1,14 @@
 module Shiki.Persistence.SchemaSpec (tests) where
 
+import Data.Text qualified as Text
 import Shiki.Persistence.Schema
   ( defaultSchema,
     mkSchema,
     quoteSchema,
     schemaText,
   )
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
-import "text" Data.Text qualified as Text
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =

@@ -21,6 +21,11 @@ module Shiki.Cli
   )
 where
 
+import Data.Aeson.Encode.Pretty qualified as AesonPretty
+import Data.ByteString.Lazy.Char8 qualified as BL8
+import Data.Text qualified as Text
+import Options.Applicative (Parser, ParserInfo, (<**>))
+import Options.Applicative qualified as Opt
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Cli.ConfigInit
@@ -41,12 +46,7 @@ import Shiki.Persistence.Schema qualified
 import Shiki.Prelude hiding (Options, argument)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import "aeson-pretty" Data.Aeson.Encode.Pretty qualified as AesonPretty
-import "base" System.Exit (exitFailure)
-import "bytestring" Data.ByteString.Lazy.Char8 qualified as BL8
-import "optparse-applicative" Options.Applicative (Parser, ParserInfo, (<**>))
-import "optparse-applicative" Options.Applicative qualified as Opt
-import "text" Data.Text qualified as Text
+import System.Exit (exitFailure)
 
 data Command
   = Run !RunOptions

@@ -11,8 +11,8 @@ module Shiki.Persistence.Schema
   )
 where
 
+import Data.Text qualified as Text
 import Shiki.Prelude
-import "text" Data.Text qualified as Text
 
 -- | A validated PostgreSQL schema name. Members of this type are guaranteed
 --   to match @[A-Za-z_][A-Za-z0-9_]*@ and to fit within PostgreSQL's

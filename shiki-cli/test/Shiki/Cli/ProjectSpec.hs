@@ -1,19 +1,19 @@
 module Shiki.Cli.ProjectSpec (tests) where
 
+import Control.Exception (bracket)
+import Data.Map.Strict qualified as Map
 import Shiki.Cli.Project
   ( EnvSelectionSource (..),
     discoverProjectConfigPath,
     resolveActiveEnvironmentName,
   )
 import Shiki.Project.Config (Environment (..), ProjectConfig (..))
-import "base" Control.Exception (bracket)
-import "base" System.Environment (lookupEnv, setEnv, unsetEnv)
-import "containers" Data.Map.Strict qualified as Map
-import "directory" System.Directory (createDirectory, getCurrentDirectory, setCurrentDirectory)
-import "filepath" System.FilePath ((</>))
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
-import "temporary" System.IO.Temp (withSystemTempDirectory)
+import System.Directory (createDirectory, getCurrentDirectory, setCurrentDirectory)
+import System.Environment (lookupEnv, setEnv, unsetEnv)
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =

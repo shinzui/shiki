@@ -11,16 +11,16 @@ module Shiki.K8s.Introspection
   )
 where
 
+import Control.Exception (Exception, throwIO)
+import Data.List qualified as List
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
+import Kubernetes.OpenAPI qualified as K8s
+import Kubernetes.OpenAPI.API.AppsV1 qualified as AppsV1
+import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 import Shiki.K8s.Client (ClientEnv (..))
 import Shiki.Prelude hiding (Strict)
-import "base" Control.Exception (Exception, throwIO)
-import "base" Data.List qualified as List
-import "base" Data.Maybe (mapMaybe)
-import "containers" Data.Map.Strict (Map)
-import "containers" Data.Map.Strict qualified as Map
-import "kubernetes-api" Kubernetes.OpenAPI qualified as K8s
-import "kubernetes-api" Kubernetes.OpenAPI.API.AppsV1 qualified as AppsV1
-import "kubernetes-api" Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 
 -- | A Kubernetes namespace, wrapped so it can't be confused with a
 --   deployment name or container name in argument lists.

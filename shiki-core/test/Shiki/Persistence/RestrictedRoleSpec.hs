@@ -1,5 +1,10 @@
 module Shiki.Persistence.RestrictedRoleSpec (tests) where
 
+import Control.Exception (bracket)
+import Data.Aeson qualified as Aeson
+import EphemeralPg qualified as EpPg
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
     acquirePool,
@@ -14,13 +19,8 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.Schema (Schema, quoteSchema)
 import Shiki.Persistence.TestPg (freshSchema)
 import Shiki.Prelude
-import "aeson" Data.Aeson qualified as Aeson
-import "base" Control.Exception (bracket)
-import "ephemeral-pg" EphemeralPg qualified as EpPg
-import "hasql" Hasql.Session qualified as Session
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertFailure, testCase)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertFailure, testCase)
 
 tests :: TestTree
 tests =

@@ -1,14 +1,14 @@
 module Shiki.Analysis.BackendSpec (tests) where
 
+import Data.Text qualified as Text
 import Shiki.Analysis.Backend
   ( AnalyzerError (..),
     AnalyzerKind (..),
     runAnalyzer,
   )
 import Shiki.Prelude
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
-import "text" Data.Text qualified as Text
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

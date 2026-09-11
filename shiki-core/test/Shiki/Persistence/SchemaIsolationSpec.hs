@@ -1,5 +1,14 @@
 module Shiki.Persistence.SchemaIsolationSpec (tests) where
 
+import Control.Exception (bracket)
+import Data.Aeson qualified as Aeson
+import Data.Int (Int32)
+import EphemeralPg qualified as EpPg
+import Hasql.Decoders qualified as Decoders
+import Hasql.Encoders qualified as Encoders
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
+import Hasql.Statement (Statement, preparable)
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
     acquirePool,
@@ -13,17 +22,8 @@ import Shiki.Persistence.Run
   )
 import Shiki.Persistence.Schema (Schema, mkSchema, schemaText)
 import Shiki.Prelude
-import "aeson" Data.Aeson qualified as Aeson
-import "base" Control.Exception (bracket)
-import "base" Data.Int (Int32)
-import "ephemeral-pg" EphemeralPg qualified as EpPg
-import "hasql" Hasql.Decoders qualified as Decoders
-import "hasql" Hasql.Encoders qualified as Encoders
-import "hasql" Hasql.Session qualified as Session
-import "hasql" Hasql.Statement (Statement, preparable)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertEqual, testCase)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =

@@ -8,6 +8,12 @@ module Shiki.Persistence.TestPg
   )
 where
 
+import Control.Exception (bracket)
+import Data.Text qualified as Text
+import Data.UUID qualified as UUID
+import Data.UUID.V4 qualified as UUIDv4
+import EphemeralPg qualified as EpPg
+import Hasql.Pool qualified as Pool
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
     acquirePool,
@@ -16,12 +22,6 @@ import Shiki.Persistence.Connection
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (Schema, mkSchema)
 import Shiki.Prelude
-import "base" Control.Exception (bracket)
-import "ephemeral-pg" EphemeralPg qualified as EpPg
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "text" Data.Text qualified as Text
-import "uuid" Data.UUID qualified as UUID
-import "uuid" Data.UUID.V4 qualified as UUIDv4
 
 -- | A fresh, randomly-named schema each call. Useful for test isolation.
 --   The name is always prefixed with @shiki_test_@ so a leftover schema

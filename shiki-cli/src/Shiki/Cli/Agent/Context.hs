@@ -12,6 +12,12 @@ module Shiki.Cli.Agent.Context
   )
 where
 
+import Control.Exception (SomeException, try)
+import Data.List (sort)
+import Data.Text qualified as Text
+import Hasql.Pool (Pool)
+import Hasql.Pool qualified as Pool
+import Hasql.Session qualified as Session
 import Shiki.Persistence.Run
   ( RunRecord,
     listRecentRunsStatement,
@@ -24,18 +30,12 @@ import Shiki.Service.Config
     ServiceName (..),
   )
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import "base" Control.Exception (SomeException, try)
-import "base" Data.List (sort)
-import "directory" System.Directory
+import System.Directory
   ( doesDirectoryExist,
     getCurrentDirectory,
     listDirectory,
   )
-import "filepath" System.FilePath (takeExtension, (</>))
-import "hasql" Hasql.Session qualified as Session
-import "hasql-pool" Hasql.Pool (Pool)
-import "hasql-pool" Hasql.Pool qualified as Pool
-import "text" Data.Text qualified as Text
+import System.FilePath (takeExtension, (</>))
 
 -- | A trimmed view of one @services\/\<name\>.dhall@ entry. The prompt
 --   only needs the name, default namespace, and the textual rendering of

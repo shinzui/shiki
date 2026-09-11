@@ -1,5 +1,9 @@
 module Shiki.Cli.ConfigInitSpec (tests) where
 
+import Control.Exception (try)
+import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
 import Shiki.Cli.ConfigInit
   ( ConfigInitOptions (..),
     renderProjectConfig,
@@ -7,16 +11,12 @@ import Shiki.Cli.ConfigInit
   )
 import Shiki.Project.Config (Environment (..), ProjectConfig (..))
 import Shiki.Project.Config.Dhall (loadProjectConfig)
-import "base" Control.Exception (try)
-import "base" System.Exit (ExitCode (..))
-import "containers" Data.Map.Strict qualified as Map
-import "directory" System.Directory (canonicalizePath, createDirectory)
-import "filepath" System.FilePath ((</>))
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase, (@?=))
-import "temporary" System.IO.Temp (withSystemTempDirectory)
-import "text" Data.Text qualified as Text
-import "text" Data.Text.IO qualified as TIO
+import System.Directory (canonicalizePath, createDirectory)
+import System.Exit (ExitCode (..))
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase, (@?=))
 
 tests :: TestTree
 tests =

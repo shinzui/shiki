@@ -3,6 +3,7 @@ module Shiki.Cli.Agent.ProviderSpec
   )
 where
 
+import Control.Exception (bracket)
 import Shiki.Cli.Agent.Config
   ( modelEnvVar,
     providerEnvVar,
@@ -15,10 +16,9 @@ import Shiki.Cli.Agent.Provider
     providerFromText,
     providerToText,
   )
-import "base" Control.Exception (bracket)
-import "base" System.Environment (lookupEnv, setEnv, unsetEnv)
-import "tasty" Test.Tasty (DependencyType (..), TestTree, sequentialTestGroup, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+import System.Environment (lookupEnv, setEnv, unsetEnv)
+import Test.Tasty (DependencyType (..), TestTree, sequentialTestGroup, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

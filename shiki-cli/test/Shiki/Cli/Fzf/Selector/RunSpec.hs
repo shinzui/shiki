@@ -3,16 +3,16 @@ module Shiki.Cli.Fzf.Selector.RunSpec
   )
 where
 
+import Data.Aeson qualified as Aeson
+import Data.Text qualified as Text
+import Data.Time qualified as Time
+import Data.UUID qualified as UUID
 import Shiki.Cli.Fzf (Candidate (..))
 import Shiki.Cli.Fzf.Selector.Run (formatRunCandidate)
 import Shiki.Persistence.Run (RunId (..), RunRecord (..))
 import Shiki.Persistence.RunStatus (RunStatus (..))
-import "aeson" Data.Aeson qualified as Aeson
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, testCase)
-import "text" Data.Text qualified as Text
-import "time" Data.Time qualified as Time
-import "uuid" Data.UUID qualified as UUID
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 tests :: TestTree
 tests =

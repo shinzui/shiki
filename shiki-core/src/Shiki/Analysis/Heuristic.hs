@@ -9,8 +9,8 @@ module Shiki.Analysis.Heuristic
   )
 where
 
+import Data.Text qualified as Text
 import Shiki.Prelude
-import "text" Data.Text qualified as Text
 
 -- | Hard cap on the returned summary length, in characters. Kept in
 --   sync with 'Shiki.Analysis.Backend.summaryByteCap'.

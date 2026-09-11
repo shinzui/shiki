@@ -9,6 +9,7 @@ module Shiki.Cli.Agent.Config
   )
 where
 
+import Data.Text qualified as Text
 import Shiki.Cli.Agent.Provider
   ( AgentModelConfig (..),
     AgentProvider,
@@ -16,8 +17,7 @@ import Shiki.Cli.Agent.Provider
     providerFromText,
   )
 import Shiki.Prelude
-import "base" System.Environment (lookupEnv)
-import "text" Data.Text qualified as Text
+import System.Environment (lookupEnv)
 
 providerEnvVar :: String
 providerEnvVar = "SHIKI_AGENT_PROVIDER"

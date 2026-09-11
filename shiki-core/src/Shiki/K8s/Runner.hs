@@ -11,6 +11,12 @@ module Shiki.K8s.Runner
   )
 where
 
+import Control.Concurrent (threadDelay)
+import Control.Exception (Exception, throwIO)
+import Data.Time.Clock (diffUTCTime)
+import Kubernetes.OpenAPI qualified as K8s
+import Kubernetes.OpenAPI.API.BatchV1 qualified as BatchV1
+import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 import Shiki.Analysis.Backend (AnalyzerKind (..), runAnalyzer)
 import Shiki.Analysis.Backend qualified as Analyzer
 import Shiki.K8s.Client (ClientEnv (..))
@@ -19,12 +25,6 @@ import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
 import Shiki.K8s.Logs (FetchedLogs, fetchJobPodLogs)
 import Shiki.Prelude
 import Shiki.Service.Config (ServiceConfig)
-import "base" Control.Concurrent (threadDelay)
-import "base" Control.Exception (Exception, throwIO)
-import "kubernetes-api" Kubernetes.OpenAPI qualified as K8s
-import "kubernetes-api" Kubernetes.OpenAPI.API.BatchV1 qualified as BatchV1
-import "kubernetes-api" Kubernetes.OpenAPI.ModelLens qualified as K8sLens
-import "time" Data.Time.Clock (diffUTCTime)
 
 -- | Final state observed for a Job. 'JobFailed' carries the
 --   first failure reason from the Job conditions if one was published.

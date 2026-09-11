@@ -3,6 +3,11 @@ module Shiki.Cli.Agent.PromptSpec
   )
 where
 
+import Data.Aeson qualified as Aeson
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Time (UTCTime (..), fromGregorian, secondsToDiffTime)
+import Data.UUID qualified as UUID
 import Shiki.Cli.Agent.Context
   ( AgentContext (..),
     ServiceSummary (..),
@@ -10,13 +15,8 @@ import Shiki.Cli.Agent.Context
 import Shiki.Cli.Agent.Prompt (renderAssistPrompt)
 import Shiki.Persistence.Run (RunId (..), RunRecord (..))
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
-import "aeson" Data.Aeson qualified as Aeson
-import "tasty" Test.Tasty (TestTree, testGroup)
-import "tasty-hunit" Test.Tasty.HUnit (assertBool, assertEqual, testCase)
-import "text" Data.Text (Text)
-import "text" Data.Text qualified as Text
-import "time" Data.Time (UTCTime (..), fromGregorian, secondsToDiffTime)
-import "uuid" Data.UUID qualified as UUID
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 tests :: TestTree
 tests =

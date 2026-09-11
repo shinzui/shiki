@@ -9,6 +9,9 @@ module Shiki.Cli.Agent
   )
 where
 
+import Data.Text qualified as Text
+import Options.Applicative (Parser, hsubparser, info)
+import Options.Applicative qualified as Opt
 import Shiki.Cli.Agent.Config (resolveAgentModelConfig)
 import Shiki.Cli.Agent.Context (gatherAgentContext)
 import Shiki.Cli.Agent.Launch
@@ -19,11 +22,8 @@ import Shiki.Cli.Agent.Prompt (renderAssistPrompt)
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Persistence.Schema (Schema)
 import Shiki.Prelude
-import "base" System.Exit (exitFailure, exitWith)
-import "base" System.IO (hPutStrLn, stderr)
-import "optparse-applicative" Options.Applicative (Parser, hsubparser, info)
-import "optparse-applicative" Options.Applicative qualified as Opt
-import "text" Data.Text qualified as Text
+import System.Exit (exitFailure, exitWith)
+import System.IO (hPutStrLn, stderr)
 
 data AgentCommand
   = AgentAssist !AssistOptions
