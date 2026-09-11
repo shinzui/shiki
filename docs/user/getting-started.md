@@ -80,6 +80,10 @@ The executable is named `shiki`. The rest of this guide uses `shiki`
 directly; substitute `cabal run shiki --` if you have not put the build
 output on your `$PATH`.
 
+Optionally, install Tab completion for your shell, for example
+`shiki completions zsh > "${fpath[1]}/_shiki"`. See
+[`shiki completions`](./commands.md#shiki-completions) for Bash and Fish.
+
 ## 5. Declare your first service
 
 shiki reads one Dhall file per service from `services/<name>.dhall`. The

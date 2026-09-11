@@ -49,6 +49,7 @@ library
     Shiki.Cli.Agent.Launch
     Shiki.Cli.Agent.Prompt
     Shiki.Cli.Agent.Provider
+    Shiki.Cli.Completions
     Shiki.Cli.Config
     Shiki.Cli.ConfigInit
     Shiki.Cli.ConfigShow
@@ -122,6 +123,7 @@ test-suite shiki-cli-test
     Shiki.Cli.EnvRoutingSpec
     Shiki.Cli.Fzf.Selector.RunSpec
     Shiki.Cli.HelpSpec
+    Shiki.Cli.ParserSpec
     Shiki.Cli.ProjectSpec
     Shiki.Cli.VersionSpec
 

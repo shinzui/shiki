@@ -48,6 +48,10 @@ $ shiki runs show
   explicitly. Indented tables and examples are left as written. Piped output is
   unchanged: when stdout is not a terminal, the topic is printed byte-for-byte
   as embedded.
+- feat(shiki-cli): `shiki completions bash|zsh|fish` prints a shell completion
+  script. The scripts ask the `shiki` binary for candidates at Tab time, so
+  every subcommand and flag completes, Zsh and Fish show descriptions, and the
+  scripts keep working when an upgrade moves the binary.
 
 ### Changed
 

@@ -95,10 +95,10 @@ Milestone 4 — Terminal-aware help width
 
 Milestone 5 — Shell completions
 
-- [ ] Add `shiki-cli/src/Shiki/Cli/Completions.hs` with Bash, Zsh, and Fish generators and a `completions` subparser; wire `Completions` into `Shiki.Cli`.
-- [ ] Add `shiki-cli/test/Shiki/Cli/ParserSpec.hs` with a completion-protocol test and generator smoke tests.
-- [ ] Document `shiki completions` in `docs/user/commands.md`, `docs/user/getting-started.md`, `README.md`, and `CHANGELOG.md`.
-- [ ] The Bash completion demo prints `run` and `runs`; `bash -n` and `zsh -n` accept the scripts; commit.
+- [x] (2026-09-11 20:25Z) Add `shiki-cli/src/Shiki/Cli/Completions.hs` with Bash, Zsh, and Fish generators and a `completions` subparser; wire `Completions` into `Shiki.Cli`.
+- [x] (2026-09-11 20:30Z) Add `shiki-cli/test/Shiki/Cli/ParserSpec.hs` with completion-protocol tests (`shiki ru`, `shiki runs `, `shiki comp`, `shiki completions `) and generator smoke tests, including one that no script embeds `/nix/store`; the suite now has 58 tests.
+- [x] (2026-09-11 20:40Z) Document `shiki completions` in `docs/user/commands.md`, `docs/user/getting-started.md`, `README.md`, and `CHANGELOG.md`.
+- [x] (2026-09-11 20:40Z) The Bash completion demo prints `run` and `runs`; `bash -n` and `zsh -n` accept the scripts (fish is not installed here, so its check was skipped); the Zsh function produces `word:description` pairs; commit.
 
 Milestone 6 — Option groups and help-on-empty
 
@@ -226,6 +226,42 @@ Milestone 7 — Release conformance audit, ADR, and Nix build
   ```
 
   At 200 columns the cap applies, and the longest packed line (135) stays under 140.
+
+- (Implementation, M5) The `bash` first on `PATH` inside the dev shell is Nix's
+  non-interactive build, which has no programmable-completion builtins, so the Concrete
+  Steps demo prints `complete: command not found` before the (correct) candidates. The
+  function itself works; macOS's `/bin/bash`, like any interactive Bash, registers it:
+
+  ```text
+  $ PATH=…:$PATH /bin/bash -c 'eval "$(shiki completions bash)"; complete -p shiki; …'
+  complete -o filenames -F _shiki_completions shiki
+  runs
+  run
+  fish
+  zsh
+  bash
+  -h
+  --help
+  ```
+
+  The candidate list for an empty word after a subcommand also includes `-h` and
+  `--help`, because `hsubparser` adds a help flag to each subcommand. The plan's
+  expected output listed only the subcommand names.
+
+- (Implementation, M5) A `zpty`-driven interactive Zsh did not echo the completion
+  listing in this environment, so the Zsh script was tested by stubbing `_describe`
+  and calling `_shiki` with `words` and `CURRENT` set:
+
+  ```text
+  $ words=(shiki runs l); CURRENT=3; _shiki
+  logs:Print the captured log tail for a run...
+  list:List recent runs, newest first
+  ```
+
+- (Implementation, M5) As predicted in M2, the label-usage loop flags
+  `shiki-cli/src/Shiki/Cli/Completions.hs` and `shiki-cli/test/Shiki/Cli/ParserSpec.hs`
+  for the `#compdef` and `${#completions[@]}` text inside string literals. Neither file
+  uses overloaded labels, so both are false positives and get no labels import.
 
 
 ## Decision Log

@@ -15,6 +15,10 @@
 --   * @shiki service show NAME@ — pretty-print the parsed 'ServiceConfig'
 --     for NAME as JSON. Useful for debugging service config files
 --     without touching the database or the cluster.
+--   * @shiki completions bash|zsh|fish@ — print a shell completion script.
+--     Tab completion itself runs inside the parser (optparse-applicative's
+--     @--bash-completion-*@ protocol), before any dispatch, so pressing Tab
+--     never touches the database or the cluster.
 module Shiki.Cli
   ( runCli,
     parserInfo,
@@ -28,6 +32,7 @@ import Data.Text qualified as Text
 import Options.Applicative (Parser, ParserInfo, (<**>))
 import Options.Applicative qualified as Opt
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
+import Shiki.Cli.Completions (CompletionsShell, completionsParser, runCompletions)
 import Shiki.Cli.Config (resolveConnectionString)
 import Shiki.Cli.ConfigInit
   ( ConfigInitOptions (..),
@@ -56,6 +61,7 @@ data Command
   | Agent !AgentCommand
   | Help !HelpCommand
   | Config !ConfigCommand
+  | Completions !CompletionsShell
   deriving stock (Generic, Eq, Show)
 
 data ConfigCommand
@@ -77,6 +83,7 @@ runCli = do
   case opts ^. #command of
     ServiceShow nm -> serviceShowHandler nm
     Help helpOpts -> runHelp helpOpts
+    Completions shell -> runCompletions shell
     Config ConfigShow ->
       runConfigShow (opts ^. #envName)
     Config (ConfigInit initOpts) ->
@@ -202,6 +209,12 @@ commandParser =
           ( Opt.info
               (Help <$> helpParser)
               (Opt.progDesc "Show curated guides for shiki concepts")
+          )
+        <> Opt.command
+          "completions"
+          ( Opt.info
+              (Completions <$> completionsParser)
+              (Opt.progDesc "Print a shell completion script (bash, zsh, fish)")
           )
     )
 

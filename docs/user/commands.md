@@ -38,7 +38,8 @@ the pool, before running the subcommand handler). There is no separate
 `migrate` step.
 
 The `service`, `config init`, and `config show` subcommands do **not** need a database —
-they parse Dhall files and exit.
+they parse Dhall files and exit. Neither do `help` and `completions`, which
+only print text embedded in the binary.
 
 ## Interactive selection (fzf)
 
@@ -246,6 +247,32 @@ shiki agent assist [--provider PROVIDER] [--model MODEL]
 
 A typo in either env var exits with
 `shiki: unknown agent provider '<x>'. Expected one of: claude-cli, codex-cli, anthropic, openai.`
+
+## `shiki completions`
+
+Print a Tab-completion script for Bash, Zsh, or Fish. Once installed,
+pressing Tab after `shiki ru` offers `run` and `runs`, Tab after
+`shiki runs ` offers the `runs` subcommands, and every flag completes the
+same way. Zsh and Fish also show each candidate's description.
+
+```bash
+shiki completions bash > ~/.local/share/bash-completion/completions/shiki
+shiki completions zsh  > "${fpath[1]}/_shiki"     # or: eval "$(shiki completions zsh)"
+shiki completions fish > ~/.config/fish/completions/shiki.fish
+```
+
+The scripts are static and short. At Tab time they call `shiki` by name
+with optparse-applicative's hidden `--bash-completion-*` flags, and the
+parser answers with the candidates, so completions always match the
+installed binary's commands without regenerating the script. Because the
+script finds `shiki` on `PATH` rather than embedding an absolute path, it
+keeps working after an upgrade moves the binary, for example to a new Nix
+store path. Completion runs entirely inside the argument parser: pressing
+Tab never connects to the database or the cluster. `shiki completions`
+itself needs no database either.
+
+Bash completion needs a Bash built with programmable completion (the
+`complete` builtin), which every interactive Bash has.
 
 ## Environment variable summary
 

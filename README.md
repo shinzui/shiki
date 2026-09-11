@@ -35,6 +35,7 @@ shiki config init --schema-ref <tag-or-commit> # create project-local shiki.dhal
 shiki config show                            # inspect project-local shiki.dhall
 shiki help                                   # in-terminal index of curated topic guides
 shiki help services                          # full guide for one topic
+shiki completions zsh                        # shell completion script (bash, zsh, fish)
 ```
 
 Each `shiki run`:
