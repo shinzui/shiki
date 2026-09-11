@@ -221,18 +221,19 @@ This section must always reflect the actual current state of the work.
 
 ### M8 — One run resolver: target before the database, record after
 
-- [ ] Replace `RunSelection` / `selectRun` / `resolveRunId` in
+- [x] Replace `RunSelection` / `selectRun` / `resolveRunId` in
       `shiki-cli/src/Shiki/Cli/Fzf/Selector/Run.hs` with `RunTarget`, `RunLookupFailure`,
       `runTarget`, `pickerRunTarget`, `lookupRun`, `fromPrefixMatches`,
       `fromRunFzfResult`, `renderRunLookupFailure`, `readRunOpts`, `analyzeRunOpts`.
-- [ ] Change `runRuns` to take an environment-acquiring continuation, resolve the target
+      [2026-09-11]
+- [x] Change `runRuns` to take an environment-acquiring continuation, resolve the target
       before acquiring it, and hand handlers a `RunRecord`; delete `withResolved`,
-      `noMatch`, and `ambiguous`; print failures on stderr from one place.
-- [ ] Remove the `fzf` field and probe from `Shiki.Cli.Env`; update `runCli`.
-- [ ] Extend `RunSpec` with the pure mapping and rendering tests, including the
-      no-match regression test.
-- [ ] Build warning-free, tests green, manual checks for rows 2–13 of the acceptance
-      matrix; commit.
+      `noMatch`, and `ambiguous`; print failures on stderr from one place. [2026-09-11]
+- [x] Remove the `fzf` field and probe from `Shiki.Cli.Env`; update `runCli`. [2026-09-11]
+- [x] Extend `RunSpec` with the pure mapping and rendering tests, including the
+      no-match regression test. [2026-09-11]
+- [x] Build warning-free, `All 85 tests passed`, manual checks for rows 1–13 of the
+      acceptance matrix (evidence under Validation and Acceptance); commit. [2026-09-11]
 
 ### M9 — Same resolver shape for `service show`
 
@@ -1567,6 +1568,56 @@ $ cabal test -v0 shiki-cli-test
   …
 All 62 tests passed (4.75s)
 ```
+
+### Evidence captured on 2026-09-11 after M8
+
+Database checks used the throwaway cluster described in Surprises (`$DB` is
+`postgresql://shiki@127.0.0.1:54329/shiki` with four seeded runs; `shiki0` is empty;
+`shiki1` holds one failed run). Running the built binary outside `cabal run` needs
+`shiki_core_datadir=$PWD/shiki-core` so it finds the migrations. Interactive rows were
+driven in a detached `tmux` session (`tmux new-session -d … ; tmux send-keys …;
+tmux capture-pane -p`), which gives fzf a real terminal; stderr was captured to a file and
+printed after the command, as `STDERR:`.
+
+```text
+$ shiki --db $DB runs show 7a01 >/dev/null; echo "exit=$?"          # row 2
+ambiguous id prefix 7a01
+exit=1
+$ shiki --db $DB runs show zzzzzzzz >/dev/null; echo "exit=$?"      # row 3
+no run matching zzzzzzzz
+exit=1
+$ env PATH=/usr/bin shiki --db postgresql://127.0.0.1:1/none runs show </dev/null; echo "exit=$?"   # row 10
+shiki: no run id given and fzf is not available
+exit=1
+$ shiki --db postgresql://127.0.0.1:1/none runs show 3f            # contrast: a positional does connect
+shiki: Uncaught exception ghc-internal:GHC.Internal.Exception.ErrorCall:
+
+# row 8 — typed zzzz, Enter
+  ID        STARTED              SERVICE                STATUS     DURATION  EXIT  COMMAND
+  0/4 ──────────────────────────────────────────────────────────────────────────────
+run> zzzz
+STDERR: shiki: no run matches the picker query
+EXIT=1
+# row 7 — Esc (Ctrl-C identical)
+STDERR:
+EXIT=1
+# row 6 — shiki0 (empty)
+STDERR: shiki: no runs recorded yet
+EXIT=1
+# row 5 — shiki1, no keys: JSON printed at once, EXIT=0; `runs logs` likewise printed the log tail
+# row 11 — shiki1, `runs analyze --analyzer heuristic`, no keys: the picker waits
+▌ 5e5e5e5e  2026-06-01 10:00:00  ingest   failed  3s        1     reindex
+  ID        STARTED              SERVICE  STATUS  DURATION  EXIT  COMMAND
+  Enter re-runs analysis on the selected run and overwrites its stored error summary
+  1/1 ──────────────────────────────────────────────────────────────────────────────
+run>
+# row 12 — same, Enter
+analyzed run 5e5e5e5e with heuristic: ERROR: connection refused
+EXIT=0
+```
+
+The picker rendering for row 4 (title row directly above aligned rows, Enter prints the
+JSON) was captured the same way during M7.
 
 
 ## Idempotence and Recovery

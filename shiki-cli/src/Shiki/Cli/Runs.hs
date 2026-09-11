@@ -1,7 +1,7 @@
--- | The @shiki runs@ family of read-only subcommands: @list@, @show@,
---   and @logs@. Reads rows written by 'Shiki.Cli.Run' through the
---   persistence statements defined in "Shiki.Persistence.Run"; never
---   mutates the database.
+-- | The @shiki runs@ family of subcommands: @list@, @show@, @logs@,
+--   @error@, and @analyze@. Reads rows written by 'Shiki.Cli.Run' through
+--   the persistence statements defined in "Shiki.Persistence.Run"; only
+--   @analyze@ writes, replacing a run's stored error summary.
 module Shiki.Cli.Runs
   ( RunsCommand (..),
     runsParser,
@@ -45,12 +45,19 @@ import Shiki.Analysis.Backend
     runAnalyzer,
   )
 import Shiki.Cli.Env (CliEnv (..))
-import Shiki.Cli.Fzf.Selector.Run (resolveRunId)
+import Shiki.Cli.Fzf (FzfOpts)
+import Shiki.Cli.Fzf.Selector.Run
+  ( RunLookupFailure,
+    analyzeRunOpts,
+    lookupRun,
+    readRunOpts,
+    renderRunLookupFailure,
+    runTarget,
+  )
 import Shiki.Cli.Runs.Format (renderTable)
 import Shiki.Persistence.Run
   ( RunId (..),
     RunRecord,
-    findRunByPrefixStatement,
     listRecentRunsByServiceStatement,
     listRecentRunsStatement,
     updateErrorSummaryStatement,
@@ -149,27 +156,40 @@ analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
               else Right (Baikai mid)
   _ -> Left "expected 'heuristic', 'none', or 'baikai:<model-id>'"
 
--- | Dispatch a parsed 'RunsCommand' to the right handler. Read
---   subcommands route through 'withResolved' so a missing positional
---   ID opens an fzf picker (see 'Shiki.Cli.Fzf.Selector.Run').
-runRuns :: CliEnv -> RunsCommand -> IO ()
-runRuns env = \case
-  RunsList mService limit -> doList env mService limit
-  RunsShow mId -> withResolved env mId doShow
-  RunsLogs mId -> withResolved env mId doLogs
-  RunsError mId -> withResolved env mId doError
-  RunsAnalyze mId override -> withResolved env mId (\e t -> doAnalyze e t override)
+-- | Dispatch a parsed 'RunsCommand' to the right handler. @withEnv@
+--   acquires the database environment ("Shiki.Cli.Env.withCliEnv"); taking
+--   it as an argument lets the single-run commands decide their target
+--   first, so a missing positional with no usable fzf fails before any
+--   connection is made (see "Shiki.Cli.Fzf.Selector.Run").
+runRuns :: ((CliEnv -> IO ()) -> IO ()) -> RunsCommand -> IO ()
+runRuns withEnv = \case
+  RunsList mService limit -> withEnv (\env -> doList env mService limit)
+  RunsShow mId -> withRun withEnv readRunOpts mId (const doShow)
+  RunsLogs mId -> withRun withEnv readRunOpts mId (const doLogs)
+  RunsError mId -> withRun withEnv readRunOpts mId (const doError)
+  RunsAnalyze mId override ->
+    withRun withEnv analyzeRunOpts mId (\env r -> doAnalyze env r override)
 
--- | Resolve the optional positional through the run selector; if the
---   resolver returns 'Nothing' (cancelled / no fzf / no rows / error)
---   exit non-zero — any user-visible message has already been printed
---   by 'resolveRunId'.
-withResolved :: CliEnv -> Maybe Text -> (CliEnv -> Text -> IO ()) -> IO ()
-withResolved env mIdText body = do
-  mResolved <- resolveRunId env mIdText
-  case mResolved of
-    Just t -> body env t
-    Nothing -> exitFailure
+-- | Decide the target before acquiring the environment (so a missing fzf never
+--   costs a database connection), then look the run up and run the handler.
+withRun ::
+  ((CliEnv -> IO ()) -> IO ()) ->
+  FzfOpts ->
+  Maybe Text ->
+  (CliEnv -> RunRecord -> IO ()) ->
+  IO ()
+withRun withEnv opts mId body =
+  runTarget opts mId >>= \case
+    Left failure -> failLookup failure
+    Right target ->
+      withEnv $ \env ->
+        lookupRun env target >>= either failLookup (body env)
+
+-- | Print the failure's message (if any) on stderr and exit 1.
+failLookup :: RunLookupFailure -> IO a
+failLookup failure = do
+  mapM_ (TIO.hPutStrLn stderr) (renderRunLookupFailure failure)
+  exitFailure
 
 doList :: CliEnv -> Maybe Text -> Int -> IO ()
 doList env mService limit = do
@@ -180,56 +200,36 @@ doList env mService limit = do
     then TIO.putStrLn "(no runs recorded yet)"
     else TIO.putStr (renderTable rows)
 
-doShow :: CliEnv -> Text -> IO ()
-doShow env idText = do
-  matches <- runRead env findRunByPrefixStatement idText
-  case matches of
-    [] -> noMatch idText
-    [r] -> BL8.putStrLn (AesonPretty.encodePretty r)
-    _ -> ambiguous idText
+doShow :: RunRecord -> IO ()
+doShow r = BL8.putStrLn (AesonPretty.encodePretty r)
 
-doLogs :: CliEnv -> Text -> IO ()
-doLogs env idText = do
-  matches <- runRead env findRunByPrefixStatement idText
-  case matches of
-    [] -> noMatch idText
-    [r] -> case r ^. #logTail of
-      Just t -> TIO.putStr t
-      Nothing -> TIO.putStrLn "(no log captured)"
-    _ -> ambiguous idText
+doLogs :: RunRecord -> IO ()
+doLogs r = case r ^. #logTail of
+  Just t -> TIO.putStr t
+  Nothing -> TIO.putStrLn "(no log captured)"
 
-doError :: CliEnv -> Text -> IO ()
-doError env idText = do
-  matches <- runRead env findRunByPrefixStatement idText
-  case matches of
-    [] -> noMatch idText
-    [r] -> case r ^. #errorSummary of
-      Just t -> TIO.putStrLn t
-      Nothing -> TIO.putStrLn "(no summary)"
-    _ -> ambiguous idText
+doError :: RunRecord -> IO ()
+doError r = case r ^. #errorSummary of
+  Just t -> TIO.putStrLn t
+  Nothing -> TIO.putStrLn "(no summary)"
 
-doAnalyze :: CliEnv -> Text -> Maybe AnalyzerKind -> IO ()
-doAnalyze env idText override = do
-  matches <- runRead env findRunByPrefixStatement idText
-  case matches of
-    [] -> noMatch idText
-    _ : _ : _ -> ambiguous idText
-    [r] -> do
-      kind <- effectiveBackend r override
-      case r ^. #logTail of
-        Nothing -> TIO.putStrLn "(no logs captured; cannot analyze)"
-        Just t -> do
-          result <- runAnalyzer kind t
-          case result of
-            Left err -> do
-              hPutStrLn stderr (renderAnalyzerError err)
-              exitFailure
-            Right res -> do
-              runWrite
-                env
-                updateErrorSummaryStatement
-                (r ^. #runId, res ^. #summary, res ^. #source)
-              TIO.putStrLn (renderAnalyzeOutcome (r ^. #runId) res)
+doAnalyze :: CliEnv -> RunRecord -> Maybe AnalyzerKind -> IO ()
+doAnalyze env r override = do
+  kind <- effectiveBackend r override
+  case r ^. #logTail of
+    Nothing -> TIO.putStrLn "(no logs captured; cannot analyze)"
+    Just t -> do
+      result <- runAnalyzer kind t
+      case result of
+        Left err -> do
+          hPutStrLn stderr (renderAnalyzerError err)
+          exitFailure
+        Right res -> do
+          runWrite
+            env
+            updateErrorSummaryStatement
+            (r ^. #runId, res ^. #summary, res ^. #source)
+          TIO.putStrLn (renderAnalyzeOutcome (r ^. #runId) res)
 
 -- | Resolve the analyzer backend to use for one @runs analyze@ call:
 --   CLI override wins; otherwise the service's Dhall default is used;
@@ -257,16 +257,6 @@ renderAnalyzeOutcome rid res =
     <> (res ^. #source)
     <> ": "
     <> fromMaybe "(no summary)" (res ^. #summary)
-
-noMatch :: Text -> IO a
-noMatch idText = do
-  TIO.putStrLn ("no run matching " <> idText)
-  exitFailure
-
-ambiguous :: Text -> IO a
-ambiguous idText = do
-  TIO.putStrLn ("ambiguous id prefix " <> idText)
-  exitFailure
 
 runRead :: CliEnv -> Statement a b -> a -> IO b
 runRead env stmt input =

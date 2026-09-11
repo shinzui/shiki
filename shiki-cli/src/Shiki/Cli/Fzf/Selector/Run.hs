@@ -1,32 +1,46 @@
--- | Selector that lets the operator pick a single run row via @fzf@.
+-- | Resolve a single run from either a typed id prefix or an @fzf@ picker.
 --
---   This is the bridge between the abstract 'Shiki.Cli.Fzf.runFzf' and
---   the concrete @runs@ table: it fetches the 50 most-recent rows,
---   aligns them under the same column titles @runs list@ uses, runs
---   them through fzf, and returns either a full UUID (as 'Text', so the
---   existing handlers can keep using 'findRunByPrefixStatement') or one
---   of the non-selection outcomes.
+--   Resolution happens in two phases. 'runTarget' decides what the operator
+--   asked for — a prefix, or the picker — before any database work, so a
+--   missing fzf is reported without connecting. 'lookupRun' then turns the
+--   target into the 'RunRecord' inside the database environment: the prefix
+--   path is the only one that queries by id, and the picker path returns the
+--   record fzf handed back. Every way this can fail is a 'RunLookupFailure',
+--   rendered in one place by 'renderRunLookupFailure'.
+--
+--   The picker shows the 50 most-recent rows aligned under the same column
+--   titles @runs list@ uses ("Shiki.Cli.Runs.Format").
 module Shiki.Cli.Fzf.Selector.Run
-  ( RunSelection (..),
-    defaultRunOpts,
+  ( RunTarget (..),
+    RunLookupFailure (..),
+    readRunOpts,
+    analyzeRunOpts,
     formatRunCandidates,
-    selectRun,
-    resolveRunId,
+    runTarget,
+    pickerRunTarget,
+    lookupRun,
+    fromPrefixMatches,
+    fromRunFzfResult,
+    renderRunLookupFailure,
   )
 where
 
+import Data.Bifunctor (first)
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
-import Data.Text.IO qualified as TIO
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
+import Hasql.Statement (Statement)
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Cli.Fzf
   ( Candidate (..),
+    FzfConfig,
     FzfOpts,
     FzfResult (..),
+    detectFzfConfig,
     isFzfAvailable,
     runFzf,
+    withHeader,
     withHeaderRow,
     withHeight,
     withNoSort,
@@ -35,27 +49,28 @@ import Shiki.Cli.Fzf
   )
 import Shiki.Cli.Runs.Format (computeWidths, formatRow, runColumns, runTableHeader)
 import Shiki.Persistence.Run
-  ( RunId (..),
-    RunRecord,
+  ( RunRecord,
+    findRunByPrefixStatement,
     listRecentRunsStatement,
   )
 import Shiki.Prelude
-import System.IO (hPutStrLn, stderr)
 
--- | The four states 'selectRun' can land in.
-data RunSelection
-  = RunChosen !RunId !RunRecord
-  | RunNoRows
-  | RunSelectionCancelled
+-- | What the operator asked for, decided before any database work.
+data RunTarget
+  = RunByPrefix !Text
+  | RunByPicker !FzfConfig !FzfOpts
+
+-- | Every way turning a target into a run can fail.
+data RunLookupFailure
+  = NoRunMatching !Text
+  | AmbiguousRunPrefix !Text
+  | NoRunsRecorded
+  | RunPickerNoMatch
+  | RunPickerCancelled
   | RunFzfUnavailable
-  | RunSelectionError !Text
-
--- | The default fzf options for run pickers: @run> @ prompt, 40% height,
---   sort disabled (we pre-sort by recency), a lone run picked without
---   asking.
-defaultRunOpts :: FzfOpts
-defaultRunOpts =
-  withPrompt "run> " <> withHeight "40%" <> withNoSort <> withSelectOne
+  | RunPickerFailed !Text
+  | RunLookupPersistenceError !Text
+  deriving stock (Eq, Show)
 
 -- | How many rows to surface in the picker. 50 is bigger than the 20
 --   default of @runs list@ because fuzzy search is more useful with
@@ -63,6 +78,20 @@ defaultRunOpts =
 --   terminal.
 selectorRowLimit :: Int
 selectorRowLimit = 50
+
+-- | @run> @ prompt, 40% height, sort disabled (we pre-sort by recency).
+pickerBaseOpts :: FzfOpts
+pickerBaseOpts = withPrompt "run> " <> withHeight "40%" <> withNoSort
+
+-- | For show / logs / error: a lone run is picked without asking.
+readRunOpts :: FzfOpts
+readRunOpts = pickerBaseOpts <> withSelectOne
+
+-- | For analyze, which writes: always ask, and say what Enter does.
+analyzeRunOpts :: FzfOpts
+analyzeRunOpts =
+  pickerBaseOpts
+    <> withHeader "Enter re-runs analysis on the selected run and overwrites its stored error summary"
 
 -- | Align the picker rows exactly like @runs list@: the widths are computed
 --   over the column titles and every row, and the titles are returned so the
@@ -75,51 +104,60 @@ formatRunCandidates rows =
         zipWith (\r cs -> Candidate {display = formatRow widths cs, value = r}) rows cells
       )
 
--- | Fetch the 50 most-recent rows from the @runs@ table and run them
---   through fzf with 'defaultRunOpts'.
-selectRun :: CliEnv -> IO RunSelection
-selectRun env
-  | not (isFzfAvailable (env ^. #fzf)) = pure RunFzfUnavailable
-  | otherwise = do
-      eRows <-
-        Pool.use
-          (env ^. #pool)
-          (Session.statement selectorRowLimit listRecentRunsStatement)
-      case eRows of
-        Left e ->
-          pure (RunSelectionError (Text.pack ("persistence error: " <> show e)))
-        Right [] -> pure RunNoRows
-        Right rows -> do
-          let (titles, candidates) = formatRunCandidates rows
-          res <- runFzf (env ^. #fzf) (defaultRunOpts <> withHeaderRow titles) candidates
-          pure $ case res of
-            FzfSelected r -> RunChosen (r ^. #runId) r
-            FzfNoMatch -> RunNoRows
-            FzfCancelled -> RunSelectionCancelled
-            FzfError msg -> RunSelectionError msg
+-- | Decide the target. Probes for fzf only when no positional was given.
+runTarget :: FzfOpts -> Maybe Text -> IO (Either RunLookupFailure RunTarget)
+runTarget _ (Just t) = pure (Right (RunByPrefix t))
+runTarget opts Nothing = pickerRunTarget opts <$> detectFzfConfig
 
--- | The public entry point used by the @runs@ subcommand handlers.
---   Returns the run id as 'Text' (the same shape the existing
---   'findRunByPrefixStatement' path consumes); a 'Nothing' means the
---   caller should exit non-zero (any user-visible message has already
---   been printed).
-resolveRunId :: CliEnv -> Maybe Text -> IO (Maybe Text)
-resolveRunId _ (Just t) = pure (Just t)
-resolveRunId env Nothing
-  | not (isFzfAvailable (env ^. #fzf)) = do
-      hPutStrLn stderr "shiki: no run id given and fzf is not available"
-      pure Nothing
-  | otherwise = do
-      sel <- selectRun env
-      case sel of
-        RunChosen (RunId u) _ -> pure (Just (Text.pack (show u)))
-        RunNoRows -> do
-          TIO.putStrLn "(no runs recorded yet)"
-          pure Nothing
-        RunSelectionCancelled -> pure Nothing
-        RunFzfUnavailable -> do
-          hPutStrLn stderr "shiki: no run id given and fzf is not available"
-          pure Nothing
-        RunSelectionError e -> do
-          TIO.hPutStrLn stderr ("shiki: fzf: " <> e)
-          pure Nothing
+-- | The picker target, or 'RunFzfUnavailable' when fzf cannot run.
+pickerRunTarget :: FzfOpts -> FzfConfig -> Either RunLookupFailure RunTarget
+pickerRunTarget opts cfg
+  | isFzfAvailable cfg = Right (RunByPicker cfg opts)
+  | otherwise = Left RunFzfUnavailable
+
+-- | Resolve a target to a run. The prefix path is the only one that queries
+--   by id; the picker path returns the record fzf handed back.
+lookupRun :: CliEnv -> RunTarget -> IO (Either RunLookupFailure RunRecord)
+lookupRun env = \case
+  RunByPrefix t ->
+    query findRunByPrefixStatement t <&> (>>= fromPrefixMatches t)
+  RunByPicker cfg opts ->
+    query listRecentRunsStatement selectorRowLimit >>= \case
+      Left e -> pure (Left e)
+      Right [] -> pure (Left NoRunsRecorded)
+      Right rows -> do
+        let (titles, candidates) = formatRunCandidates rows
+        fromRunFzfResult <$> runFzf cfg (opts <> withHeaderRow titles) candidates
+  where
+    query :: Statement a b -> a -> IO (Either RunLookupFailure b)
+    query stmt input =
+      first (RunLookupPersistenceError . Text.pack . show)
+        <$> Pool.use (env ^. #pool) (Session.statement input stmt)
+
+-- | 'findRunByPrefixStatement' returns at most two rows: enough to tell a
+--   unique prefix from an ambiguous one.
+fromPrefixMatches :: Text -> [RunRecord] -> Either RunLookupFailure RunRecord
+fromPrefixMatches t = \case
+  [] -> Left (NoRunMatching t)
+  [r] -> Right r
+  _ -> Left (AmbiguousRunPrefix t)
+
+fromRunFzfResult :: FzfResult RunRecord -> Either RunLookupFailure RunRecord
+fromRunFzfResult = \case
+  FzfSelected r -> Right r
+  FzfNoMatch -> Left RunPickerNoMatch
+  FzfCancelled -> Left RunPickerCancelled
+  FzfError e -> Left (RunPickerFailed e)
+
+-- | The message for a failure, or 'Nothing' for a silent cancel. The caller
+--   prints it on stderr and exits 1.
+renderRunLookupFailure :: RunLookupFailure -> Maybe Text
+renderRunLookupFailure = \case
+  NoRunMatching t -> Just ("no run matching " <> t)
+  AmbiguousRunPrefix t -> Just ("ambiguous id prefix " <> t)
+  NoRunsRecorded -> Just "shiki: no runs recorded yet"
+  RunPickerNoMatch -> Just "shiki: no run matches the picker query"
+  RunPickerCancelled -> Nothing
+  RunFzfUnavailable -> Just "shiki: no run id given and fzf is not available"
+  RunPickerFailed e -> Just ("shiki: fzf: " <> e)
+  RunLookupPersistenceError e -> Just ("shiki: persistence error: " <> e)

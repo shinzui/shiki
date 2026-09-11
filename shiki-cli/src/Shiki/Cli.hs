@@ -100,8 +100,9 @@ runCli = do
       withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
         runRun env runOpts
     Runs runsOpts ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
-        runRuns env runsOpts
+      runRuns
+        (\k -> withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) (\_ env -> k env))
+        runsOpts
     Agent agentOpts ->
       withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \schema env ->
         runAgent env schema agentOpts
