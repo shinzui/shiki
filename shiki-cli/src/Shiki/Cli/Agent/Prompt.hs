@@ -21,6 +21,7 @@ import Shiki.Cli.Agent.Context
   ( AgentContext (..),
     ServiceSummary (..),
   )
+import Shiki.Cli.Runs.Format (displayStatus)
 import Shiki.Persistence.Run (RunId (..), RunRecord)
 import Shiki.Persistence.RunStatus (runStatusToText)
 import Shiki.Prelude
@@ -42,7 +43,7 @@ renderAssistPrompt ctx mUserPrompt =
       ("cluster", ctx ^. #cluster),
       ("services_dir", Text.pack (ctx ^. #servicesDir)),
       ("services", formatServices (ctx ^. #services)),
-      ("recent_runs", formatRuns (ctx ^. #recentRuns)),
+      ("recent_runs", formatRuns (ctx ^. #observedAt) (ctx ^. #recentRuns)),
       ("user_prompt", fromMaybe "(no hints)" mUserPrompt)
     ]
 
@@ -68,8 +69,8 @@ formatServices = \case
         <> s ^. #analyzer
         <> ")"
 
-formatRuns :: [RunRecord] -> Text
-formatRuns = \case
+formatRuns :: Maybe UTCTime -> [RunRecord] -> Text
+formatRuns mObservedAt = \case
   [] -> "(no runs yet)"
   xs -> Text.intercalate "\n" (map renderOne xs)
   where
@@ -79,6 +80,9 @@ formatRuns = \case
         <> "  "
         <> r ^. #serviceName
         <> "  "
-        <> runStatusToText (r ^. #status)
+        <> maybe
+          (runStatusToText (r ^. #status))
+          (\observedAtDb -> displayStatus observedAtDb r)
+          mObservedAt
         <> "  "
         <> fromMaybe "-" (r ^. #errorSummary)

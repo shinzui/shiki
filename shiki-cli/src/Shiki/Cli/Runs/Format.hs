@@ -4,6 +4,9 @@
 --   can import it without an import cycle.
 module Shiki.Cli.Runs.Format
   ( runTableHeader,
+    watchStaleAfter,
+    isUnwatched,
+    displayStatus,
     runColumns,
     humanDuration,
     computeWidths,
@@ -14,9 +17,10 @@ where
 
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
+import Data.Time.Clock (NominalDiffTime, diffUTCTime)
 import Data.Time.Format qualified as TimeFmt
 import Shiki.Persistence.Run (RunId (..), RunRecord)
-import Shiki.Persistence.RunStatus (runStatusToText)
+import Shiki.Persistence.RunStatus (RunStatus (Pending, Running), runStatusToText)
 import Shiki.Prelude
 
 -- | The column titles, in the order 'runColumns' produces cells.
@@ -25,16 +29,16 @@ runTableHeader = ["ID", "STARTED", "SERVICE", "STATUS", "DURATION", "EXIT", "COM
 
 -- | A header row followed by one row per run, every cell padded to its
 --   column's width.
-renderTable :: [RunRecord] -> Text
-renderTable rs =
-  let body = map runColumns rs
+renderTable :: UTCTime -> [RunRecord] -> Text
+renderTable observedAt rs =
+  let body = map (runColumns observedAt) rs
       widths = computeWidths (runTableHeader : body)
    in Text.unlines (formatRow widths runTableHeader : map (formatRow widths) body)
 
 -- | The seven cells of one run: 8-character id, start time, service,
 --   status, duration, exit code, command.
-runColumns :: RunRecord -> [Text]
-runColumns r =
+runColumns :: UTCTime -> RunRecord -> [Text]
+runColumns observedAt r =
   [ Text.take 8 (Text.pack (show (unRunId (r ^. #runId)))),
     Text.pack
       ( TimeFmt.formatTime
@@ -43,11 +47,32 @@ runColumns r =
           (r ^. #startedAt)
       ),
     r ^. #serviceName,
-    runStatusToText (r ^. #status),
+    displayStatus observedAt r,
     maybe "-" humanDuration (r ^. #durationMs),
     maybe "-" (Text.pack . show) (r ^. #exitCode),
     Text.intercalate " " (r ^. #command)
   ]
+
+-- | Five missed one-minute heartbeats are tolerated before a watcher is
+--   considered stale.
+watchStaleAfter :: NominalDiffTime
+watchStaleAfter = 300
+
+-- | Whether an unfinished row has no recent heartbeat. This is a liveness
+--   signal, not proof that no operating-system process exists.
+isUnwatched :: UTCTime -> RunRecord -> Bool
+isUnwatched observedAt r =
+  r ^. #status `elem` [Pending, Running]
+    && maybe
+      True
+      (\lastWatched -> diffUTCTime observedAt lastWatched > watchStaleAfter)
+      (r ^. #lastWatchedAt)
+
+-- | The status shown to operators without changing the stored status.
+displayStatus :: UTCTime -> RunRecord -> Text
+displayStatus observedAt r
+  | isUnwatched observedAt r = "unwatched"
+  | otherwise = runStatusToText (r ^. #status)
 
 -- | Pretty-print a duration in milliseconds: @12s@, @2m5s@, @1h1m1s@.
 humanDuration :: Int -> Text

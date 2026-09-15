@@ -6,6 +6,7 @@ where
 import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
 import Data.Generics.Labels ()
+import Data.Maybe (isJust)
 import Data.Text qualified as Text
 import Data.Time (getCurrentTime)
 import Data.UUID qualified as UUID
@@ -101,6 +102,7 @@ tests =
                   (ctx ^. #serviceLoadErrors)
               )
             assertEqual "one recent run" 1 (length (ctx ^. #recentRuns))
+            assertBool "database observation time is present" (isJust (ctx ^. #observedAt))
             assertEqual "schema name" "shiki" (ctx ^. #schemaName)
             assertEqual "cluster placeholder" "unknown" (ctx ^. #cluster),
       testCase "missing services/ dir is not an error" $
@@ -111,6 +113,7 @@ tests =
                 gatherAgentContext pool defaultSchema
             assertEqual "no services" [] (ctx ^. #services)
             assertEqual "no errors" [] (ctx ^. #serviceLoadErrors)
+            assertBool "database observation time is present" (isJust (ctx ^. #observedAt))
     ]
 
 -- | A minimal Dhall record that satisfies 'ServiceConfig'. Inlined

@@ -2,7 +2,7 @@ module Shiki.Cli.Runs.SyncSpec (tests) where
 
 import Data.Time.Clock (addUTCTime)
 import Shiki.Cli.Fixtures (fixtureRow)
-import Shiki.Cli.Runs.Sync (SyncAction (..), decideSync)
+import Shiki.Cli.Runs.Sync (SyncAction (..), decideSync, renderStillRunning)
 import Shiki.K8s.Runner (JobObservation (..), JobPhase (..))
 import Shiki.Persistence.Run (RunRecord (..))
 import Shiki.Persistence.RunStatus (RunStatus (..))
@@ -38,7 +38,17 @@ tests =
           SkipRecentlySubmitted
           (decideSync (addUTCTime 30 started) running JobNotFound),
       testCase "a pending run is reconciled like a running one" $
-        assertEqual "lost" MarkLost (decideSync later running {status = Pending} JobNotFound)
+        assertEqual "lost" MarkLost (decideSync later running {status = Pending} JobNotFound),
+      testCase "an active unwatched run explains that sync may be needed again" $
+        assertEqual
+          "unwatched message"
+          "still running (job shiki-ingest-3f2c1a9d); no shiki process has recently reported watching it, so sync again later"
+          (renderStillRunning later running),
+      testCase "an active watched run keeps the concise message" $
+        assertEqual
+          "watched message"
+          "still running (job shiki-ingest-3f2c1a9d)"
+          (renderStillRunning later running {lastWatchedAt = Just later})
     ]
   where
     started = case fixtureRow of RunRecord {startedAt = t} -> t

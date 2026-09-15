@@ -96,9 +96,9 @@ analyzeRunOpts =
 -- | Align the picker rows exactly like @runs list@: the widths are computed
 --   over the column titles and every row, and the titles are returned so the
 --   caller can show them with 'withHeaderRow'.
-formatRunCandidates :: [RunRecord] -> (Text, [Candidate RunRecord])
-formatRunCandidates rows =
-  let cells = map runColumns rows
+formatRunCandidates :: UTCTime -> [RunRecord] -> (Text, [Candidate RunRecord])
+formatRunCandidates observedAt rows =
+  let cells = map (runColumns observedAt) rows
       widths = computeWidths (runTableHeader : cells)
    in ( formatRow widths runTableHeader,
         zipWith (\r cs -> Candidate {display = formatRow widths cs, value = r}) rows cells
@@ -117,8 +117,8 @@ pickerRunTarget opts cfg
 
 -- | Resolve a target to a run. The prefix path is the only one that queries
 --   by id; the picker path returns the record fzf handed back.
-lookupRun :: CliEnv -> RunTarget -> IO (Either RunLookupFailure RunRecord)
-lookupRun env = \case
+lookupRun :: CliEnv -> UTCTime -> RunTarget -> IO (Either RunLookupFailure RunRecord)
+lookupRun env observedAt = \case
   RunByPrefix t ->
     query findRunByPrefixStatement t <&> (>>= fromPrefixMatches t)
   RunByPicker cfg opts ->
@@ -126,7 +126,7 @@ lookupRun env = \case
       Left e -> pure (Left e)
       Right [] -> pure (Left NoRunsRecorded)
       Right rows -> do
-        let (titles, candidates) = formatRunCandidates rows
+        let (titles, candidates) = formatRunCandidates observedAt rows
         fromRunFzfResult <$> runFzf cfg (opts <> withHeaderRow titles) candidates
   where
     query :: Statement a b -> a -> IO (Either RunLookupFailure b)

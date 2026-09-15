@@ -80,10 +80,10 @@ Milestone 2 — Heartbeat from the waiting process
 
 Milestone 3 — Show unwatched runs
 
-- [ ] Add `watchStaleAfter`, `isUnwatched`, and `displayStatus` to `shiki-cli/src/Shiki/Cli/Runs/Format.hs`; thread one database timestamp through each status-rendering path, including picker and handler paths.
-- [ ] Use the displayed status in `shiki runs list`, the run picker, `shiki agent assist`, and a pure, tested formatter for `shiki runs sync`'s "still running" message.
-- [ ] Print the stderr hint from `shiki runs show` (and after `shiki runs list` when any row is unwatched).
-- [ ] Extend `FormatSpec`, the fzf `Selector.RunSpec`, `ContextSpec`, `PromptSpec`, and `SyncSpec`; `cabal test all` passes; commit.
+- [x] (2026-09-15T14:57:56Z) Add `watchStaleAfter`, `isUnwatched`, and `displayStatus` to `shiki-cli/src/Shiki/Cli/Runs/Format.hs`; thread one database timestamp through each status-rendering path, including picker and handler paths.
+- [x] (2026-09-15T14:57:56Z) Use the displayed status in `shiki runs list`, the run picker, `shiki agent assist`, and a pure, tested formatter for `shiki runs sync`'s "still running" message.
+- [x] (2026-09-15T14:57:56Z) Print the stderr hint from `shiki runs show` (and after `shiki runs list` when any row is unwatched).
+- [x] (2026-09-15T14:57:56Z) Extend `FormatSpec`, the fzf `Selector.RunSpec`, `ContextSpec`, `PromptSpec`, and `SyncSpec`; `nix fmt`, `cabal build all --enable-tests`, and `cabal test all` pass with 51 core tests and 107 CLI tests; commit.
 
 Milestone 4 — Documentation and end-to-end check
 

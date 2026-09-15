@@ -55,11 +55,12 @@ import Shiki.Cli.Fzf.Selector.Run
     renderRunLookupFailure,
     runTarget,
   )
-import Shiki.Cli.Runs.Format (renderTable)
+import Shiki.Cli.Runs.Format (isUnwatched, renderTable)
 import Shiki.Cli.Runs.Sync (syncRun, syncRuns)
 import Shiki.Persistence.Run
   ( RunId (..),
     RunRecord,
+    databaseNowStatement,
     listRecentRunsByServiceStatement,
     listRecentRunsStatement,
     updateErrorSummaryStatement,
@@ -182,10 +183,10 @@ runRuns :: ((CliEnv -> IO ()) -> IO ()) -> RunsCommand -> IO ()
 runRuns withEnv = \case
   RunsList mService limit -> withEnv (\env -> doList env mService limit)
   RunsShow mId -> withRun withEnv readRunOpts mId (const doShow)
-  RunsLogs mId -> withRun withEnv readRunOpts mId (const doLogs)
-  RunsError mId -> withRun withEnv readRunOpts mId (const doError)
+  RunsLogs mId -> withRun withEnv readRunOpts mId (\_ _ -> doLogs)
+  RunsError mId -> withRun withEnv readRunOpts mId (\_ _ -> doError)
   RunsAnalyze mId override ->
-    withRun withEnv analyzeRunOpts mId (\env r -> doAnalyze env r override)
+    withRun withEnv analyzeRunOpts mId (\env _ r -> doAnalyze env r override)
   RunsSync Nothing -> withEnv syncRuns
   RunsSync (Just rid) -> withRun withEnv readRunOpts (Just rid) syncRun
 
@@ -195,14 +196,15 @@ withRun ::
   ((CliEnv -> IO ()) -> IO ()) ->
   FzfOpts ->
   Maybe Text ->
-  (CliEnv -> RunRecord -> IO ()) ->
+  (CliEnv -> UTCTime -> RunRecord -> IO ()) ->
   IO ()
 withRun withEnv opts mId body =
   runTarget opts mId >>= \case
     Left failure -> failLookup failure
     Right target ->
-      withEnv $ \env ->
-        lookupRun env target >>= either failLookup (body env)
+      withEnv $ \env -> do
+        observedAt <- runRead env databaseNowStatement ()
+        lookupRun env observedAt target >>= either failLookup (body env observedAt)
 
 -- | Print the failure's message (if any) on stderr and exit 1.
 failLookup :: RunLookupFailure -> IO a
@@ -212,15 +214,31 @@ failLookup failure = do
 
 doList :: CliEnv -> Maybe Text -> Int -> IO ()
 doList env mService limit = do
+  observedAt <- runRead env databaseNowStatement ()
   rows <- case mService of
     Nothing -> runRead env listRecentRunsStatement limit
     Just svc -> runRead env listRecentRunsByServiceStatement (svc, limit)
   if null rows
     then TIO.putStrLn "(no runs recorded yet)"
-    else TIO.putStr (renderTable rows)
+    else do
+      TIO.putStr (renderTable observedAt rows)
+      when (any (isUnwatched observedAt) rows) $
+        TIO.hPutStrLn
+          stderr
+          "unwatched: no shiki process has recently reported watching these runs; their status may not update until 'shiki runs sync' is run"
 
-doShow :: RunRecord -> IO ()
-doShow r = BL8.putStrLn (AesonPretty.encodePretty r)
+doShow :: UTCTime -> RunRecord -> IO ()
+doShow observedAt r = do
+  BL8.putStrLn (AesonPretty.encodePretty r)
+  when (isUnwatched observedAt r) $
+    TIO.hPutStrLn
+      stderr
+      ( "shiki: run "
+          <> shortRunId r
+          <> " is unwatched: no shiki process has recently reported watching it, so its status may not update until 'shiki runs sync "
+          <> shortRunId r
+          <> "' is run"
+      )
 
 doLogs :: RunRecord -> IO ()
 doLogs r = case r ^. #logTail of
@@ -276,6 +294,9 @@ renderAnalyzeOutcome rid res =
     <> (res ^. #source)
     <> ": "
     <> fromMaybe "(no summary)" (res ^. #summary)
+
+shortRunId :: RunRecord -> Text
+shortRunId r = Text.take 8 (Text.pack (show (unRunId (r ^. #runId))))
 
 runRead :: CliEnv -> Statement a b -> a -> IO b
 runRead env stmt input =

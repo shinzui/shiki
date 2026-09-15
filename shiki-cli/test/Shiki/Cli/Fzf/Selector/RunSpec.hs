@@ -5,6 +5,7 @@ where
 
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
+import Data.Time.Clock (addUTCTime)
 import Shiki.Cli.Fixtures (fixtureRow, longServiceRow)
 import Shiki.Cli.Fzf (FzfConfig (..), FzfResult (..))
 import Shiki.Cli.Fzf.Selector.Run
@@ -18,6 +19,8 @@ import Shiki.Cli.Fzf.Selector.Run
     readRunOpts,
     renderRunLookupFailure,
   )
+import Shiki.Persistence.Run (RunRecord (..))
+import Shiki.Persistence.RunStatus (RunStatus (Running))
 import Shiki.Prelude ((^.))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
@@ -54,6 +57,13 @@ tests =
           "status column offsets"
           [offsetOf "STATUS" titles, offsetOf "STATUS" titles]
           (zipWith offsetOf ["succeeded", "failed"] displays),
+      testCase "formatRunCandidates displays an unwatched unfinished row" $ do
+        let (_, unwatchedCandidates) =
+              formatRunCandidates observedAt [fixtureRow {status = Running, lastWatchedAt = Nothing}]
+        case unwatchedCandidates of
+          [candidate] ->
+            assertBool "unwatched status appears" ("unwatched" `Text.isInfixOf` (candidate ^. #display))
+          other -> fail ("expected one candidate, got " <> show (length other)),
       testCase "fromPrefixMatches: none, one, or ambiguous" $ do
         assertEqual "none" (Left (NoRunMatching "3f")) (fromPrefixMatches "3f" [])
         assertEqual "one" (Right fixtureRow) (fromPrefixMatches "3f" [fixtureRow])
@@ -113,5 +123,6 @@ tests =
           (analyzeRunOpts ^. #header)
     ]
   where
-    (titles, candidates) = formatRunCandidates [fixtureRow, longServiceRow]
+    observedAt = addUTCTime 600 (fixtureRow ^. #startedAt)
+    (titles, candidates) = formatRunCandidates observedAt [fixtureRow, longServiceRow]
     displays = map (^. #display) candidates

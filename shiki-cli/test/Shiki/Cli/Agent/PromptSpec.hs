@@ -14,7 +14,7 @@ import Shiki.Cli.Agent.Context
   )
 import Shiki.Cli.Agent.Prompt (renderAssistPrompt)
 import Shiki.Persistence.Run (RunId (..), RunRecord (..))
-import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
+import Shiki.Persistence.RunStatus (RunStatus (Failed, Running, Succeeded))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
@@ -56,7 +56,11 @@ tests =
                 sampleContext {services = [], recentRuns = []}
                 Nothing
         assertContains "(none declared)" "(none declared)" rendered
-        assertContains "(no runs yet)" "(no runs yet)" rendered
+        assertContains "(no runs yet)" "(no runs yet)" rendered,
+      testCase "unfinished rows use the displayed watcher status" $ do
+        let unwatched = sampleRun Running Nothing
+            rendered = renderAssistPrompt sampleContext {recentRuns = [unwatched]} Nothing
+        assertContains "unwatched status" "unwatched" rendered
     ]
 
 sampleContext :: AgentContext
@@ -73,9 +77,13 @@ sampleContext =
         [ sampleRun Succeeded Nothing,
           sampleRun Failed (Just "RuntimeError: boom")
         ],
+      observedAt = Just sampleObservedAt,
       schemaName = "shiki",
       cluster = "unknown"
     }
+
+sampleObservedAt :: UTCTime
+sampleObservedAt = UTCTime (fromGregorian 2026 5 27) (secondsToDiffTime 600)
 
 sampleUuid :: UUID.UUID
 sampleUuid =

@@ -9,6 +9,7 @@ module Shiki.Cli.Runs.Sync
   ( SyncAction (..),
     decideSync,
     lostJobMessage,
+    renderStillRunning,
     syncRuns,
     syncRun,
   )
@@ -25,6 +26,7 @@ import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)
 import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Cli.Run (completionForOutcome, elapsedMs)
+import Shiki.Cli.Runs.Format (isUnwatched)
 import Shiki.K8s.Introspection (DeploymentName (..), Namespace (..), deploymentExists)
 import Shiki.K8s.Runner
   ( JobObservation (..),
@@ -37,6 +39,7 @@ import Shiki.Persistence.Run
     RunId (..),
     RunRecord,
     completeUnfinishedRunStatement,
+    databaseNowStatement,
     listUnfinishedRunsStatement,
   )
 import Shiki.Persistence.RunStatus (RunStatus (..), runStatusToText)
@@ -92,22 +95,23 @@ lostJobMessage r =
 --   rest still sync; the command exits non-zero if any run errored.
 syncRuns :: CliEnv -> IO ()
 syncRuns env = do
+  observedAt <- runStmt env databaseNowStatement ()
   rows <- runStmt env listUnfinishedRunsStatement ()
   if null rows
     then TIO.putStrLn "(no unfinished runs)"
     else do
-      results <- traverse (trySync env) rows
+      results <- traverse (trySync env observedAt) rows
       when (or results) exitFailure
 
 -- | Reconcile one run, exiting non-zero if it errored.
-syncRun :: CliEnv -> RunRecord -> IO ()
-syncRun env r = trySync env r >>= \errored -> when errored exitFailure
+syncRun :: CliEnv -> UTCTime -> RunRecord -> IO ()
+syncRun env observedAt r = trySync env observedAt r >>= \errored -> when errored exitFailure
 
 -- | Sync one run; report an exception on stderr and return whether one
 --   happened. Asynchronous exceptions (Ctrl-C) still propagate.
-trySync :: CliEnv -> RunRecord -> IO Bool
-trySync env r =
-  try @SomeException (syncOne env r) >>= \case
+trySync :: CliEnv -> UTCTime -> RunRecord -> IO Bool
+trySync env observedAt r =
+  try @SomeException (syncOne env observedAt r) >>= \case
     Right () -> pure False
     Left e
       | Just asyncErr <- fromException @SomeAsyncException e -> throwIO asyncErr
@@ -115,8 +119,8 @@ trySync env r =
           TIO.hPutStrLn stderr ("run " <> shortId r <> ": sync failed: " <> Text.pack (show e))
           pure True
 
-syncOne :: CliEnv -> RunRecord -> IO ()
-syncOne env r
+syncOne :: CliEnv -> UTCTime -> RunRecord -> IO ()
+syncOne env observedAt r
   | r ^. #status `notElem` [Pending, Running] =
       report ("already " <> runStatusToText (r ^. #status))
   | otherwise = do
@@ -124,7 +128,7 @@ syncOne env r
       now <- getCurrentTime
       case decideSync now r obs of
         SkipFinished st -> report ("already " <> runStatusToText st)
-        LeaveRunning -> report ("still running (job " <> r ^. #jobName <> ")")
+        LeaveRunning -> report (renderStillRunning observedAt r)
         SkipRecentlySubmitted -> report "no job yet; submitted too recently to reconcile"
         FinalizeFinished phase endedAt -> do
           outcome <-
@@ -180,6 +184,15 @@ syncOne env r
                   )
               )
           )
+
+-- | Explain an active Job whose row has no recent watcher heartbeat.
+renderStillRunning :: UTCTime -> RunRecord -> Text
+renderStillRunning observedAt r
+  | isUnwatched observedAt r =
+      "still running (job "
+        <> r ^. #jobName
+        <> "); no shiki process has recently reported watching it, so sync again later"
+  | otherwise = "still running (job " <> r ^. #jobName <> ")"
 
 shortId :: RunRecord -> Text
 shortId r = Text.take 8 (Text.pack (show (unRunId (r ^. #runId))))

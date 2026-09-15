@@ -21,6 +21,7 @@ import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Shiki.Persistence.Run
   ( RunRecord,
+    databaseNowStatement,
     listRecentRunsStatement,
   )
 import Shiki.Persistence.Schema (Schema, schemaText)
@@ -55,6 +56,7 @@ data AgentContext = AgentContext
     services :: ![ServiceSummary],
     serviceLoadErrors :: ![FilePath],
     recentRuns :: ![RunRecord],
+    observedAt :: !(Maybe UTCTime),
     schemaName :: !Text,
     cluster :: !Text
   }
@@ -77,7 +79,7 @@ gatherAgentContext pool schema = do
   cwdStr <- getCurrentDirectory
   let servicesPath = "services"
   (services, serviceErrs) <- loadServicesDir servicesPath
-  (runs, dbErrs) <- loadRecentRuns pool
+  (mObservedAt, runs, dbErrs) <- loadRecentRuns pool
   pure
     AgentContext
       { cwd = Text.pack cwdStr,
@@ -85,6 +87,7 @@ gatherAgentContext pool schema = do
         services,
         serviceLoadErrors = serviceErrs <> dbErrs,
         recentRuns = runs,
+        observedAt = mObservedAt,
         schemaName = schemaText schema,
         cluster = "unknown"
       }
@@ -119,9 +122,14 @@ toSummary cfg =
 
 -- | Read the most recent twenty rows. Database failures collapse to an
 --   empty list plus one @"db: ..."@ entry in the error log.
-loadRecentRuns :: Pool -> IO ([RunRecord], [FilePath])
+loadRecentRuns :: Pool -> IO (Maybe UTCTime, [RunRecord], [FilePath])
 loadRecentRuns pool = do
-  result <- Pool.use pool (Session.statement 20 listRecentRunsStatement)
+  result <- Pool.use pool session
   pure $ case result of
-    Right rs -> (rs, [])
-    Left err -> ([], ["db: " <> show err])
+    Right (observedAtDb, rs) -> (Just observedAtDb, rs, [])
+    Left err -> (Nothing, [], ["db: " <> show err])
+  where
+    session =
+      (,)
+        <$> Session.statement () databaseNowStatement
+        <*> Session.statement 20 listRecentRunsStatement
