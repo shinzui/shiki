@@ -10,6 +10,12 @@ provenance:
     model: "claude-opus-5[1m]"
     harness: "claude-code"
     at: 2026-09-15T22:13:04Z
+  revisions:
+    - model: "claude-opus-5[1m]"
+      harness: "claude-code"
+      at: 2026-09-15T23:08:33Z
+      mode: "update"
+      note: "Adopt baikai-effectful 0.4.0.2 for the Analyzer interpreter; correct the Nix package-set findings"
 ---
 
 # Adopt effectful as the IO stack with a shiki-wide error handler
@@ -94,9 +100,12 @@ This section must always reflect the actual current state of the work.
 
 ### M1 — Prototype: dependencies and effectful contract tests
 
-- [ ] Add `effectful-core ^>=2.7.1.1` and `effectful ^>=2.7.1.0` to both cabal files.
-- [ ] Pin effectful-core and effectful from Hackage in `nix/haskell-overlay.nix`; `nix build`
-      succeeds.
+- [ ] Add `effectful-core ^>=2.7.1.1`, `effectful ^>=2.7.1.0`, and
+      `baikai-effectful ^>=0.4.0.2` to both cabal files.
+- [ ] Make the Nix package set provide effectful-core 2.7.1.2, effectful 2.7.1.0,
+      `strict-mutable-base` 2.x, `file-io`, and baikai-effectful 0.4.0.2 (update the
+      `haskell-nix` input first, then pin what is still missing in
+      `nix/haskell-overlay.nix`); `nix build` succeeds.
 - [ ] Add `shiki-core/test/Shiki/EffectfulContractSpec.hs` proving the seven library
       behaviours listed in Milestone 1; wire it into the core test suite.
 - [ ] `cabal build all` warning-free, `cabal test all` green; decide promote or fall back;
@@ -136,7 +145,9 @@ This section must always reflect the actual current state of the work.
 
 ### M5 — Config and analyzer effects, and the remaining exits
 
-- [ ] Create `Shiki.Effect.ConfigLoader` and `Shiki.Effect.Analyzer` with IO interpreters.
+- [ ] Create `Shiki.Effect.ConfigLoader` (IO interpreter) and `Shiki.Effect.Analyzer`
+      (interpreter over baikai-effectful's `Baikai` effect).
+- [ ] Move `agent assist`'s API one-shot onto `Baikai.Effectful.complete`.
 - [ ] Convert `service show`, `runs analyze`, `config show`, `config init`, `help`, and
       `agent assist`; replace the remaining `exitFailure` calls with `CliError` values.
 - [ ] Run the audit grep; every remaining hit is on the allow-list in Milestone 5.
@@ -158,18 +169,33 @@ implementation. Provide concise evidence.
 
 Findings from the research that shaped this plan (2026-09-15):
 
-- The Nix package set does not have effectful 2.7. Evaluating the flake's GHC 9.12.4 set
-  prints `effectful nix: 2.6.1.0` and `effectful-core nix: 2.6.1.0`, while Hackage's latest
-  releases are effectful 2.7.1.0 and effectful-core 2.7.1.2. The overlay must pin them, the
-  same way it already pins `kubernetes-api` 134.0.1.
+- The Nix package set does not have effectful 2.7. shiki's set is
+  `pkgs.haskell.packages.ghc9124` extended first by the `haskell-nix` flake input's
+  `haskellExtension` (which supplies the author's libraries, including baikai and
+  baikai-effectful, from pinned sources such as `baikai-src`) and then by
+  `nix/haskell-overlay.nix`; see `flake.module.nix`. A first check on 2026-09-15 omitted that
+  extension; evaluating the real composition printed:
+
+  ```text
+  effectful=2.6.1.0 effectful-core=2.6.1.0 baikai=0.7.0.0 baikai-effectful=0.4.0.1 strict-mutable-base=1.1.0.0 file-io=absent
+  ```
+
+  Hackage's latest are effectful 2.7.1.0 and effectful-core 2.7.1.2. effectful-core 2.7 needs
+  `strict-mutable-base >= 2.0.0.0 && < 3` and effectful 2.7 needs `file-io >= 0.1.4`, so those
+  two must be supplied as well, and the pinned baikai-effectful is one release behind what
+  this plan needs. Milestone 1 gives the evaluation expression.
 
 - `baikai-effectful`, the published effect for the baikai LLM library shiki uses, shipped
   0.4.0.2 to Hackage on 2026-09-15 and moved its bound to `effectful-core >=2.7 && <2.8`
   (0.4.0.1 had required `^>=2.6`, which excluded 2.7). The earlier blocker is therefore gone:
-  baikai's published effect is now usable on shiki's 2.7 line. Milestone 5 still defines a
-  shiki-owned `Analyzer` effect over baikai's plain IO API rather than depending on
-  `baikai-effectful`, but that is now the deliberate high-level-effect choice recorded in the
-  Decision Log, not a version-bound workaround.
+  baikai's published effect is usable on shiki's 2.7 line, and Milestone 5 now builds the
+  `Analyzer` interpreter on it (see the Decision Log). Its `Baikai` effect offers `complete`,
+  `streamCollect`, and `streamEach`, with interpreters `runBaikai` (baikai's process-global
+  provider registry) and `runBaikaiWith` (an explicit registry, which its own tests drive with
+  a stub provider). It is policy-free: provider failures come back in-band as an error-shaped
+  `Response` whose `responseError` is set, exactly like the `completeRequest` calls shiki
+  makes today in `shiki-core/src/Shiki/Analysis/Baikai.hs` and
+  `shiki-cli/src/Shiki/Cli/Agent/Launch.hs`.
 
 - On GHC 9.12.4, `displayException` applied to a `SomeException` prints only the message,
   without the exception context that produces `HasCallStack backtrace:` in GHC's own
@@ -220,18 +246,34 @@ Record every decision made while working on the plan.
   9.12.4, shiki's compiler. When this was decided, `baikai-effectful` 0.4.0.1 was pinned to
   effectful-core 2.6 and could not be used on 2.7; that cost has since been removed by
   `baikai-effectful` 0.4.0.2 (Hackage, 2026-09-15), which moved to `effectful-core >=2.7 &&
-  <2.8`. Milestone 5 still wraps baikai's IO API in a shiki-owned `Analyzer` effect by the
-  high-level-effect preference recorded below, now as a choice rather than a necessity.
+  <2.8`.
   Date: 2026-09-15.
 
-- Decision: Keep Milestone 5's shiki-owned `Analyzer` effect over baikai's IO API even though
+- Decision (superseded later the same day by "Depend on baikai-effectful" below): Keep
+  Milestone 5's shiki-owned `Analyzer` effect over baikai's IO API even though
   `baikai-effectful` 0.4.0.2 (Hackage, 2026-09-15) now supports effectful 2.7
   (`effectful-core >=2.7 && <2.8`) and could be depended on directly.
-  Rationale: The unblock removes the only forced reason to wrap IO, but the high-level,
-  shiki-owned-effect preference below (one `Analyze` operation that hides the backend and
-  stays swappable/in-memory-testable) still favors shiki's own effect over baikai-effectful's.
-  Adopting `baikai-effectful` directly remains an open option if shiki later wants the
-  library's effect surface; revisit at that point.
+  Rationale at the time: The unblock removes the only forced reason to wrap IO, but the
+  high-level, shiki-owned-effect preference below (one `Analyze` operation that hides the
+  backend and stays swappable/in-memory-testable) still favors shiki's own effect over
+  baikai-effectful's. Adopting `baikai-effectful` directly remains an open option if shiki
+  later wants the library's effect surface; revisit at that point.
+  Date: 2026-09-15.
+
+- Decision: Depend on `baikai-effectful ^>=0.4.0.2` and implement the `Analyzer` interpreter
+  in terms of its `Baikai` effect. The shiki-owned `Analyzer` effect stays exactly as the
+  superseded decision describes it — one `Analyze` operation holding shiki's policy (model
+  allow-list, system prompt, 256-token request cap, 512-character summary cap, heuristic
+  fallback) — but its production interpreter calls `Baikai.Effectful.complete` instead of
+  baikai's IO `completeRequest`, and `agent assist`'s API one-shot calls `complete` too.
+  Rationale: Chosen by the user on 2026-09-15, after the earlier decision, because the release
+  was made for this plan. Both layers are kept, which is what effectful's documentation
+  recommends: shiki's high-level effect hides the backend from commands, and the library's own
+  effect is the interpreter's implementation, the same way `RunStore`'s interpreter uses
+  hasql. It deletes shiki's two hand-rolled `try @SomeException (completeRequest …)` sites and
+  lets analyzer tests interpret `Baikai` with a stub provider registry instead of reaching the
+  network. The interpreter still guards `complete` with `trySync`, because a transport
+  exception must become `ShikiAnalyzerError` rather than the "unexpected error" fallback.
   Date: 2026-09-15.
 
 - Decision: Model PostgreSQL access as a shiki-owned, high-level `RunStore` effect with one
@@ -541,28 +583,59 @@ production code uses effectful yet. At the end, `cabal test shiki-core-test` sho
 and in the `library` of `shiki-cli/shiki-cli.cabal`, add:
 
 ```text
-effectful       ^>=2.7.1.0,
-effectful-core  ^>=2.7.1.1,
+baikai-effectful  ^>=0.4.0.2,
+effectful         ^>=2.7.1.0,
+effectful-core    ^>=2.7.1.1,
 ```
 
 (`effectful-core` is listed explicitly because 2.7.1.1 is the first release without the
-dispatch regression; `effectful` 2.7.1.0 only requires `>= 2.7.1.0`.)
+dispatch regression; `effectful` 2.7.1.0 only requires `>= 2.7.1.0`. `baikai-effectful`
+0.4.0.2 is the first release that accepts effectful-core 2.7. Only shiki-core needs
+`baikai-effectful` in its library stanza; shiki-cli needs it for `agent assist`.)
 
-**Nix.** `nix/haskell-overlay.nix` builds against a package set that ships 2.6.1.0. Add
-entries next to `kubernetes-api`, using `callHackageDirect` so Nix uses the same releases as
-cabal:
+**Nix.** shiki's package set currently provides effectful 2.6.1.0, `strict-mutable-base`
+1.1.0.0, no `file-io`, and baikai-effectful 0.4.0.1 (see Surprises). Measure it with this
+expression, saved outside the repository (for example `$TMPDIR/hs.nix`), which rebuilds the
+same composition as `flake.module.nix`:
+
+```nix
+let
+  f = builtins.getFlake (toString /Users/shinzui/Keikaku/bokuno/shiki);
+  nixpkgs = f.inputs.haskell-nix.inputs.nixpkgs or f.inputs.nixpkgs;
+  pkgs = import nixpkgs { system = "aarch64-darwin"; };
+  hp = pkgs.haskell.packages.ghc9124.override {
+    overrides = pkgs.lib.composeExtensions
+      (f.inputs.haskell-nix.lib.haskellExtension pkgs.haskell.lib.compose pkgs)
+      (import /Users/shinzui/Keikaku/bokuno/shiki/nix/haskell-overlay.nix { inherit pkgs; gitRev = "dirty"; });
+  };
+  v = n: if hp ? ${n} && hp.${n} != null then hp.${n}.version else "absent";
+in builtins.concatStringsSep " " (map (n: "${n}=${v n}")
+  [ "effectful" "effectful-core" "baikai" "baikai-effectful" "strict-mutable-base" "file-io" ])
+```
+
+```bash
+$ nix eval --impure --raw -f "$TMPDIR/hs.nix"
+```
+
+baikai-effectful comes from the `haskell-nix` input, so first run
+`nix flake update haskell-nix` and re-evaluate: if that input has already moved to
+baikai-effectful 0.4.0.2 (and perhaps effectful 2.7), fewer pins are needed. For whatever is
+still too old or absent, add entries next to `kubernetes-api`, using `callHackageDirect` so
+Nix uses the same releases as cabal:
 
 ```nix
 effectful-core = dontCheck (final.callHackageDirect
   { pkg = "effectful-core"; ver = "2.7.1.2"; sha256 = pkgs.lib.fakeSha256; } { });
 effectful = dontCheck (final.callHackageDirect
   { pkg = "effectful"; ver = "2.7.1.0"; sha256 = pkgs.lib.fakeSha256; } { });
+baikai-effectful = dontCheck (final.callHackageDirect
+  { pkg = "baikai-effectful"; ver = "0.4.0.2"; sha256 = pkgs.lib.fakeSha256; } { });
 ```
 
 Run `nix build`; it fails once per package with `got: sha256-…`; paste each real hash in
-place of `pkgs.lib.fakeSha256` and rebuild. effectful-core 2.7 also needs
-`strict-mutable-base >= 2.0` and effectful needs `file-io >= 0.1.4`; if the package set's
-versions are too old, pin them the same way and record it in Surprises.
+place of `pkgs.lib.fakeSha256` and rebuild. Pin `strict-mutable-base` (a 2.x release) and
+`file-io` (>= 0.1.4) the same way, looking up their current versions on Hackage rather than
+guessing. Record the final set of pins, and whether the flake update was kept, in Surprises.
 
 **Contract tests.** Create `shiki-core/test/Shiki/EffectfulContractSpec.hs` exporting
 `tests :: TestTree` (group name `Shiki.EffectfulContract`), register it in
@@ -1035,11 +1108,57 @@ or `ProjectConfigInvalid`. Use it from `runRun`, `serviceShowOne`, `effectiveBac
 missing file still means `Heuristic`, but an invalid file is now reported instead of crashing.
 
 **File `shiki-core/src/Shiki/Effect/Analyzer.hs` (new, exposed)** with one operation
-`Analyze :: AnalyzerKind -> Text -> Analyzer m AnalyzerResult` and
-`runAnalyzerIO :: (IOE :> es, Error ShikiError :> es) => Eff (Analyzer : es) a -> Eff es a`
-over `Shiki.Analysis.Backend.runAnalyzer`, throwing `ShikiAnalyzerError`. `doAnalyze` uses it;
-the renderer's analyzer messages are the ones `renderAnalyzerError` prints today (move that
-function into `Shiki.Error`).
+`Analyze :: AnalyzerKind -> Text -> Analyzer m AnalyzerResult` and an interpreter written in
+terms of baikai-effectful's `Baikai` effect:
+
+```haskell
+-- | 'Heuristic' and 'None' are handled here; a 'Baikai' model goes through the
+--   'Baikai' effect. Every failure becomes 'ShikiAnalyzerError'.
+runAnalyzerBaikai ::
+  (Baikai :> es, Error ShikiError :> es) => Eff (Analyzer : es) a -> Eff es a
+```
+
+`Heuristic` calls the pure `Shiki.Analysis.Heuristic.summarizeFailure`; `None` throws
+`AnalyzerBackendDisabled`; `Baikai modelId` looks the id up in shiki's allow-list (throwing
+`AnalyzerUnknown` when it is absent, without calling the effect), builds the same context and
+options as today, calls `Baikai.Effectful.complete` under `Exc.trySync`, and turns either a
+thrown exception or a set `responseError` into `AnalyzerBaikaiError message`.
+
+Refactor `shiki-core/src/Shiki/Analysis/Baikai.hs` so its pure parts are exported and reused
+by the interpreter: `supportedModels`, `lookupModel` (now returning just the `Model`, with
+provider registration separated out), the request context and options, `extractText`,
+`capChars`, and `renderError`. Add `registerAnalyzerProviders :: IO ()`, which registers the
+Claude and OpenAI API providers idempotently, as `lookupModel`'s `IO ()` action does per call
+today. Delete the IO `runBaikai` and, if nothing else calls it,
+`Shiki.Analysis.Backend.runAnalyzer`; check `Shiki.K8s.Runner.collectOutcome`, which
+summarizes a failed Job's log on the inline path, and
+`shiki-core/test/Shiki/Analysis/BackendSpec.hs` first, and keep whichever entry point they
+still need.
+
+In `Shiki.Cli`'s dispatch, the `RunsAnalyze` branch becomes
+`liftIO registerAnalyzerProviders >> (runBaikai . runAnalyzerBaikai $ …)`, where `runBaikai`
+is baikai-effectful's interpreter over the process-global registry. No other `runs` command
+gains `Baikai`. The renderer's analyzer messages are the ones `renderAnalyzerError` prints
+today (move that function into `Shiki.Error`).
+
+**File `shiki-cli/src/Shiki/Cli/Agent/Launch.hs`.** In `runOneShotApi`, replace
+`try @SomeException (completeRequest model ctx emptyOptions)` with
+`Exc.trySync (complete model ctx emptyOptions)` from `Baikai.Effectful`, in a function with
+`(Baikai :> es, IOE :> es, Error CliError :> es)`; a thrown exception or a set
+`responseError` becomes `AgentRequestFailed message`, keeping today's
+`shiki: agent api call failed: …` wording. Provider registration stays a `liftIO` call before
+`complete`, and the `Agent` branch of the dispatch adds `runBaikai`. The interactive
+`claude` and `codex` launchers are subprocesses, not `Baikai` calls, and keep the
+`Exc.catchSync` wrapper described above.
+
+**Analyzer tests.** New `shiki-core/test/Shiki/Effect/AnalyzerSpec.hs` interprets `Baikai`
+without the network, either with a local `interpret`er returning a canned `Response` or with
+`runBaikaiWith` over an isolated registry holding a stub provider, following
+`baikai-effectful/test/StubProvider.hs` in the baikai repository (`mori registry show
+shinzui/baikai --full` prints its path). Cases: a canned assistant text becomes the capped
+summary; an error-shaped `Response` becomes
+`Left (ShikiAnalyzerError (AnalyzerBaikaiError …))`; an unknown model id fails without
+invoking `Baikai`; and `Heuristic` produces its summary without invoking `Baikai`.
 
 **Remaining handlers.** Each `hPutStrLn stderr … >> exitFailure` pair becomes a `throwError`
 of the matching `CliError` constructor, and the message moves into `renderCliError` with the
@@ -1084,7 +1203,8 @@ Date, Context (the banner problem, the scattered exits, the unsettled in-house c
 Decision (effectful 2.7 with dynamic, hand-written effects in `Shiki.Effect.*`, IO
 interpreters in `Shiki.Effect.*.<Backend>` modules; `IOE` only in interpreters and in
 shiki-cli handlers for terminal and process work; `Effectful.Error.Static` with `ShikiError`
-and `CliError`; one `runShikiMain` that renders on stderr and exits 1, re-throws `ExitCode`,
+and `CliError`; a library that publishes its own effectful binding (baikai-effectful) is used
+through it, underneath shiki's high-level effect, the way an interpreter uses any library; one `runShikiMain` that renders on stderr and exits 1, re-throws `ExitCode`,
 and never catches asynchronous exceptions; `trySync`/`catchSync` instead of
 `try @SomeException`; interpreters that load resources are the only place resources are
 loaded, so a command's effect list shows what it touches), and Consequences (how to add an
@@ -1143,6 +1263,7 @@ $ export DB=postgresql://127.0.0.1:54329/shiki
 ### M1
 
 ```bash
+$ nix flake update haskell-nix && nix eval --impure --raw -f "$TMPDIR/hs.nix"
 $ $EDITOR shiki-core/shiki-core.cabal shiki-cli/shiki-cli.cabal nix/haskell-overlay.nix
 $ $EDITOR shiki-core/test/Shiki/EffectfulContractSpec.hs shiki-core/test/Spec.hs
 $ cabal build all 2>&1 | grep -i warning
@@ -1224,7 +1345,8 @@ Commit `refactor: EP-19 M4 — cluster access behind the Kube effect; keep jobs 
 ### M5
 
 ```bash
-$ $EDITOR shiki-core/src/Shiki/Effect/ConfigLoader.hs shiki-core/src/Shiki/Effect/Analyzer.hs
+$ $EDITOR shiki-core/src/Shiki/Effect/ConfigLoader.hs shiki-core/src/Shiki/Effect/Analyzer.hs shiki-core/src/Shiki/Analysis/Baikai.hs
+$ $EDITOR shiki-core/test/Shiki/Effect/AnalyzerSpec.hs shiki-core/test/Spec.hs shiki-core/shiki-core.cabal
 $ $EDITOR shiki-cli/src/Shiki/Cli.hs shiki-cli/src/Shiki/Cli/{Help,ConfigInit,ConfigShow,Agent,Runs}.hs shiki-cli/src/Shiki/Cli/Agent/Launch.hs
 $ cabal build all 2>&1 | grep -i warning
 $ cabal test all
@@ -1280,6 +1402,8 @@ command prints exactly one line on stderr, nothing on stdout, and no `Uncaught e
 | 18 | `shiki config init` when `shiki.dhall` exists | The existing refusal message on stderr | 1 | M5 |
 | 19 | `shiki config init --output /nonexistent/dir/shiki.dhall` | One line: `shiki: cannot write /nonexistent/dir/shiki.dhall: …` | 1 | M5 |
 | 20 | `shiki agent assist` where the launched agent exits 3 | Agent's own output | 3 | M5 |
+| 22 | `shiki runs analyze <id> --analyzer baikai:not_a_model` | One line with today's unknown-model wording; no network call | 1 | M5 |
+| 23 | `shiki runs analyze <id> --analyzer baikai:anthropic_claude_haiku_4_5` with no API key set | One line: `shiki: baikai backend failed: …`; the stored summary is unchanged | 1 | M5 |
 | 21 | All rows of `docs/plans/10-integrate-fzf-for-interactive-id-selection.md`'s acceptance matrix | Unchanged | as documented | M5 |
 
 ### Test commands
@@ -1326,7 +1450,8 @@ run through `liftIO` and the top-level fallback.
 | `hasql`, `hasql-pool` (existing) | as today | the `RunStore` PostgreSQL interpreter |
 | `kubernetes-api`, `kubernetes-api-client` (existing) | as today | the `Kube` interpreter |
 | `dhall` (existing) | as today | the `ConfigLoader` interpreter |
-| `baikai` (existing) | `^>=0.7` | the `Analyzer` interpreter wraps baikai's IO API; `baikai-effectful` is not depended on — a deliberate high-level-effect choice, not a version limit (0.4.0.2 now allows `effectful-core >=2.7 && <2.8`) |
+| `baikai` (existing) | `^>=0.7` | models, request and response vocabulary, provider registration |
+| `baikai-effectful` | `^>=0.4.0.2` | its `Baikai` effect is how the `Analyzer` interpreter and `agent assist` reach baikai; first release accepting `effectful-core >=2.7 && <2.8` |
 
 No other new dependencies. `effectful-th` and `effectful-plugin` are not used.
 
@@ -1373,7 +1498,12 @@ withRunStore :: (IOE :> es, Error ShikiError :> es) => ConnectionString -> Schem
 runKubeDefault :: (IOE :> es, Error ShikiError :> es) => Eff (Kube : es) a -> Eff es a
 runKubeWith :: (IOE :> es, Error ShikiError :> es) => ClientEnv -> Eff (Kube : es) a -> Eff es a
 runConfigLoaderIO :: (IOE :> es, Error ShikiError :> es) => Eff (ConfigLoader : es) a -> Eff es a
-runAnalyzerIO :: (IOE :> es, Error ShikiError :> es) => Eff (Analyzer : es) a -> Eff es a
+runAnalyzerBaikai :: (Baikai :> es, Error ShikiError :> es) => Eff (Analyzer : es) a -> Eff es a
+registerAnalyzerProviders :: IO ()
+-- from baikai-effectful (Baikai.Effectful):
+complete :: (Baikai :> es) => Model -> Context -> Options -> Eff es Response
+runBaikai :: (IOE :> es) => Eff (Baikai : es) a -> Eff es a
+runBaikaiWith :: (IOE :> es) => ProviderRegistry -> Eff (Baikai : es) a -> Eff es a
 ```
 
 `Shiki.Cli.Error` and `Shiki.Cli.Main` (shiki-cli):
@@ -1410,3 +1540,18 @@ runCli :: IO ExitCode
   (why a catch-all must re-throw `ExitCode`), and
   `mori://shinzui/shikumi/plans/1-shikumi-runtime-substrate-and-llm-effect-over-baikai`
   (an effect over baikai's IO API).
+
+
+## Revision Notes
+
+- 2026-09-15 — Adopted `baikai-effectful` 0.4.0.2, superseding the same-day decision to keep
+  the `Analyzer` interpreter on baikai's IO API (commit `0e26de7`). Both layers stay: shiki's
+  high-level `Analyzer` effect still holds the model allow-list, prompt, and caps, while its
+  interpreter and `agent assist`'s API one-shot now call `Baikai.Effectful.complete`, which
+  deletes shiki's two `try @SomeException (completeRequest …)` sites and lets analyzer tests
+  run against a stub provider registry. Also corrected the Nix findings: the first check
+  omitted the `haskell-nix` input's `haskellExtension`, and the real package set additionally
+  lacks `strict-mutable-base` 2.x and `file-io` and pins baikai-effectful 0.4.0.1, so
+  Milestone 1 now starts with `nix flake update haskell-nix` and includes the evaluation
+  expression. Updated Progress, Surprises, the Decision Log, Milestones 1 and 5, the
+  dependency table, Interfaces, ADR 5's scope, and added acceptance rows 22 and 23.
