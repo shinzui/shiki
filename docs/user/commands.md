@@ -5,8 +5,8 @@ description: "Reference every shiki subcommand, its flags, the global database a
 docId: DOC-3
 tags: [shiki, cli, commands, reference]
 generated:
-  by: human:nadeem
-  at: 2026-09-11T22:39:25Z
+  by: process:codex-cli
+  at: 2026-09-15T14:59:09Z
 ---
 
 # Commands reference
@@ -129,7 +129,7 @@ shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...
 |------------------------|--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `SERVICE`              | *(required)* | Short name of the service; resolved to `<config-dir>/<SERVICE>.dhall`.                                                                                               |
 | `--namespace NS`, `-n` | `defaultNamespace` from the service Dhall | Override the namespace shiki introspects and submits into.                                                                                |
-| `--no-wait`            | off          | Submit the Job and exit immediately. shiki still writes the `pending` and `running` rows; the row stays at `running` until `shiki runs sync` finalizes it.          |
+| `--no-wait`            | off          | Submit the Job and exit immediately. shiki still writes the `pending` and `running` rows; without a watcher heartbeat the row displays as `unwatched` until `shiki runs sync` finalizes it. |
 | `--config-dir DIR`     | `services`   | Directory holding `<name>.dhall` files.                                                                                                                              |
 | `-- ARG...`            | *(empty)*    | Everything after `--` becomes the container's command-line arguments. The literal `--` prevents optparse from claiming subcommand flags like `--batch-size`.         |
 
@@ -145,9 +145,10 @@ A run that never got a verdict — submission threw, the API call failed,
 polling died — prints `FAILED run <id>: <message>` instead. With
 `--no-wait`, prints `submitted job <job-name> (run <id>)`.
 
-The wait-path timeout is 96 hours (345 600 seconds) of polling at 5-second
-intervals. Jobs that exceed this exit as `JobTimedOut` and record
-`error = "timed out"`.
+The wait path polls at 5-second intervals for up to 96 hours (345 600
+seconds) and records a watcher heartbeat in PostgreSQL immediately and
+about once a minute. Jobs that exceed the cap exit as `JobTimedOut` and
+record `error = "timed out"`.
 
 The Job's pod carries `cluster-autoscaler.kubernetes.io/safe-to-evict:
 "false"`. The Job has `backoffLimit: 0`, so a pod the cluster autoscaler
@@ -187,6 +188,13 @@ Columns: `ID` (8-char prefix), `STARTED`, `SERVICE`, `STATUS`,
 `(no runs recorded yet)` on stdout and exits 0 — an empty list is not an
 error here.
 
+For display, an unfinished row whose watcher heartbeat is missing or more
+than five minutes old has status `unwatched`. A displayed `running` row has
+a recent heartbeat. This classification does not change the stored
+`pending` or `running` status and cannot prove whether the Job itself is
+active. When any listed row is unwatched, shiki prints recovery guidance on
+stderr; run `shiki runs sync [ID]` to read the cluster's state.
+
 ## `shiki runs show [ID]`
 
 Print one `runs` row as pretty JSON. `ID` may be the full UUID or any
@@ -197,10 +205,13 @@ and exit 1.
 If `ID` is omitted, shiki opens an `fzf` picker over the 50 most recent
 runs; see [Interactive selection (fzf)](#interactive-selection-fzf).
 
-The JSON includes everything: command, namespace, image, status, exit
-code, timestamps, duration, the captured `logTail`, `errorMessage`,
-`errorSummary`, `errorSummarySource`, and a full copy of the
-`serviceConfig` that was used.
+The JSON includes everything: command, namespace, image, stored status,
+exit code, timestamps including nullable `lastWatchedAt`, duration, the
+captured `logTail`, `errorMessage`, `errorSummary`, `errorSummarySource`,
+and a full copy of the `serviceConfig` that was used. For an unwatched row,
+the JSON remains unchanged and parseable on stdout while stderr explains
+that no watcher has reported recently and recommends `shiki runs sync
+<id8>`.
 
 ## `shiki runs logs [ID]`
 

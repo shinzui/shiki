@@ -87,11 +87,11 @@ Milestone 3 — Show unwatched runs
 
 Milestone 4 — Documentation and end-to-end check
 
-- [ ] Update `shiki help runs`, `shiki help long-runs`, `shiki help schema`, the agent prompt template, `docs/user/commands.md`, `docs/user/schema.md`, and `CHANGELOG.md`.
-- [ ] Update the `docs/user` page provenance and `docs/user/log.md`; strict user-documentation profile validation passes.
-- [ ] Add the next numbered local ADR, currently `docs/adr/3-model-run-watcher-liveness-as-a-display-only-heartbeat.md`, after rechecking that `3` is still free.
-- [ ] Run the end-to-end scenario in Validation and Acceptance against a real cluster and record the transcript in Surprises & Discoveries.
-- [ ] Fill in Outcomes & Retrospective; commit.
+- [x] (2026-09-15T16:26:01Z) Update `shiki help runs`, `shiki help long-runs`, `shiki help schema`, the agent prompt template, `docs/user/commands.md`, `docs/user/schema.md`, and `CHANGELOG.md`.
+- [x] (2026-09-15T16:26:01Z) Update the `docs/user` page provenance and `docs/user/log.md`; strict user-documentation profile validation reports `OK: 9 concepts (okf_version 0.2)`.
+- [x] (2026-09-15T16:26:01Z) Recheck that ADR number 3 is free and add `docs/adr/3-model-run-watcher-liveness-as-a-display-only-heartbeat.md`.
+- [x] (2026-09-15T16:26:01Z) Run the end-to-end scenario in Validation and Acceptance against `gke_tan-cluster_us-west1-a_sennari`, namespace `test`, and record the transcript in Surprises & Discoveries.
+- [x] (2026-09-15T16:26:01Z) Fill in Outcomes & Retrospective; `nix fmt`, `cabal build all --enable-tests`, `cabal test all`, and strict user-documentation validation pass; commit.
 
 
 ## Surprises & Discoveries
@@ -137,6 +137,38 @@ Milestone 4 — Documentation and end-to-end check
   Evidence: the first `cabal build all --enable-tests` failed with GHC-95909 naming the
   missing `lastWatchedAt` field in `PromptSpec.sampleRun`; the corrected build and full test
   suite then passed.
+
+- Observation: backgrounding a shell function and killing `$!` killed the function's
+  subshell, not the shiki child it launched. The surviving child continued heartbeating, so
+  its row correctly stayed `running` after 315 seconds. The acceptance retry backgrounded the
+  shiki executable directly, verified `$!` with `ps`, and killed that process.
+  Evidence: waited run `ea9bb88e` had `lastWatchedAt` refreshed at `16:17:46Z` and finalized
+  itself; the corrected retry verified PID 80061 was the shiki executable before killing it.
+
+- Observation: the real-cluster check passed against the `test` namespace of
+  `mori://tan/mls-service-v2` using an inert `/bin/bash -lc 'sleep …'` command in the service's
+  existing image. Key transcript lines were:
+
+      aeb919fe  2026-09-15 16:12:44  mls-service-v2  unwatched  -  -  -lc sleep 360
+      ea9bb88e  2026-09-15 16:12:45  mls-service-v2  running    -  -  -lc sleep 360
+      b78a007c  2026-09-15 16:19:53  mls-service-v2  running    -  -  -lc sleep 320
+      WAITER 80061 KILLED for run b78a007c
+      STALE-WAIT 305s
+      b78a007c  2026-09-15 16:19:53  mls-service-v2  unwatched  -  -  -lc sleep 320
+      shiki: run b78a007c is unwatched: no shiki process has recently reported watching it,
+        so its status may not update until 'shiki runs sync b78a007c' is run
+      waited lastWatchedAt="2026-09-15T16:19:53.702608Z"
+      mls-service-v2-oneoff-20260915-161953-awlwnb  1  <none>  <none>
+      run b78a007c: succeeded
+
+  The earlier detached run's JSON returned `lastWatchedAt=null`, while the waited run returned
+  the timestamp above. Both streams remained valid JSON for `jq`, the Kubernetes Job was still
+  active after the watcher became stale, and sync finalized the row after the Job completed.
+
+- Observation: `okf log add docs/user DOC-3 ...` and the corresponding `DOC-8` command each
+  warned `concept not found` even though the handles are present as page `docId` values. Both
+  commands still appended the intended bundle-log entry, and the required strict profile and
+  log validation passed with all nine concepts.
 
 
 ## Decision Log
@@ -226,7 +258,23 @@ Milestone 4 — Documentation and end-to-end check
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+shiki now separates persisted Job reconciliation state from evidence that a local watcher is
+alive. Waited runs heartbeat immediately and every minute; detached runs and abandoned waits
+become visibly `unwatched` without changing their stored status. The database clock is threaded
+through every rendering path as one snapshot, including fzf and best-effort agent context, and
+stderr guidance preserves machine-readable stdout.
+
+The implementation added one nullable migration, two persistence statements, one small
+heartbeat module, display formatting and clock plumbing, operator and agent documentation,
+and ADR 3. Unit and PostgreSQL integration coverage grew from 48 to 51 core tests and from 99
+to 107 CLI tests. The real-cluster scenario proved all three operational states: immediately
+unwatched `--no-wait`, actively watched `running`, and an orphan transitioning to `unwatched`
+after the strict five-minute boundary before `runs sync` finalized it.
+
+Rollout still requires a one-time owner migration in every environment before restricted
+roles use the upgraded binary. The staging database used by the acceptance check has already
+applied migration 003; other environments remain an operational release step rather than a
+code change.
 
 
 ## Context and Orientation

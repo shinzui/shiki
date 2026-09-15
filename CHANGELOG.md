@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- feat(shiki-cli): waiting `shiki run` processes now record a database-clock
+  heartbeat about once a minute. Unfinished rows with no heartbeat in the
+  last five minutes display as `unwatched` in `runs list`, the fzf picker,
+  and agent context, with stderr guidance to reconcile through `runs sync`.
+  Stored status and `updated_at` remain unchanged. Before restricted roles
+  use this release, the owning role must run shiki once in each environment
+  to apply migration 003.
 - feat(shiki-core): Jobs stay in the cluster for 7 days after finishing
   (was 1 hour), configurable per service with the optional
   `ttlSecondsAfterFinished` field. An hour was too short for `shiki runs

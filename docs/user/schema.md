@@ -5,8 +5,8 @@ description: "Reference shiki's PostgreSQL runs table, its indexes, migration bo
 docId: DOC-8
 tags: [shiki, postgresql, schema, migrations]
 generated:
-  by: human:nadeem
-  at: 2026-09-11T22:39:25Z
+  by: process:codex-cli
+  at: 2026-09-15T14:59:09Z
 ---
 
 # Database schema
@@ -41,6 +41,7 @@ One row per submitted run. Written by `shiki run`, read by the
 | `error`                | `text`         | Kubernetes-side failure reason (`BackoffLimitExceeded`, `DeadlineExceeded`, ...) from the failing `V1JobCondition`. Tells you whether the cluster killed the Job. |
 | `error_summary`        | `text`         | Short, log-derived one-liner describing what went wrong inside the container. Capped at 512 characters. `NULL` on successful runs by contract.             |
 | `error_summary_source` | `text`         | Which analyzer produced the current `error_summary`. `heuristic` or `baikai:<model-id>`. Defaults to `heuristic`.                                          |
+| `last_watched_at`      | `timestamptz`  | Nullable database-clock heartbeat refreshed about once a minute by the waiting `shiki run` process. Missing or more than five minutes old makes an unfinished row display as `unwatched`; it does not change stored `status` or `updated_at`. |
 | `created_at`           | `timestamptz`  | Row insert time. Defaults to `now()`.                                                                                                                       |
 | `updated_at`           | `timestamptz`  | Last update time. Defaults to `now()`.                                                                                                                      |
 
@@ -77,6 +78,10 @@ Such a role cannot apply a new migration, because altering `runs` needs
 the table owner. After upgrading to a shiki release that ships a new
 migration, run any `shiki` subcommand once as the owning role before the
 restricted role uses it again.
+
+In particular, migration `003-add-last-watched-at.sql` adds the watcher
+heartbeat column. Each environment must run the upgraded binary once as
+the owner of `runs` before a restricted runtime role starts using it.
 
 ## Schema-name override
 

@@ -25,7 +25,9 @@ The operator has scoped your subprocess access to:
 
 - `shiki run <service> [-- args...]` — submit a new one-off Job for the
   named service and (without `--no-wait`) follow it to completion.
-- `shiki runs list [--service NAME] [--limit N]` — recent runs as a table.
+- `shiki runs list [--service NAME] [--limit N]` — recent runs as a table;
+  `unwatched` means an unfinished row has no recent watcher heartbeat, so
+  use `shiki runs sync [id]` to read the Job's real state.
 - `shiki runs show <id>` — one row as pretty JSON. Accepts an unambiguous
   8-char prefix.
 - `shiki runs logs <id>` — the captured log tail for one run.

@@ -21,10 +21,14 @@ so the run stays 'running' forever.
 Then reconcile the row later with 'shiki runs sync' (rule 3).
 
 
-RULE 2: A 'running' ROW IS NOT PROOF THE JOB IS RUNNING
+RULE 2: DISPLAYED STATUS REPORTS WATCHER LIVENESS, NOT JOB LIVENESS
 
-The runs table only reflects what the last shiki process wrote. Before
-reporting a run as running, succeeded, or failed, check the Job itself:
+A displayed 'running' row has a watcher heartbeat from the last five
+minutes. An 'unwatched' row is still stored as pending or running, but has
+no recent heartbeat. Heartbeat loss normally means no shiki process is
+following the Job, but it can also mean a paused watcher or repeated
+database-write failure. Neither displayed value proves the Job's state.
+Before reporting a run as running, succeeded, or failed, check the Job:
 
   kubectl get job -n <namespace> <job_name>
 

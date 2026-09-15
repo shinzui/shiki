@@ -15,6 +15,7 @@ RUN LIFECYCLE
      then flipped to 'running' as the Job is submitted to Kubernetes.
   3. Unless --no-wait was passed, shiki follows the Job to completion:
      polling its status at 5-second intervals (with a 96-hour cap),
+     recording a watcher heartbeat in PostgreSQL about once a minute,
      fetching the pod's logs on failure, persisting the last 200 lines /
      64 KiB into runs.log_tail.
   4. On terminal status, shiki finalizes the row with status ('succeeded'
@@ -55,8 +56,20 @@ THE RUNS TABLE COLUMNS
   error_summary         Log-derived one-liner. NULL for successful runs.
   error_summary_source  Which analyzer produced error_summary
                         ('heuristic' or 'baikai:<model-id>').
+  last_watched_at       Last database-clock heartbeat from a waiting
+                        'shiki run'; NULL if none was recorded.
   created_at            Row insert time.
   updated_at            Last update time.
+
+
+UNWATCHED RUNS
+
+A pending or running row is displayed as 'unwatched' when no waiting
+shiki process has recorded a heartbeat in the last five minutes. This
+does not prove that the process or Job is gone: a paused watcher or
+repeated database-write failure can also make the heartbeat stale. The
+stored status is still pending or running. Run 'shiki runs sync [id]' to
+read the Job's real state from Kubernetes and update the row.
 
 
 QUERYING RUNS

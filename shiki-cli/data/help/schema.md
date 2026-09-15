@@ -12,7 +12,9 @@ PG_CONNECTION_STRING.
 TABLES
 
   shiki.runs               One row per 'shiki run' invocation. See
-                           'shiki help runs' for columns.
+                           'shiki help runs' for columns. Migration 003
+                           adds nullable last_watched_at, refreshed about
+                           once a minute by a waiting shiki process.
 
   shiki.schema_migrations  Tracks applied migrations. Managed by
                            hasql-migration; do not edit by hand.
