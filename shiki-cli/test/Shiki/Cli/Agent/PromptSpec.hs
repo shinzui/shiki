@@ -102,7 +102,8 @@ sampleRun status mSummary =
       serviceConfig = Aeson.Null,
       errorMessage = Nothing,
       errorSummary = mSummary,
-      errorSummarySource = "heuristic"
+      errorSummarySource = "heuristic",
+      lastWatchedAt = Nothing
     }
 
 assertContains :: String -> Text -> Text -> IO ()

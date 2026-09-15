@@ -132,6 +132,7 @@ test-suite shiki-core-test
     Shiki.K8s.ExecCredentialSpec
     Shiki.K8s.JobBuilderSpec
     Shiki.Persistence.ErrorSummaryColumnSpec
+    Shiki.Persistence.LastWatchedAtSpec
     Shiki.Persistence.RestrictedRoleSpec
     Shiki.Persistence.RunListSpec
     Shiki.Persistence.RunSpec

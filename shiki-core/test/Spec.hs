@@ -7,6 +7,7 @@ import Shiki.K8s.CredentialExpirySpec qualified as CredentialExpirySpec
 import Shiki.K8s.ExecCredentialSpec qualified as ExecCredentialSpec
 import Shiki.K8s.JobBuilderSpec qualified as JobBuilderSpec
 import Shiki.Persistence.ErrorSummaryColumnSpec qualified as ErrorSummaryColumnSpec
+import Shiki.Persistence.LastWatchedAtSpec qualified as LastWatchedAtSpec
 import Shiki.Persistence.RestrictedRoleSpec qualified as RestrictedRoleSpec
 import Shiki.Persistence.RunListSpec qualified as RunListSpec
 import Shiki.Persistence.RunSpec qualified as RunSpec
@@ -34,5 +35,6 @@ main =
         RestrictedRoleSpec.tests,
         HeuristicSpec.tests,
         BackendSpec.tests,
-        ErrorSummaryColumnSpec.tests
+        ErrorSummaryColumnSpec.tests,
+        LastWatchedAtSpec.tests
       ]

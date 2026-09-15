@@ -13,8 +13,10 @@ import Shiki.Persistence.Connection
 import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Run
   ( NewRun (..),
+    RunId,
     insertRunStatement,
     newRunId,
+    touchRunWatchedStatement,
   )
 import Shiki.Persistence.Schema (Schema, quoteSchema)
 import Shiki.Persistence.TestPg (freshSchema)
@@ -45,7 +47,9 @@ tests =
               Left _ -> pure ()
               Right () -> assertFailure "restricted role unexpectedly has CREATE on the database"
             runMigrations pool schema
-            insertOneRun pool
+            rid <- insertOneRun pool
+            Pool.use pool (Session.statement rid touchRunWatchedStatement)
+              >>= either (fail . show) pure
         case result of
           Right () -> pure ()
           Left err ->
@@ -71,7 +75,7 @@ withPool cs schema = bracket (acquirePool cs schema) releasePool
 exec :: Pool.Pool -> Text -> IO ()
 exec pool sql = Pool.use pool (Session.script sql) >>= either (fail . show) pure
 
-insertOneRun :: Pool.Pool -> IO ()
+insertOneRun :: Pool.Pool -> IO RunId
 insertOneRun pool = do
   now <- getCurrentTime
   rid <- newRunId
@@ -88,3 +92,4 @@ insertOneRun pool = do
           }
   Pool.use pool (Session.statement r insertRunStatement)
     >>= either (fail . show) pure
+  pure rid

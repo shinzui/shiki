@@ -16,6 +16,11 @@ provenance:
       at: 2026-09-15T13:25:44Z
       mode: "update"
       note: "Validated against the tree and made clock threading, tests, ADRs, and recovery implementable"
+    - model: "gpt-5.6-sol"
+      harness: "codex-cli"
+      at: 2026-09-15T14:49:52Z
+      mode: "implement"
+      note: "Implemented watcher heartbeat storage and began the remaining milestones"
 ---
 
 # Mark runs that no shiki process is watching as unwatched
@@ -61,11 +66,11 @@ process is killed with `kill -9`.
 
 Milestone 1 — Store a watch heartbeat
 
-- [ ] Add `shiki-core/sql/migrations/003-add-last-watched-at.sql`.
-- [ ] Add `lastWatchedAt :: !(Maybe UTCTime)` to `RunRecord`; select the column in every run query through one shared column list.
-- [ ] Add `touchRunWatchedStatement` and `databaseNowStatement` to `Shiki.Persistence.Run`.
-- [ ] Update `shiki-cli/test/Shiki/Cli/Fixtures.hs` for the new field.
-- [ ] Add migration, touch, direct `updated_at`, and restricted-role tests; `cabal test all` passes; commit.
+- [x] (2026-09-15T14:49:52Z) Add `shiki-core/sql/migrations/003-add-last-watched-at.sql`.
+- [x] (2026-09-15T14:49:52Z) Add `lastWatchedAt :: !(Maybe UTCTime)` to `RunRecord`; select the column in every run query through one shared column list.
+- [x] (2026-09-15T14:49:52Z) Add `touchRunWatchedStatement` and `databaseNowStatement` to `Shiki.Persistence.Run`.
+- [x] (2026-09-15T14:49:52Z) Update `shiki-cli/test/Shiki/Cli/Fixtures.hs` and the direct `RunRecord` fixture in `Agent/PromptSpec.hs` for the new field.
+- [x] (2026-09-15T14:49:52Z) Add migration, touch, direct `updated_at`, and restricted-role tests; `cabal build all --enable-tests` and `cabal test all` pass with 51 core tests and 99 CLI tests; commit.
 
 Milestone 2 — Heartbeat from the waiting process
 
@@ -125,6 +130,13 @@ Milestone 4 — Documentation and end-to-end check
   mori/user-documentation-profile.dhall --profile-enforce --log-enforce` reports
   `OK: 9 concepts (okf_version 0.2)`. Changes to `DOC-3` and `DOC-8` must preserve those
   handles, truthfully update their `generated` provenance, and add matching bundle-log entries.
+
+- Observation: `shiki-cli/test/Shiki/Cli/Agent/PromptSpec.hs` constructs a `RunRecord`
+  directly in addition to the shared `fixtureRow`, so adding a strict record field requires
+  updating both fixtures.
+  Evidence: the first `cabal build all --enable-tests` failed with GHC-95909 naming the
+  missing `lastWatchedAt` field in `PromptSpec.sampleRun`; the corrected build and full test
+  suite then passed.
 
 
 ## Decision Log

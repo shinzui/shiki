@@ -35,7 +35,8 @@ fixtureRow =
       serviceConfig = Aeson.Null,
       errorMessage = Nothing,
       errorSummary = Nothing,
-      errorSummarySource = "none"
+      errorSummarySource = "none",
+      lastWatchedAt = Nothing
     }
 
 -- | Id starting @7a01bc22@, service @a-much-longer-service@, command

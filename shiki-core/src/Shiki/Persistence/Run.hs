@@ -20,6 +20,8 @@ module Shiki.Persistence.Run
     completeRunStatement,
     completeUnfinishedRunStatement,
     updateErrorSummaryStatement,
+    touchRunWatchedStatement,
+    databaseNowStatement,
     getRunStatement,
     listRecentRunsStatement,
     listRecentRunsByServiceStatement,
@@ -70,7 +72,8 @@ data RunRecord = RunRecord
     serviceConfig :: !Aeson.Value,
     errorMessage :: !(Maybe Text),
     errorSummary :: !(Maybe Text),
-    errorSummarySource :: !Text
+    errorSummarySource :: !Text,
+    lastWatchedAt :: !(Maybe UTCTime)
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -208,19 +211,44 @@ updateErrorSummaryStatement = preparable sql encoder Decoders.noResult
         <> ((\(_, s, _) -> s) >$< nullableTextParam)
         <> ((\(_, _, src) -> src) >$< textParam)
 
+-- | Record that a waiting @shiki run@ process is still alive. Completed
+--   rows are deliberately ignored, and @updated_at@ continues to mean the
+--   last meaningful state change rather than the last liveness signal.
+touchRunWatchedStatement :: Statement RunId ()
+touchRunWatchedStatement = preparable sql encoder Decoders.noResult
+  where
+    sql =
+      """
+      UPDATE runs
+         SET last_watched_at = now()
+       WHERE id = $1
+         AND status IN ('pending', 'running')
+      """
+    encoder = unRunId >$< uuidParam
+
+-- | Read PostgreSQL's current timestamp so heartbeat age is compared with
+--   the same clock that writes 'touchRunWatchedStatement'.
+databaseNowStatement :: Statement () UTCTime
+databaseNowStatement =
+  preparable
+    "SELECT now()"
+    Encoders.noParams
+    (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.timestamptz)))
+
+runColumnsSql :: Text
+runColumnsSql =
+  """
+  id, service_name, command, namespace, job_name,
+  image, status, exit_code, started_at, ended_at,
+  duration_ms, log_tail, service_config, error,
+  error_summary, error_summary_source, last_watched_at
+  """
+
 -- | Look up a single run by id.
 getRunStatement :: Statement RunId (Maybe RunRecord)
 getRunStatement = preparable sql encoder decoder
   where
-    sql =
-      """
-      SELECT id, service_name, command, namespace, job_name,
-             image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error,
-             error_summary, error_summary_source
-        FROM runs
-       WHERE id = $1
-      """
+    sql = "SELECT " <> runColumnsSql <> " FROM runs WHERE id = $1"
     encoder = unRunId >$< uuidParam
     decoder = Decoders.rowMaybe runRecordRow
 
@@ -229,15 +257,9 @@ listRecentRunsStatement :: Statement Int [RunRecord]
 listRecentRunsStatement = preparable sql encoder decoder
   where
     sql =
-      """
-        SELECT id, service_name, command, namespace, job_name,
-               image, status, exit_code, started_at, ended_at,
-               duration_ms, log_tail, service_config, error,
-               error_summary, error_summary_source
-          FROM runs
-      ORDER BY started_at DESC
-         LIMIT $1
-      """
+      "SELECT "
+        <> runColumnsSql
+        <> " FROM runs ORDER BY started_at DESC LIMIT $1"
     encoder = int8Param
     decoder = Decoders.rowList runRecordRow
 
@@ -246,16 +268,9 @@ listRecentRunsByServiceStatement :: Statement (Text, Int) [RunRecord]
 listRecentRunsByServiceStatement = preparable sql encoder decoder
   where
     sql =
-      """
-        SELECT id, service_name, command, namespace, job_name,
-               image, status, exit_code, started_at, ended_at,
-               duration_ms, log_tail, service_config, error,
-               error_summary, error_summary_source
-          FROM runs
-         WHERE service_name = $1
-      ORDER BY started_at DESC
-         LIMIT $2
-      """
+      "SELECT "
+        <> runColumnsSql
+        <> " FROM runs WHERE service_name = $1 ORDER BY started_at DESC LIMIT $2"
     encoder =
       (fst >$< textParam)
         <> (snd >$< int8Param)
@@ -268,15 +283,9 @@ findRunByPrefixStatement :: Statement Text [RunRecord]
 findRunByPrefixStatement = preparable sql encoder decoder
   where
     sql =
-      """
-      SELECT id, service_name, command, namespace, job_name,
-             image, status, exit_code, started_at, ended_at,
-             duration_ms, log_tail, service_config, error,
-             error_summary, error_summary_source
-        FROM runs
-       WHERE id::text LIKE $1 || '%'
-       LIMIT 2
-      """
+      "SELECT "
+        <> runColumnsSql
+        <> " FROM runs WHERE id::text LIKE $1 || '%' LIMIT 2"
     encoder = textParam
     decoder = Decoders.rowList runRecordRow
 
@@ -286,15 +295,9 @@ listUnfinishedRunsStatement :: Statement () [RunRecord]
 listUnfinishedRunsStatement = preparable sql Encoders.noParams decoder
   where
     sql =
-      """
-        SELECT id, service_name, command, namespace, job_name,
-               image, status, exit_code, started_at, ended_at,
-               duration_ms, log_tail, service_config, error,
-               error_summary, error_summary_source
-          FROM runs
-         WHERE status IN ('pending', 'running')
-      ORDER BY started_at ASC
-      """
+      "SELECT "
+        <> runColumnsSql
+        <> " FROM runs WHERE status IN ('pending', 'running') ORDER BY started_at ASC"
     decoder = Decoders.rowList runRecordRow
 
 -- ── Internal parameter / row helpers ───────────────────────────────────────
@@ -358,6 +361,7 @@ runRecordRow =
     <*> Decoders.column (Decoders.nullable Decoders.text)
     <*> Decoders.column (Decoders.nullable Decoders.text)
     <*> Decoders.column (Decoders.nonNullable Decoders.text)
+    <*> Decoders.column (Decoders.nullable Decoders.timestamptz)
 
 textArrayDecoder :: Decoders.Value [Text]
 textArrayDecoder =
