@@ -1,6 +1,7 @@
 # shiki User Documentation Log
 
 ## 2026-09-15
+* **Update**: Document pg-migrate ledgers, legacy-history import, and restricted-role grants
 * **Update**: Document the run watcher heartbeat column and rollout
 * **Update**: Document displayed unwatched run status and recovery guidance
 

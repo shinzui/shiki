@@ -6,7 +6,7 @@ docId: DOC-8
 tags: [shiki, postgresql, schema, migrations]
 generated:
   by: process:codex-cli
-  at: 2026-09-15T14:59:09Z
+  at: 2026-09-15T18:25:00Z
 ---
 
 # Database schema
@@ -52,32 +52,50 @@ Indexes:
 - `runs_status_idx` — `(status)`. Useful for ad-hoc queries on stuck
   `running` rows.
 
-## The `schema_migrations` bookkeeping table
+## Migration bookkeeping
 
-shiki tracks applied migrations in `schema_migrations` (one row per
-applied migration). You should not need to touch it by hand. New
-migrations live under
-[`shiki-core/sql/migrations/`](../../shiki-core/sql/migrations/) and run
-in lexicographic order on the next CLI invocation.
+shiki uses `pg-migrate` and stores its authoritative migration ledger in the
+same configured schema as `runs`. Each schema therefore migrates independently,
+even when several shiki schemas share one PostgreSQL database. The four managed
+tables are:
+
+- `ledger_metadata`, which records the ledger format version;
+- `migrations`, which records each applied migration and its SHA-256 checksum;
+- `history_imports`, which records legacy-history cutovers;
+- `repairs`, which records explicit migration repairs.
+
+Do not edit these tables by hand. New migrations live under
+[`shiki-core/sql/migrations/`](../../shiki-core/sql/migrations/) and run in the
+order declared by that directory's `manifest` on the next CLI invocation.
+
+Releases before the `pg-migrate` cutover used `schema_migrations`. On the first
+upgrade run, shiki verifies that its filenames form an ordered prefix of the
+current manifest and that every stored MD5 checksum matches the original SQL.
+It imports those rows into `migrations` without executing their SQL again, then
+applies only the missing suffix. The old `schema_migrations` table is retained
+as read-only recovery evidence. A fresh installation does not create it.
 
 ## Recording runs with a restricted role
 
-Migrations only create the schema and `schema_migrations` when they are
-missing, so once a role that is allowed to create them has bootstrapped
-the schema (by running any `shiki` subcommand once), a much narrower role
-can record runs. It needs no `CREATE` privilege on the database or the
-schema:
+Once an owning role has bootstrapped or upgraded the schema by running any
+`shiki` subcommand, a much narrower role can record runs. It needs no `CREATE`
+privilege on the database or schema, but it must be able to read the
+authoritative ledger:
 
 ```sql
 GRANT USAGE ON SCHEMA shiki TO some_role;
-GRANT SELECT ON shiki.schema_migrations TO some_role;
+GRANT SELECT ON shiki.ledger_metadata TO some_role;
+GRANT SELECT ON shiki.migrations TO some_role;
+GRANT SELECT ON shiki.history_imports TO some_role;
+GRANT SELECT ON shiki.repairs TO some_role;
 GRANT SELECT, INSERT, UPDATE ON shiki.runs TO some_role;
 ```
 
-Such a role cannot apply a new migration, because altering `runs` needs
-the table owner. After upgrading to a shiki release that ships a new
-migration, run any `shiki` subcommand once as the owning role before the
-restricted role uses it again.
+Such a role can verify an already-current ledger but cannot apply a new
+migration, because altering `runs` and updating the ledger need their owners.
+After upgrading to a shiki release that ships a new migration—or when first
+crossing from `schema_migrations` to `pg-migrate`—run any `shiki` subcommand once
+as the owning role before the restricted role uses it again.
 
 In particular, migration `003-add-last-watched-at.sql` adds the watcher
 heartbeat column. Each environment must run the upgraded binary once as
@@ -108,5 +126,6 @@ ALTER TABLE public.runs              SET SCHEMA shiki;
 ALTER TABLE public.schema_migrations SET SCHEMA shiki;
 ```
 
-After that, run any `shiki` subcommand once — pending migrations will
-catch the moved tables up to current.
+After that, run any `shiki` subcommand once as the owning role. shiki will
+verify and import the moved `schema_migrations` history, retain it as evidence,
+and apply only the pending migrations.

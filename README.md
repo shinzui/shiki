@@ -79,7 +79,8 @@ At runtime shiki needs:
   namespace (if `kubectl` works, shiki works; GKE's `gke-gcloud-auth-plugin`
   is supported),
 - a PostgreSQL database for the run history. shiki creates and migrates its
-  own schema automatically,
+  own schema automatically, keeps an independent migration ledger in each
+  configured schema, and imports valid history from older shiki releases,
 - optionally `fzf`, for the interactive pickers.
 
 ## Quick start

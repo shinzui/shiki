@@ -28,7 +28,7 @@ in  Schema.Project::{
           , Schema.Dependency.ByName "shinzui/baikai"
           , Schema.Dependency.ByName "dhall-lang/dhall-haskell"
           , Schema.Dependency.ByName "hasql/hasql"
-          , Schema.Dependency.ByName "shinzui/hasql-migration"
+          , Schema.Dependency.ByName "shinzui/pg-migrate"
           , Schema.Dependency.ByName "snoyberg/http-client"
           , Schema.Dependency.ByName "codedownio/kubernetes-api"
           , Schema.Dependency.ByName "ekmett/lens"
@@ -101,15 +101,13 @@ in  Schema.Project::{
       , "dhall-lang/dhall-haskell"
       , "shinzui/ephemeral-pg"
       , "hasql/hasql"
-      , "shinzui/hasql-migration"
+      , "shinzui/pg-migrate"
       , "snoyberg/http-client"
       , "codedownio/kubernetes-api"
       , "ekmett/lens"
       , "pcapriotti/optparse-applicative"
       , "UnkindPartition/tasty"
       , "haskell-hvr/uuid"
-      , "kazu-yamamoto/crypton"
-      , "jappeace/ram"
       ]
     , okfBundles =
       [ Schema.OkfBundle::{

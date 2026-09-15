@@ -60,8 +60,9 @@ deliberately corrupted legacy checksum will fail before the target ledger is tru
 - [x] (2026-09-15 18:20Z) Added passing transition coverage for fresh and repeat runs,
   legacy prefixes 1–3, initialized-but-empty recovery, checksum/prefix rejection,
   per-schema ledgers, and restricted-role reuse.
-- [ ] Milestone 3 remaining: update user documentation and Mori metadata and record the
-  durable decision in an ADR.
+- [x] (2026-09-15 18:27Z) Milestone 3: added transition coverage, updated the README,
+  built-in schema help, strict-valid user documentation and its log, replaced Mori
+  dependency metadata, and recorded the durable decision in ADR 4.
 - [ ] Milestone 4: run the complete Cabal, Nix, documentation, packaging, and repository
   validation matrix and record the evidence here.
 
@@ -100,6 +101,11 @@ deliberately corrupted legacy checksum will fail before the target ledger is tru
   `UnlistedSqlFiles ["999-unlisted-probe.sql"]`. The plugin does force reconsideration once
   GHC is invoked, as the subsequent test build reported `Impure plugin forced
   recompilation`; final manifest-guard evidence therefore uses an isolated build directory.
+
+- Observation: the installed `okf log add` treats its second positional as a concept key,
+  not a document `docId`; passing `DOC-8` warned `concept not found` but still added the
+  requested bundle log entry. Evidence: subsequent strict profile/log enforcement passed
+  with `OK: 9 concepts (okf_version 0.2)`.
 
 
 ## Decision Log
@@ -502,3 +508,7 @@ the three `mori://shinzui/pg-migrate/packages/...` URIs named above.
 Revision note (2026-09-15): Recorded Milestones 1 and 2 and the transition-test portion of
 Milestone 3 as implemented. The manifest guard now specifies a fresh Cabal build directory
 because an already up-to-date Cabal component can skip GHC before the recompile plugin runs.
+
+Revision note (2026-09-15): Completed Milestone 3 with operator documentation, built-in
+help, Mori metadata, strict OKF log coverage, and ADR 4. Recorded the installed `okf log
+add` warning so future updates can distinguish document IDs from concept keys.
