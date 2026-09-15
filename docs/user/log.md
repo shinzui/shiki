@@ -1,6 +1,7 @@
 # shiki User Documentation Log
 
 ## 2026-09-15
+* **Update**: Document the `shiki service show` message for a typed name with no config file
 * **Update**: Audit the user guide against the code: correct the `config init` schema ref default, exit-code and image column semantics, pre-row failure behavior, analyzer override error, agent provider validation and `--debug` database requirement, run id prefix rules, and the help topic catalog; remove duplicated `shiki run` paragraphs
 * **Update**: Document pg-migrate ledgers, legacy-history import, and restricted-role grants
 * **Update**: Document the run watcher heartbeat column and rollout

@@ -12,6 +12,7 @@ import Shiki.Cli.Fzf.Selector.Service
     listServiceNames,
     pickerServiceTarget,
     renderServiceLookupFailure,
+    resolveServiceIn,
     serviceOpts,
   )
 import Shiki.Prelude ((^.))
@@ -35,6 +36,7 @@ tests =
         assertEqual
           "messages"
           [ Just "shiki: no service configs found in services/",
+            Just "shiki: no service config at services/nope.dhall",
             Just "shiki: no service matches the picker query",
             Nothing,
             Just "shiki: no service name given and fzf is not available",
@@ -43,6 +45,7 @@ tests =
           ( map
               renderServiceLookupFailure
               [ NoServiceConfigs,
+                ServiceConfigNotFound "services/nope.dhall",
                 ServicePickerNoMatch,
                 ServicePickerCancelled,
                 ServiceFzfUnavailable,
@@ -68,6 +71,14 @@ tests =
           mapM_ (\f -> writeFile (dir </> f) "") ["b.dhall", "a.dhall", "notes.txt"]
           names <- listServiceNames dir
           assertEqual "names" ["a", "b"] names,
+      -- Regression: a missing config used to escape as an uncaught IOException.
+      testCase "a typed name must name an existing config" $
+        withSystemTempDirectory "services" $ \dir -> do
+          writeFile (dir </> "a.dhall") ""
+          existing <- resolveServiceIn dir (ServiceByName "a")
+          assertEqual "existing" (Right "a") existing
+          missing <- resolveServiceIn dir (ServiceByName "nope")
+          assertEqual "missing" (Left (ServiceConfigNotFound (dir </> "nope.dhall"))) missing,
       testCase "listServiceNames on a missing directory is empty" $
         withSystemTempDirectory "services" $ \dir -> do
           names <- listServiceNames (dir </> "missing")

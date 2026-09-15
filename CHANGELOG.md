@@ -9,6 +9,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- fix(shiki-cli): `shiki service show <NAME>` with no `services/<NAME>.dhall`
+  now prints `shiki: no service config at services/<NAME>.dhall` on stderr and
+  exits 1, instead of an uncaught `IOException` with a backtrace.
 - fix(shiki-cli): `shiki config init` now defaults `--schema-ref` to
   `master`, the repository's default branch. The previous `main` default
   generated a schema import URL that returned 404.

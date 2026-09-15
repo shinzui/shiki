@@ -47,6 +47,7 @@ import Shiki.Cli.Fzf.Selector.Service
   ( ServiceLookupFailure,
     renderServiceLookupFailure,
     resolveService,
+    serviceConfigPath,
     serviceTarget,
   )
 import Shiki.Cli.Help (HelpCommand, helpParser, runHelp)
@@ -139,8 +140,7 @@ failService failure = do
 
 serviceShowOne :: Text -> IO ()
 serviceShowOne nm = do
-  let path = "services/" <> Text.unpack nm <> ".dhall"
-  cfg <- loadServiceConfig path
+  cfg <- loadServiceConfig (serviceConfigPath nm)
   printConfig cfg
 
 printConfig :: ServiceConfig -> IO ()

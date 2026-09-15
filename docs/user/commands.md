@@ -5,8 +5,8 @@ description: "Reference every shiki subcommand, its flags, the global database a
 docId: DOC-3
 tags: [shiki, cli, commands, reference]
 generated:
-  by: process:codex-cli
-  at: 2026-09-15T14:59:09Z
+  by: process:claude-code
+  at: 2026-09-15T21:54:30Z
 ---
 
 # Commands reference
@@ -98,6 +98,7 @@ Every resolution failure is printed on **stderr** and exits `1`:
 | No positional and fzf cannot run | `shiki: no run id given and fzf is not available` / `shiki: no service name given and fzf is not available` |
 | The `runs` table is empty | `shiki: no runs recorded yet` |
 | No `services/*.dhall` files | `shiki: no service configs found in services/` |
+| A typed service name has no config file | `shiki: no service config at services/<NAME>.dhall` |
 | The picker query matches nothing and Enter is pressed | `shiki: no run matches the picker query` / `shiki: no service matches the picker query` |
 | fzf itself fails | `shiki: fzf: <reason>` |
 | A typed id prefix matches no run | `no run matching <id>` |
@@ -317,7 +318,10 @@ sanity-checking a config change before running anything.
 `NAME` is optional — omit it to pick from an `fzf` picker over
 `services/*.dhall`; a lone file is shown without drawing the picker. With no
 `.dhall` files present, shiki prints
-`shiki: no service configs found in services/` on stderr and exits 1.
+`shiki: no service configs found in services/` on stderr and exits 1. A typed
+`NAME` with no `services/<NAME>.dhall` prints
+`shiki: no service config at services/<NAME>.dhall` on stderr and exits 1; a
+file that exists but does not parse or type-check reports Dhall's error.
 
 This subcommand is exempt from the global `--db`, `--db-schema`, and `--env`
 options; they are still accepted but unused.

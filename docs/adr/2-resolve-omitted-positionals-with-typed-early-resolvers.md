@@ -63,6 +63,11 @@ Interactive affordances live in `shiki-cli`, never in `shiki-core`.
   it stays safe to pipe. An empty listing that is not an error (`shiki runs list` on an empty
   table) still prints on stdout with exit 0.
 - Esc and Ctrl-C in a picker exit 1 without a message.
+- A typed positional that names nothing is a resolution failure too, not only a picker
+  outcome: `no run matching <id>` for runs, and (since EP-10 milestone 11, 2026-09-15)
+  `shiki: no service config at services/<NAME>.dhall` for services. The resolver checks
+  that the entity exists; errors about an entity that exists but is invalid (a Dhall parse
+  error) still come from loading it.
 - From a non-interactive shell, including an agent's, `/dev/tty` cannot be opened, so a
   command with an omitted positional fails fast with a clear message instead of waiting on a
   picker nobody can see.

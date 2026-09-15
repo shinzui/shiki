@@ -13,7 +13,9 @@ module Shiki.Cli.Fzf.Selector.Service
     serviceOpts,
     serviceTarget,
     pickerServiceTarget,
+    serviceConfigPath,
     resolveService,
+    resolveServiceIn,
     listServiceNames,
     fromServiceFzfResult,
     renderServiceLookupFailure,
@@ -37,8 +39,8 @@ import Shiki.Cli.Fzf
     withSelectOne,
   )
 import Shiki.Prelude
-import System.Directory (doesDirectoryExist, listDirectory)
-import System.FilePath (takeExtension, takeFileName, (-<.>))
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.FilePath (takeExtension, takeFileName, (-<.>), (</>))
 
 -- | Hard-coded location for service configs, matching the existing
 --   @serviceShowHandler@ in "Shiki.Cli".
@@ -53,6 +55,8 @@ data ServiceTarget
 -- | Every way turning a target into a service name can fail.
 data ServiceLookupFailure
   = NoServiceConfigs
+  | -- | a typed name with no config file at this path
+    ServiceConfigNotFound !FilePath
   | ServicePickerNoMatch
   | ServicePickerCancelled
   | ServiceFzfUnavailable
@@ -75,13 +79,28 @@ pickerServiceTarget cfg
   | isFzfAvailable cfg = Right (ServiceByPicker cfg)
   | otherwise = Left ServiceFzfUnavailable
 
+-- | The file @shiki service show NAME@ loads: @services/NAME.dhall@.
+serviceConfigPath :: Text -> FilePath
+serviceConfigPath = serviceConfigPathIn serviceConfigDir
+
+serviceConfigPathIn :: FilePath -> Text -> FilePath
+serviceConfigPathIn dir n = dir </> (Text.unpack n <> ".dhall")
+
 -- | Resolve a target to a service name; the picker offers every
 --   @services/*.dhall@ basename.
 resolveService :: ServiceTarget -> IO (Either ServiceLookupFailure Text)
-resolveService = \case
-  ServiceByName n -> pure (Right n)
+resolveService = resolveServiceIn serviceConfigDir
+
+-- | 'resolveService' against an explicit directory, so tests need not change
+--   the working directory. A typed name must name an existing file.
+resolveServiceIn :: FilePath -> ServiceTarget -> IO (Either ServiceLookupFailure Text)
+resolveServiceIn dir = \case
+  ServiceByName n -> do
+    let path = serviceConfigPathIn dir n
+    exists <- doesFileExist path
+    pure (if exists then Right n else Left (ServiceConfigNotFound path))
   ServiceByPicker cfg ->
-    try @IOException (listServiceNames serviceConfigDir) >>= \case
+    try @IOException (listServiceNames dir) >>= \case
       Left e -> pure (Left (ServicePickerFailed (Text.pack ("listDirectory failed: " <> show e))))
       Right [] -> pure (Left NoServiceConfigs)
       Right names ->
@@ -116,6 +135,7 @@ fromServiceFzfResult = \case
 renderServiceLookupFailure :: ServiceLookupFailure -> Maybe Text
 renderServiceLookupFailure = \case
   NoServiceConfigs -> Just ("shiki: no service configs found in " <> Text.pack serviceConfigDir <> "/")
+  ServiceConfigNotFound path -> Just ("shiki: no service config at " <> Text.pack path)
   ServicePickerNoMatch -> Just "shiki: no service matches the picker query"
   ServicePickerCancelled -> Nothing
   ServiceFzfUnavailable -> Just "shiki: no service name given and fzf is not available"

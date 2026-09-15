@@ -22,6 +22,11 @@ provenance:
       at: 2026-09-15T21:52:24Z
       mode: "update"
       note: "Refresh against HEAD dc1bd14 (unwatched status, runs sync, pg-migrate); reopen with M11 for missing service config"
+    - model: "claude-opus-5[1m]"
+      harness: "claude-code"
+      at: 2026-09-15T21:55:04Z
+      mode: "implement"
+      note: "Implement M11: typed ServiceConfigNotFound failure for service show"
 ---
 
 # Integrate fzf for interactive ID selection
@@ -29,7 +34,7 @@ provenance:
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries,
 Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
-**Status (2026-09-15): reopened for milestone 11.** Milestones 1–5 landed on 2026-05-28
+**Status (2026-09-15): complete (milestones 1–11).** Milestones 1–5 landed on 2026-05-28
 (commits `811c9db`, `818e39b`, `cd32aa6`, `aa111b2`, `d51aecc`) and deliver the feature. An
 architecture review on 2026-09-11 found a real bug (a picker query that matches nothing
 reports "no runs recorded yet"), a stringly-typed seam between the picker and the command
@@ -44,7 +49,8 @@ A refresh on 2026-09-15 against `HEAD` `dc1bd14` found the feature intact after 
 (the `unwatched` display status, `shiki runs sync`, and the pg-migrate cutover) and brought
 Context and Orientation and the interfaces up to date. It also found that one resolution
 failure still escapes ADR 2's rule: `shiki service show <missing-name>` dies with an
-uncaught `IOException` dump instead of a typed message. Milestone 11 fixes that.
+uncaught `IOException` dump instead of a typed message. Milestone 11 fixed that the same
+day.
 
 
 ## Purpose / Big Picture
@@ -301,12 +307,21 @@ This section must always reflect the actual current state of the work.
 
 ### M11 — Typed failure for a missing service config
 
-- [ ] Add `ServiceConfigNotFound !FilePath` to `ServiceLookupFailure`, `serviceConfigPath`,
+- [x] Add `ServiceConfigNotFound !FilePath` to `ServiceLookupFailure`, `serviceConfigPath`,
       and `resolveServiceIn`; make the `ServiceByName` path check the file exists.
-- [ ] Use `serviceConfigPath` in `serviceShowOne` in `shiki-cli/src/Shiki/Cli.hs`.
-- [ ] Extend `ServiceSpec` (rendering, existing name, missing name).
-- [ ] Update matrix row 15, `docs/user/commands.md`, and `CHANGELOG.md`.
-- [ ] Build warning-free, tests green, manual check of rows 14, 15, 16, 18; commit.
+      [2026-09-15]
+- [x] Use `serviceConfigPath` in `serviceShowOne` in `shiki-cli/src/Shiki/Cli.hs`.
+      [2026-09-15]
+- [x] Extend `ServiceSpec` (rendering, existing name, missing name). [2026-09-15]
+- [x] Update matrix row 15 (done in the refresh), `docs/user/commands.md` (plus its
+      `generated` stamp and `docs/user/log.md`, which the OKF profile requires),
+      `CHANGELOG.md`, and a consequence bullet in ADR 2. [2026-09-15]
+- [x] Build warning-free, `All 108 tests passed`, manual checks of rows 14, 15, and 18 plus a
+      broken config (evidence under Validation and Acceptance); `nix fmt` changed nothing;
+      `just user-documentation-validate` OK; commit. [2026-09-15]
+- Not re-checked in M11: rows 16, 17, and 19 need a terminal for fzf; their code path
+  (`ServiceByPicker`) only changed from a hard-coded `serviceConfigDir` to the `dir`
+  argument, which `resolveService` sets to the same value.
 
 
 ## Surprises & Discoveries
@@ -495,6 +510,12 @@ implementation. Provide concise evidence.
   [ADR 3](../adr/3-model-run-watcher-liveness-as-a-display-only-heartbeat.md) and
   [ADR 4](../adr/4-use-pg-migrate-with-per-shiki-schema-ledgers.md); neither changes the
   resolver design. The CLI suite has 107 tests.
+
+- 2026-09-15 (M11, build): The planned `dir </> Text.unpack n <.> "dhall"` did not compile.
+  `Shiki.Prelude` re-exports lens, whose `Control.Lens.Indexed.<.>` clashes with
+  `System.FilePath.<.>` (`Ambiguous occurrence '<.>'`). The code appends the extension as a
+  string instead, `dir </> (Text.unpack n <> ".dhall")`, which is also exactly what the old
+  `serviceShowOne` did, so a name containing a dot resolves to the same file as before.
 
 
 ## Decision Log
@@ -858,6 +879,26 @@ done; the missing-service-config message is scheduled as milestone 11; the unrea
 database message is re-scoped as a cross-command concern outside this plan (see the
 Decision Log); `shiki run [SERVICE]`, `agent assist` run selection, and anchoring
 `services/` remain open and out of scope.
+
+### 2026-09-15 — Milestone 11 complete
+
+**Outcome.** `shiki service show <missing>` now prints
+`shiki: no service config at services/<missing>.dhall` on stderr and exits 1, through the
+same `failService` renderer as every other service resolution failure. Existing configs,
+broken configs (Dhall's error), and the picker path behave as before. Build warning-free,
+108 tests, user docs validate.
+
+**What deviated.** Only the `<.>` operator clash (see Surprises), fixed by appending the
+extension as a string.
+
+**Gaps / follow-ups.** A broken config and an unreachable database still surface as GHC's
+uncaught-exception banner. Both are loading or connection errors outside the resolver, so
+they belong to a plan that gives shiki a top-level error renderer. Also still open:
+`shiki run [SERVICE]`, `agent assist` run selection, and anchoring `services/`.
+
+**ADR distillation.** ADR 2 gained a consequence bullet: a typed positional that names
+nothing is a resolution failure, while errors about an entity that exists but is invalid
+come from loading it. No new ADR is needed.
 
 
 ## Context and Orientation
@@ -1693,7 +1734,7 @@ serviceConfigPath :: Text -> FilePath
 serviceConfigPath = serviceConfigPathIn serviceConfigDir
 
 serviceConfigPathIn :: FilePath -> Text -> FilePath
-serviceConfigPathIn dir n = dir </> Text.unpack n <.> "dhall"
+serviceConfigPathIn dir n = dir </> (Text.unpack n <> ".dhall")
 
 resolveService :: ServiceTarget -> IO (Either ServiceLookupFailure Text)
 resolveService = resolveServiceIn serviceConfigDir
@@ -1710,8 +1751,10 @@ resolveServiceIn dir = \case
 ```
 
 `renderServiceLookupFailure (ServiceConfigNotFound path)` is
-`Just ("shiki: no service config at " <> Text.pack path)`. `</>` and `<.>` come from
-`System.FilePath` and `doesFileExist` from `System.Directory`. With `dir = "services"` and
+`Just ("shiki: no service config at " <> Text.pack path)`. `</>` comes from
+`System.FilePath` and `doesFileExist` from `System.Directory`. Do not use
+`System.FilePath.<.>`: `Shiki.Prelude` re-exports lens's `<.>`, and the two clash (see
+Surprises). With `dir = "services"` and
 `n = "nope"` the path is `services/nope.dhall`, the same file `serviceShowOne` loads today.
 
 **File `shiki-cli/src/Shiki/Cli.hs`.** Import `serviceConfigPath` and use it in
@@ -1990,6 +2033,34 @@ EXIT=0
 The picker rendering for row 4 (title row directly above aligned rows, Enter prints the
 JSON) was captured the same way during M7.
 
+### Evidence captured on 2026-09-15 after M11
+
+Run from the repository root with the freshly built binary (`bin="$(cabal list-bin shiki)"`);
+the broken-config check ran in a scratch directory holding `services/bad.dhall` with the
+contents `{ name = `.
+
+```text
+$ cabal test -v0 shiki-cli-test
+    a typed name must name an existing config:                               OK
+All 108 tests passed (6.23s)
+$ "$bin" service show nope; echo "exit=$?"                          # row 15
+shiki: no service config at services/nope.dhall
+exit=1
+$ "$bin" service show mls-service-v2 | head -2                      # row 14
+{
+    "analyzer": {
+$ env PATH=/usr/bin "$bin" service show </dev/null; echo "exit=$?"  # row 18
+shiki: no service name given and fzf is not available
+exit=1
+$ (cd "$TMPDIR" && "$bin" service show nope >/dev/null; echo "exit=$?")   # stderr, not stdout
+shiki: no service config at services/nope.dhall
+exit=1
+$ "$bin" service show bad                                           # existing but broken
+shiki: Uncaught exception dhall-1.42.3-…:Dhall.Parser.ParseError:
+Error: Invalid input
+services/bad.dhall:2:1:
+```
+
 ### Evidence captured on 2026-09-11 after M9
 
 The two-config checks ran in a scratch project whose `services/` holds `alpha.dhall` and
@@ -2237,3 +2308,7 @@ The `Command` type in `Shiki.Cli` keeps `ServiceShow !(Maybe Text)`.
   sync` picker stay out. Updated the Purpose, the acceptance matrix (row 15 changes; rows 22
   and 23 added), the bootstrap baseline, and the module signatures, and added M11 to
   Progress, Plan of Work, and Concrete Steps.
+
+- 2026-09-15 — Implemented milestone 11 and marked the plan complete. Recorded the lens
+  `<.>` clash in Surprises and corrected the M11 excerpt, added evidence and a retrospective,
+  and noted the ADR 2 consequence bullet and the OKF log entry the docs change required.
