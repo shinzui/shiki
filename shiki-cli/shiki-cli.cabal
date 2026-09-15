@@ -68,6 +68,7 @@ library
     Shiki.Cli.Run
     Shiki.Cli.Runs
     Shiki.Cli.Runs.Format
+    Shiki.Cli.Runs.Sync
     Shiki.Cli.Schema
     Shiki.Cli.Version
 
@@ -136,6 +137,7 @@ test-suite shiki-cli-test
     Shiki.Cli.ParserSpec
     Shiki.Cli.ProjectSpec
     Shiki.Cli.Runs.FormatSpec
+    Shiki.Cli.Runs.SyncSpec
     Shiki.Cli.VersionSpec
 
   build-depends:

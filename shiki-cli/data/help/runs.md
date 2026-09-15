@@ -3,8 +3,8 @@ SHIKI RUNS
 
 Every invocation of 'shiki run <service> -- ARGS' records one row in the
 'runs' table of the configured PostgreSQL database. The 'runs' family of
-subcommands queries that table; only 'analyze' writes, replacing a run's
-error_summary.
+subcommands queries that table; 'analyze' writes, replacing a run's
+error_summary, and 'sync' finalizes runs left unfinished.
 
 
 RUN LIFECYCLE
@@ -60,6 +60,9 @@ QUERYING RUNS
   shiki runs error <id>                 error_summary one-liner.
   shiki runs analyze <id>               Re-run an analyzer over log_tail
                                         (see 'shiki help analyzers').
+  shiki runs sync                       Finalize every unfinished run from
+                                        its Job in the cluster.
+  shiki runs sync <id>                  Finalize one run.
 
 Omit <id> on show, logs, error, or analyze to pick from the 50 newest runs
 in an fzf picker (requires fzf on PATH and a terminal). show, logs, and

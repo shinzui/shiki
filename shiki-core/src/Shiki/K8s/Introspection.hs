@@ -8,6 +8,7 @@ module Shiki.K8s.Introspection
     Namespace (..),
     InspectionError (..),
     inspectDeployment,
+    deploymentExists,
   )
 where
 
@@ -20,6 +21,8 @@ import Data.Maybe (mapMaybe)
 import Kubernetes.OpenAPI qualified as K8s
 import Kubernetes.OpenAPI.API.AppsV1 qualified as AppsV1
 import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
+import Network.HTTP.Client (responseStatus)
+import Network.HTTP.Types.Status (statusCode)
 import Shiki.K8s.Client (ClientEnv (..), dispatchK8s)
 import Shiki.Prelude hiding (Strict)
 
@@ -65,6 +68,24 @@ data InspectionError
   | NoSecretBinding !Text
   deriving stock (Generic, Eq, Show)
   deriving anyclass (Exception)
+
+-- | Whether the named Deployment exists in the namespace. A 404 is
+--   'False'; any other API error throws 'DeploymentReadFailed'. Used as a
+--   cluster-identity check before a missing Job is taken to mean the Job
+--   is gone, rather than that the kube context points at another cluster.
+deploymentExists :: ClientEnv -> Namespace -> DeploymentName -> IO Bool
+deploymentExists env ns dep = do
+  let req =
+        AppsV1.readNamespacedDeployment
+          (K8s.Accept K8s.MimeJSON)
+          (K8s.Name (unDeploymentName dep))
+          (K8s.Namespace (unNamespace ns))
+  resp <- dispatchK8s env req
+  case K8s.mimeResult resp of
+    Right _ -> pure True
+    Left err
+      | statusCode (responseStatus (K8s.mimeResultResponse resp)) == 404 -> pure False
+      | otherwise -> throwIO (DeploymentReadFailed ns dep (show err))
 
 -- | Fetch the named Deployment, walk its pod template down to the named
 --   container, and return a 'DeploymentSnapshot'. Throws

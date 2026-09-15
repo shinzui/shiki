@@ -9,6 +9,8 @@ module Shiki.Cli.Run
   ( RunOptions (..),
     runOptionsParser,
     runRun,
+    completionForOutcome,
+    elapsedMs,
   )
 where
 
@@ -212,30 +214,9 @@ finalizeFailed env rid startedAt e = do
 
 finalizeOutcome :: CliEnv -> RunId -> UTCTime -> JobOutcome -> IO ()
 finalizeOutcome env rid startedAt outcome = do
-  let endedAt = outcome ^. #endedAt
-      durationMs = elapsedMs startedAt endedAt
-      finalStatus = case outcome ^. #phase of
-        JobSucceeded -> Succeeded
-        JobFailed _ -> Failed
-        JobTimedOut -> Failed
-      errMsg = case outcome ^. #phase of
-        JobSucceeded -> Nothing
-        JobFailed t -> Just t
-        JobTimedOut -> Just "timed out"
-  runSessionUnit
-    env
-    completeRunStatement
-    RunCompletion
-      { runId = rid,
-        status = finalStatus,
-        exitCode = outcome ^. #exitCode,
-        endedAt = endedAt,
-        durationMs = durationMs,
-        logTail = outcome ^. #logTail,
-        errorMessage = errMsg,
-        errorSummary = outcome ^. #errorSummary,
-        errorSummarySource = outcome ^. #errorSummarySource
-      }
+  let completion = completionForOutcome rid startedAt outcome
+      finalStatus = completion ^. #status
+  runSessionUnit env completeRunStatement completion
   TIO.putStrLn
     ( "run "
         <> showRunId rid
@@ -247,6 +228,29 @@ finalizeOutcome env rid startedAt outcome = do
   case finalStatus of
     Succeeded -> pure ()
     _ -> exitFailure
+
+-- | The row update for a Job that reached a terminal phase. Shared with
+--   @shiki runs sync@ so a reconciled run is recorded exactly as a followed
+--   one would have been.
+completionForOutcome :: RunId -> UTCTime -> JobOutcome -> RunCompletion
+completionForOutcome rid startedAt outcome =
+  RunCompletion
+    { runId = rid,
+      status = case outcome ^. #phase of
+        JobSucceeded -> Succeeded
+        JobFailed _ -> Failed
+        JobTimedOut -> Failed,
+      exitCode = outcome ^. #exitCode,
+      endedAt = outcome ^. #endedAt,
+      durationMs = elapsedMs startedAt (outcome ^. #endedAt),
+      logTail = outcome ^. #logTail,
+      errorMessage = case outcome ^. #phase of
+        JobSucceeded -> Nothing
+        JobFailed t -> Just t
+        JobTimedOut -> Just "timed out",
+      errorSummary = outcome ^. #errorSummary,
+      errorSummarySource = outcome ^. #errorSummarySource
+    }
 
 elapsedMs :: UTCTime -> UTCTime -> Int
 elapsedMs startedAt endedAt =

@@ -127,6 +127,7 @@ test-suite shiki-core-test
   other-modules:
     Shiki.Analysis.BackendSpec
     Shiki.Analysis.HeuristicSpec
+    Shiki.K8s.ClassifyJobSpec
     Shiki.K8s.CredentialExpirySpec
     Shiki.K8s.ExecCredentialSpec
     Shiki.K8s.JobBuilderSpec

@@ -18,11 +18,13 @@ module Shiki.Persistence.Run
     insertRunStatement,
     markRunRunningStatement,
     completeRunStatement,
+    completeUnfinishedRunStatement,
     updateErrorSummaryStatement,
     getRunStatement,
     listRecentRunsStatement,
     listRecentRunsByServiceStatement,
     findRunByPrefixStatement,
+    listUnfinishedRunsStatement,
   )
 where
 
@@ -146,32 +148,46 @@ markRunRunningStatement = preparable sql encoder Decoders.noResult
 
 -- | Update an existing row with completion details.
 completeRunStatement :: Statement RunCompletion ()
-completeRunStatement = preparable sql encoder Decoders.noResult
-  where
-    sql =
-      """
-      UPDATE runs
-         SET status                = $2,
-             exit_code             = $3,
-             ended_at              = $4,
-             duration_ms           = $5,
-             log_tail              = $6,
-             error                 = $7,
-             error_summary         = $8,
-             error_summary_source  = $9,
-             updated_at            = now()
-       WHERE id = $1
-      """
-    encoder =
-      ((\r -> unRunId (r ^. #runId)) >$< uuidParam)
-        <> ((^. #status) >$< runStatusParam)
-        <> ((^. #exitCode) >$< nullableInt4Param)
-        <> ((^. #endedAt) >$< utcTimeParam)
-        <> ((^. #durationMs) >$< int8Param)
-        <> ((^. #logTail) >$< nullableTextParam)
-        <> ((^. #errorMessage) >$< nullableTextParam)
-        <> ((^. #errorSummary) >$< nullableTextParam)
-        <> ((^. #errorSummarySource) >$< textParam)
+completeRunStatement = preparable completeRunSql runCompletionEncoder Decoders.noResult
+
+-- | Like 'completeRunStatement', but only while the row is still
+--   @pending@ or @running@; returns whether a row was updated. @shiki runs
+--   sync@ writes through this so a reconcile never overwrites the outcome
+--   a still-live @shiki run@ recorded first.
+completeUnfinishedRunStatement :: Statement RunCompletion Bool
+completeUnfinishedRunStatement =
+  preparable
+    (completeRunSql <> " AND status IN ('pending', 'running')")
+    runCompletionEncoder
+    ((> 0) <$> Decoders.rowsAffected)
+
+completeRunSql :: Text
+completeRunSql =
+  """
+  UPDATE runs
+     SET status                = $2,
+         exit_code             = $3,
+         ended_at              = $4,
+         duration_ms           = $5,
+         log_tail              = $6,
+         error                 = $7,
+         error_summary         = $8,
+         error_summary_source  = $9,
+         updated_at            = now()
+   WHERE id = $1
+  """
+
+runCompletionEncoder :: Encoders.Params RunCompletion
+runCompletionEncoder =
+  ((\r -> unRunId (r ^. #runId)) >$< uuidParam)
+    <> ((^. #status) >$< runStatusParam)
+    <> ((^. #exitCode) >$< nullableInt4Param)
+    <> ((^. #endedAt) >$< utcTimeParam)
+    <> ((^. #durationMs) >$< int8Param)
+    <> ((^. #logTail) >$< nullableTextParam)
+    <> ((^. #errorMessage) >$< nullableTextParam)
+    <> ((^. #errorSummary) >$< nullableTextParam)
+    <> ((^. #errorSummarySource) >$< textParam)
 
 -- | Overwrite the analyzer fields on an existing row. The post-hoc
 --   @shiki runs analyze@ subcommand writes through this rather than
@@ -262,6 +278,23 @@ findRunByPrefixStatement = preparable sql encoder decoder
        LIMIT 2
       """
     encoder = textParam
+    decoder = Decoders.rowList runRecordRow
+
+-- | Every run still @pending@ or @running@, oldest first: the candidates
+--   @shiki runs sync@ reconciles against the cluster.
+listUnfinishedRunsStatement :: Statement () [RunRecord]
+listUnfinishedRunsStatement = preparable sql Encoders.noParams decoder
+  where
+    sql =
+      """
+        SELECT id, service_name, command, namespace, job_name,
+               image, status, exit_code, started_at, ended_at,
+               duration_ms, log_tail, service_config, error,
+               error_summary, error_summary_source
+          FROM runs
+         WHERE status IN ('pending', 'running')
+      ORDER BY started_at ASC
+      """
     decoder = Decoders.rowList runRecordRow
 
 -- ── Internal parameter / row helpers ───────────────────────────────────────

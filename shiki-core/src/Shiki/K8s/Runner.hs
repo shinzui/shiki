@@ -6,8 +6,13 @@ module Shiki.K8s.Runner
   ( JobOutcome (..),
     JobPhase (..),
     JobInputs (..),
+    JobObservation (..),
     submitJob,
     runJob,
+    observeJob,
+    classifyJob,
+    jobPhaseFromStatus,
+    collectOutcome,
     waitForCompletionWith,
     maxConsecutiveStatusFailures,
   )
@@ -23,10 +28,13 @@ import Control.Exception
     try,
   )
 import Data.Generics.Labels ()
+import Data.Maybe (listToMaybe)
 import Data.Time.Clock (diffUTCTime)
 import Kubernetes.OpenAPI qualified as K8s
 import Kubernetes.OpenAPI.API.BatchV1 qualified as BatchV1
 import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
+import Network.HTTP.Client (responseStatus)
+import Network.HTTP.Types.Status (statusCode)
 import Shiki.Analysis.Backend (AnalyzerKind (..), runAnalyzer)
 import Shiki.Analysis.Backend qualified as Analyzer
 import Shiki.K8s.Client (ClientEnv (..), dispatchK8s)
@@ -109,13 +117,31 @@ runJob env svc snap inputs pollSec timeoutSec = do
   submitJob env svc snap inputs
   phase <- waitForCompletion env inputs startedAt pollSec timeoutSec
   endedAt <- liftIO getCurrentTime
-  logsE <- fetchJobPodLogs env (inputs ^. #namespace) (inputs ^. #jobName)
+  collectOutcome env (inputs ^. #namespace) (inputs ^. #jobName) startedAt endedAt phase
+
+-- | Turn a terminal 'JobPhase' into a 'JobOutcome': fetch the pod log tail
+--   (while the pod still exists) and summarize it when the Job failed.
+--   Shared by the waiting path of @shiki run@ and by @shiki runs sync@,
+--   which reconciles a run whose waiting process is gone.
+collectOutcome ::
+  ClientEnv ->
+  Namespace ->
+  -- | job name
+  Text ->
+  -- | started at
+  UTCTime ->
+  -- | ended at
+  UTCTime ->
+  JobPhase ->
+  IO JobOutcome
+collectOutcome env ns jobNm startedAt endedAt phase = do
+  logsE <- fetchJobPodLogs env ns jobNm
   let logTailNow = either (const Nothing) (Just . (^. #persistedTail)) logsE
   (errSummary, errSource) <- summarizeOnFailure phase logsE
   pure
     JobOutcome
-      { jobName = inputs ^. #jobName,
-        namespace = unNamespace (inputs ^. #namespace),
+      { jobName = jobNm,
+        namespace = unNamespace ns,
         phase = phase,
         exitCode = exitCodeForPhase phase,
         startedAt = startedAt,
@@ -187,22 +213,70 @@ waitForCompletionWith readStatus startedAt pollSec timeoutSec = go 0
               | Just asyncErr <- fromException @SomeAsyncException err -> throwIO asyncErr
               | failures + 1 >= maxConsecutiveStatusFailures -> throwIO err
               | otherwise -> wait >> go (failures + 1)
-            Right status -> case interpret status of
+            Right status -> case jobPhaseFromStatus status of
               Nothing -> wait >> go 0
               Just phs -> pure phs
 
     wait = threadDelay (pollSec * 1_000_000)
 
-    interpret :: K8s.V1JobStatus -> Maybe JobPhase
-    interpret s = case (s ^. K8sLens.v1JobStatusSucceededL, s ^. K8sLens.v1JobStatusFailedL) of
-      (Just n, _) | n > 0 -> Just JobSucceeded
-      (_, Just n) | n > 0 -> Just (JobFailed (firstFailureReason s))
-      _ -> Nothing
-
-    firstFailureReason :: K8s.V1JobStatus -> Text
-    firstFailureReason s = case s ^. K8sLens.v1JobStatusConditionsL of
+-- | The terminal phase a Job status reports, or 'Nothing' while it is
+--   still active. 'JobFailed' carries the first condition's reason.
+jobPhaseFromStatus :: K8s.V1JobStatus -> Maybe JobPhase
+jobPhaseFromStatus s = case (s ^. K8sLens.v1JobStatusSucceededL, s ^. K8sLens.v1JobStatusFailedL) of
+  (Just n, _) | n > 0 -> Just JobSucceeded
+  (_, Just n) | n > 0 -> Just (JobFailed firstFailureReason)
+  _ -> Nothing
+  where
+    firstFailureReason = case s ^. K8sLens.v1JobStatusConditionsL of
       Just (c : _) -> fromMaybe "Failed" (c ^. K8sLens.v1JobConditionReasonL)
       _ -> "Failed"
+
+-- | What the cluster reports for a Job right now.
+data JobObservation
+  = -- | the Job exists and has not finished
+    JobActive
+  | -- | the Job finished; carries when, if the cluster recorded it
+    JobFinished !JobPhase !(Maybe UTCTime)
+  | -- | no Job by that name exists in the namespace (never created, or
+    --   removed by @ttlSecondsAfterFinished@ or by hand)
+    JobNotFound
+  deriving stock (Generic, Eq, Show)
+
+-- | Read a Job and classify it. A 404 is 'JobNotFound'; any other API
+--   error throws, so an unreachable cluster is never mistaken for a
+--   missing Job.
+observeJob :: ClientEnv -> Namespace -> Text -> IO JobObservation
+observeJob env ns jobNm = do
+  let req =
+        BatchV1.readNamespacedJobStatus
+          (K8s.Accept K8s.MimeJSON)
+          (K8s.Name jobNm)
+          (K8s.Namespace (unNamespace ns))
+  resp <- dispatchK8s env req
+  case K8s.mimeResult resp of
+    Right job -> pure (classifyJob job)
+    Left err
+      | statusCode (responseStatus (K8s.mimeResultResponse resp)) == 404 -> pure JobNotFound
+      | otherwise -> throwIO (JobStatusReadFailed jobNm (show err))
+
+-- | Classify an existing Job. The end time is @completionTime@ for a Job
+--   that succeeded and the @Failed@ condition's transition time for one
+--   that failed.
+classifyJob :: K8s.V1Job -> JobObservation
+classifyJob job = case jobPhaseFromStatus status of
+  Nothing -> JobActive
+  Just phase@JobSucceeded ->
+    JobFinished phase (K8s.unDateTime <$> status ^. K8sLens.v1JobStatusCompletionTimeL)
+  Just phase -> JobFinished phase failedAt
+  where
+    status = fromMaybe K8s.mkV1JobStatus (job ^. K8sLens.v1JobStatusL)
+    failedAt =
+      listToMaybe
+        [ K8s.unDateTime t
+        | c <- fromMaybe [] (status ^. K8sLens.v1JobStatusConditionsL),
+          c ^. K8sLens.v1JobConditionTypeL == "Failed",
+          Just t <- [c ^. K8sLens.v1JobConditionLastTransitionTimeL]
+        ]
 
 readJobStatus :: ClientEnv -> JobInputs -> IO K8s.V1JobStatus
 readJobStatus env inputs = do

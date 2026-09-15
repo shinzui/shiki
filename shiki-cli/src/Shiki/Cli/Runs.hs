@@ -1,7 +1,8 @@
 -- | The @shiki runs@ family of subcommands: @list@, @show@, @logs@,
---   @error@, and @analyze@. Reads rows written by 'Shiki.Cli.Run' through
---   the persistence statements defined in "Shiki.Persistence.Run"; only
---   @analyze@ writes, replacing a run's stored error summary.
+--   @error@, @analyze@, and @sync@. Reads rows written by 'Shiki.Cli.Run'
+--   through the persistence statements defined in "Shiki.Persistence.Run";
+--   @analyze@ writes, replacing a run's stored error summary, and @sync@
+--   finalizes unfinished runs from the cluster ("Shiki.Cli.Runs.Sync").
 module Shiki.Cli.Runs
   ( RunsCommand (..),
     runsParser,
@@ -55,6 +56,7 @@ import Shiki.Cli.Fzf.Selector.Run
     runTarget,
   )
 import Shiki.Cli.Runs.Format (renderTable)
+import Shiki.Cli.Runs.Sync (syncRun, syncRuns)
 import Shiki.Persistence.Run
   ( RunId (..),
     RunRecord,
@@ -73,6 +75,7 @@ data RunsCommand
   | RunsLogs !(Maybe Text)
   | RunsError !(Maybe Text)
   | RunsAnalyze !(Maybe Text) !(Maybe AnalyzerKind)
+  | RunsSync !(Maybe Text)
   deriving stock (Generic, Eq, Show)
 
 -- | Parser for the @runs@ family. The three subcommands intentionally
@@ -139,6 +142,20 @@ runsParser =
               )
               (progDesc "Re-run analysis on a stored run's log tail (uses fzf if omitted)")
           )
+        <> Opt.command
+          "sync"
+          ( info
+              ( RunsSync
+                  <$> optional
+                    ( argument
+                        str
+                        ( metavar "ID"
+                            <> help "Run id (UUID or unambiguous prefix); syncs every unfinished run if omitted"
+                        )
+                    )
+              )
+              (progDesc "Finalize unfinished runs from the state of their Jobs in the cluster")
+          )
     )
 
 idArgHelp :: Opt.Mod Opt.ArgumentFields Text
@@ -169,6 +186,8 @@ runRuns withEnv = \case
   RunsError mId -> withRun withEnv readRunOpts mId (const doError)
   RunsAnalyze mId override ->
     withRun withEnv analyzeRunOpts mId (\env r -> doAnalyze env r override)
+  RunsSync Nothing -> withEnv syncRuns
+  RunsSync (Just rid) -> withRun withEnv readRunOpts (Just rid) syncRun
 
 -- | Decide the target before acquiring the environment (so a missing fzf never
 --   costs a database connection), then look the run up and run the handler.
