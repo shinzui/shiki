@@ -163,9 +163,13 @@ Findings from the research that shaped this plan (2026-09-15):
   releases are effectful 2.7.1.0 and effectful-core 2.7.1.2. The overlay must pin them, the
   same way it already pins `kubernetes-api` 134.0.1.
 
-- `baikai-effectful` 0.4.0.1, the only published effect for the baikai LLM library shiki
-  uses, requires `effectful-core ^>=2.6`, which excludes 2.7. This is why the analyzer effect
-  in Milestone 5 wraps baikai's plain IO API instead.
+- `baikai-effectful`, the published effect for the baikai LLM library shiki uses, shipped
+  0.4.0.2 to Hackage on 2026-09-15 and moved its bound to `effectful-core >=2.7 && <2.8`
+  (0.4.0.1 had required `^>=2.6`, which excluded 2.7). The earlier blocker is therefore gone:
+  baikai's published effect is now usable on shiki's 2.7 line. Milestone 5 still defines a
+  shiki-owned `Analyzer` effect over baikai's plain IO API rather than depending on
+  `baikai-effectful`, but that is now the deliberate high-level-effect choice recorded in the
+  Decision Log, not a version-bound workaround.
 
 - On GHC 9.12.4, `displayException` applied to a `SomeException` prints only the message,
   without the exception context that produces `HasCallStack backtrace:` in GHC's own
@@ -213,8 +217,21 @@ Record every decision made while working on the plan.
   per-operation performance regression in dynamically dispatched effects introduced in
   2.7.0.0) and `effectful ^>=2.7.1.0`.
   Rationale: Chosen by the user. 2.7 is the current release line and is tested with GHC
-  9.12.4, shiki's compiler. The cost is that `baikai-effectful` 0.4 (pinned to 2.6) cannot
-  be used, which Milestone 5 absorbs by wrapping baikai's IO API.
+  9.12.4, shiki's compiler. When this was decided, `baikai-effectful` 0.4.0.1 was pinned to
+  effectful-core 2.6 and could not be used on 2.7; that cost has since been removed by
+  `baikai-effectful` 0.4.0.2 (Hackage, 2026-09-15), which moved to `effectful-core >=2.7 &&
+  <2.8`. Milestone 5 still wraps baikai's IO API in a shiki-owned `Analyzer` effect by the
+  high-level-effect preference recorded below, now as a choice rather than a necessity.
+  Date: 2026-09-15.
+
+- Decision: Keep Milestone 5's shiki-owned `Analyzer` effect over baikai's IO API even though
+  `baikai-effectful` 0.4.0.2 (Hackage, 2026-09-15) now supports effectful 2.7
+  (`effectful-core >=2.7 && <2.8`) and could be depended on directly.
+  Rationale: The unblock removes the only forced reason to wrap IO, but the high-level,
+  shiki-owned-effect preference below (one `Analyze` operation that hides the backend and
+  stays swappable/in-memory-testable) still favors shiki's own effect over baikai-effectful's.
+  Adopting `baikai-effectful` directly remains an open option if shiki later wants the
+  library's effect surface; revisit at that point.
   Date: 2026-09-15.
 
 - Decision: Model PostgreSQL access as a shiki-owned, high-level `RunStore` effect with one
@@ -1309,7 +1326,7 @@ run through `liftIO` and the top-level fallback.
 | `hasql`, `hasql-pool` (existing) | as today | the `RunStore` PostgreSQL interpreter |
 | `kubernetes-api`, `kubernetes-api-client` (existing) | as today | the `Kube` interpreter |
 | `dhall` (existing) | as today | the `ConfigLoader` interpreter |
-| `baikai` (existing) | `^>=0.7` | the `Analyzer` interpreter; `baikai-effectful` is not used (it requires effectful 2.6) |
+| `baikai` (existing) | `^>=0.7` | the `Analyzer` interpreter wraps baikai's IO API; `baikai-effectful` is not depended on — a deliberate high-level-effect choice, not a version limit (0.4.0.2 now allows `effectful-core >=2.7 && <2.8`) |
 
 No other new dependencies. `effectful-th` and `effectful-plugin` are not used.
 
