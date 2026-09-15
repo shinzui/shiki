@@ -4,18 +4,18 @@
 --   'Heuristic' branch is the default; the 'Baikai' branch is wired up
 --   in M7 (it returns a placeholder 'AnalyzerBaikaiError' until then).
 module Shiki.Analysis.Backend
-  ( AnalyzerKind (..)
-  , AnalyzerResult (..)
-  , AnalyzerError (..)
-  , summaryByteCap
-  , runAnalyzer
-  , analyzerBackendToKind
-  ) where
-
-import Shiki.Prelude
+  ( AnalyzerKind (..),
+    AnalyzerResult (..),
+    AnalyzerError (..),
+    summaryByteCap,
+    runAnalyzer,
+    analyzerBackendToKind,
+  )
+where
 
 import Shiki.Analysis.Baikai (runBaikai)
 import Shiki.Analysis.Heuristic (summarizeFailure)
+import Shiki.Prelude
 import Shiki.Service.Config qualified as Cfg
 
 -- | Which backend produces the summary. Carries the model id for the
@@ -31,20 +31,20 @@ data AnalyzerKind
 --   @\"baikai:anthropic_claude_haiku_4_5\"@), packaged so callers do not
 --   have to derive the tag string from 'AnalyzerKind' themselves.
 data AnalyzerResult = AnalyzerResult
-  { summary :: !(Maybe Text)
-  , source  :: !Text
+  { summary :: !(Maybe Text),
+    source :: !Text
   }
   deriving stock (Generic, Eq, Show)
 
 -- | Why an analyzer call failed.
 data AnalyzerError
-  = AnalyzerBackendDisabled
-    -- ^ the caller asked for 'None'; no work was attempted
-  | AnalyzerUnknown !Text
-    -- ^ a CLI override could not be parsed into an 'AnalyzerKind'
-  | AnalyzerBaikaiError !Text
-    -- ^ the 'Baikai' branch failed; the wrapped 'Text' is a human-readable
+  = -- | the caller asked for 'None'; no work was attempted
+    AnalyzerBackendDisabled
+  | -- | a CLI override could not be parsed into an 'AnalyzerKind'
+    AnalyzerUnknown !Text
+  | -- | the 'Baikai' branch failed; the wrapped 'Text' is a human-readable
     --   rendering of the underlying error
+    AnalyzerBaikaiError !Text
   deriving stock (Generic, Eq, Show)
 
 -- | Maximum number of characters the analyzer is allowed to emit. The
@@ -62,20 +62,20 @@ runAnalyzer kind input = case kind of
     pure
       ( Right
           AnalyzerResult
-            { summary = summarizeFailure input
-            , source  = "heuristic"
+            { summary = summarizeFailure input,
+              source = "heuristic"
             }
       )
   Baikai modelId -> do
     r <- runBaikai modelId input
     case r of
       Left err -> pure (Left (AnalyzerBaikaiError err))
-      Right t  ->
+      Right t ->
         pure
           ( Right
               AnalyzerResult
-                { summary = Just t
-                , source  = "baikai:" <> modelId
+                { summary = Just t,
+                  source = "baikai:" <> modelId
                 }
           )
   None ->
@@ -87,6 +87,6 @@ runAnalyzer kind input = case kind of
 --   module; this function is the canonical conversion.
 analyzerBackendToKind :: Cfg.AnalyzerBackend -> AnalyzerKind
 analyzerBackendToKind = \case
-  Cfg.Heuristic     -> Heuristic
-  Cfg.Baikai { Cfg.model = m } -> Baikai m
-  Cfg.None          -> None
+  Cfg.Heuristic -> Heuristic
+  Cfg.Baikai {Cfg.model = m} -> Baikai m
+  Cfg.None -> None

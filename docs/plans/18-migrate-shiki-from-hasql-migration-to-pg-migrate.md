@@ -63,8 +63,12 @@ deliberately corrupted legacy checksum will fail before the target ledger is tru
 - [x] (2026-09-15 18:27Z) Milestone 3: added transition coverage, updated the README,
   built-in schema help, strict-valid user documentation and its log, replaced Mori
   dependency metadata, and recorded the durable decision in ADR 4.
-- [ ] Milestone 4: run the complete Cabal, Nix, documentation, packaging, and repository
-  validation matrix and record the evidence here.
+- [x] (2026-09-15 18:27Z) Milestone 4: completed the Cabal, Nix, documentation,
+  packaging, and repository validation matrix. All 56 core and 107 CLI tests passed;
+  both source distributions were created with the manifest and SQL present; strict OKF,
+  Dhall, Mori, formatting, pre-commit, and Nix flake checks passed; `flake.lock` remained
+  unchanged; and the final old-runner scan contained only explicitly labeled predecessor
+  import references and the new adapter package name.
 
 
 ## Surprises & Discoveries
@@ -106,6 +110,12 @@ deliberately corrupted legacy checksum will fail before the target ledger is tru
   not a document `docId`; passing `DOC-8` warned `concept not found` but still added the
   requested bundle log entry. Evidence: subsequent strict profile/log enforcement passed
   with `OK: 9 concepts (okf_version 0.2)`.
+
+- Observation: the repository-wide `nix fmt -- --fail-on-change` found one pre-existing
+  Ormolu drift in `shiki-core/src/Shiki/Analysis/Backend.hs`, outside the migration edits.
+  Evidence: the first run formatted that file and failed as designed; the formatting-only
+  diff preserved behavior, `cabal build all` passed afterward, and the second formatter run
+  reported `formatted 0 files (0 changed)`.
 
 
 ## Decision Log
@@ -161,7 +171,26 @@ deliberately corrupted legacy checksum will fail before the target ledger is tru
 
 ## Outcomes & Retrospective
 
-(To be filled during and after implementation.)
+The migration is complete. Shiki now compiles an ordered, exact-byte `shiki` migration
+component from `shiki-core/sql/migrations/manifest`, runs it through released pg-migrate
+1.1 packages on a dedicated schema-aware connection, and keeps an independent ledger in
+every configured Shiki schema. Existing databases with one, two, or all three legacy rows
+are upgraded without re-executing applied SQL; invalid prefixes and checksum changes fail
+before target history is trusted; an interrupted empty-ledger cutover retries safely; and
+restricted roles continue after an owner grants read access to the new ledger tables.
+
+The acceptance evidence covers behavior rather than only compilation. Five focused
+migration cases plus the existing isolation and restricted-role scenarios exercise the
+transition against ephemeral PostgreSQL. The complete suites passed 163 tests. Cabal built
+both packages and produced source distributions containing the manifest and all SQL files.
+The user-doc bundle remained strict-valid, Mori reports `shinzui/pg-migrate`, Nix formatting
+and flake checks passed, and the Nix lock did not change.
+
+ADR 4 now holds the durable engine, embedding, per-schema ledger, advisory-lock,
+search-path, safe-prefix import, retained-evidence, and owner-first rollout decisions. The
+main implementation lesson is that GHC's force-recompile plugin protects the manifest once
+GHC is invoked, but Cabal may short-circuit an unchanged component before that point;
+isolated-build validation remains the reliable check for a newly added unlisted sibling.
 
 
 ## Context and Orientation
@@ -512,3 +541,7 @@ because an already up-to-date Cabal component can skip GHC before the recompile 
 Revision note (2026-09-15): Completed Milestone 3 with operator documentation, built-in
 help, Mori metadata, strict OKF log coverage, and ADR 4. Recorded the installed `okf log
 add` warning so future updates can distinguish document IDs from concept keys.
+
+Revision note (2026-09-15): Completed Milestone 4 and the plan. Added the full validation
+evidence, final outcomes and retrospective, ADR distillation result, and the formatter drift
+discovered during repository-wide checks.
