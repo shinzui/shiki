@@ -77,12 +77,15 @@ library
     aeson ^>=2.2,
     baikai ^>=0.7,
     baikai-claude ^>=0.7,
+    baikai-effectful ^>=0.4.0.2,
     baikai-openai ^>=0.7,
     base >=4.21 && <5,
     bytestring ^>=0.12,
     containers ^>=0.7,
     dhall ^>=1.42,
     directory ^>=1.3,
+    effectful ^>=2.7.1.0,
+    effectful-core ^>=2.7.1.1,
     filepath ^>=1.5,
     generic-lens >=2.2 && <2.4,
     hasql >=1.10,
@@ -129,6 +132,7 @@ test-suite shiki-core-test
   other-modules:
     Shiki.Analysis.BackendSpec
     Shiki.Analysis.HeuristicSpec
+    Shiki.EffectfulContractSpec
     Shiki.K8s.ClassifyJobSpec
     Shiki.K8s.CredentialExpirySpec
     Shiki.K8s.ExecCredentialSpec
@@ -150,6 +154,8 @@ test-suite shiki-core-test
     base >=4.21 && <5,
     containers ^>=0.7,
     directory ^>=1.3,
+    effectful ^>=2.7.1.0,
+    effectful-core ^>=2.7.1.1,
     ephemeral-pg >=0.2,
     filepath ^>=1.5,
     generic-lens >=2.2 && <2.4,

@@ -2,6 +2,7 @@ module Main (main) where
 
 import Shiki.Analysis.BackendSpec qualified as BackendSpec
 import Shiki.Analysis.HeuristicSpec qualified as HeuristicSpec
+import Shiki.EffectfulContractSpec qualified as EffectfulContractSpec
 import Shiki.K8s.ClassifyJobSpec qualified as ClassifyJobSpec
 import Shiki.K8s.CredentialExpirySpec qualified as CredentialExpirySpec
 import Shiki.K8s.ExecCredentialSpec qualified as ExecCredentialSpec
@@ -23,7 +24,8 @@ main =
   defaultMain $
     testGroup
       "shiki-core"
-      [ ConfigSpec.tests,
+      [ EffectfulContractSpec.tests,
+        ConfigSpec.tests,
         ProjectConfigSpec.tests,
         RunSpec.tests,
         RunListSpec.tests,

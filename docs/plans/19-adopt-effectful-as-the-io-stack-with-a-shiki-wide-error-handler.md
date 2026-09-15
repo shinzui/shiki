@@ -16,6 +16,11 @@ provenance:
       at: 2026-09-15T23:08:33Z
       mode: "update"
       note: "Adopt baikai-effectful 0.4.0.2 for the Analyzer interpreter; correct the Nix package-set findings"
+    - model: "claude-opus-5[1m]"
+      harness: "claude-code"
+      at: 2026-09-15T23:27:43Z
+      mode: "implement"
+      note: "Implementing EP-19: effectful adoption and the shiki-wide error handler"
 ---
 
 # Adopt effectful as the IO stack with a shiki-wide error handler
@@ -98,18 +103,19 @@ Use a checklist to summarize granular steps. Every stopping point must be docume
 even if it requires splitting a partially completed task into two ("done" vs. "remaining").
 This section must always reflect the actual current state of the work.
 
-### M1 — Prototype: dependencies and effectful contract tests
+### M1 — Prototype: dependencies and effectful contract tests — done 2026-09-15
 
-- [ ] Add `effectful-core ^>=2.7.1.1`, `effectful ^>=2.7.1.0`, and
-      `baikai-effectful ^>=0.4.0.2` to both cabal files.
-- [ ] Make the Nix package set provide effectful-core 2.7.1.2, effectful 2.7.1.0,
-      `strict-mutable-base` 2.x, `file-io`, and baikai-effectful 0.4.0.2 (update the
-      `haskell-nix` input first, then pin what is still missing in
-      `nix/haskell-overlay.nix`); `nix build` succeeds.
-- [ ] Add `shiki-core/test/Shiki/EffectfulContractSpec.hs` proving the seven library
-      behaviours listed in Milestone 1; wire it into the core test suite.
-- [ ] `cabal build all` warning-free, `cabal test all` green; decide promote or fall back;
-      commit.
+- [x] Add `effectful-core ^>=2.7.1.1`, `effectful ^>=2.7.1.0`, and
+      `baikai-effectful ^>=0.4.0.2` to both cabal files. (2026-09-15)
+- [x] Make the Nix package set provide effectful-core 2.7.1.2, effectful 2.7.1.0,
+      `strict-mutable-base` 2.0.0.0, and baikai-effectful 0.4.0.2 (`nix flake update
+      haskell-nix` changed nothing, so all four are pinned in `nix/haskell-overlay.nix`);
+      `nix build` succeeds and `./result/bin/shiki --version` prints
+      `shiki v0.1.0.0 (dirty)`. `file-io` needed no pin — see Surprises. (2026-09-15)
+- [x] Add `shiki-core/test/Shiki/EffectfulContractSpec.hs` proving the seven library
+      behaviours listed in Milestone 1; wire it into the core test suite. (2026-09-15)
+- [x] `cabal build all` warning-free, `cabal test all` green (63 + 108); all seven
+      contract facts hold, so the design is **promoted** unchanged; commit. (2026-09-15)
 
 ### M2 — Error types and the top-level handler
 
@@ -226,6 +232,63 @@ Findings from the research that shaped this plan (2026-09-15):
   `try @SomeException`, which also catches `UserInterrupt`, so pressing Ctrl-C while
   `shiki run` waits writes a `failed` row with the message `user interrupt` even though the
   Kubernetes Job keeps running.
+
+Findings from implementation:
+
+- Milestone 1, 2026-09-15: all seven contract facts hold on effectful-core 2.7.1.2 /
+  effectful 2.7.1.0 / GHC 9.12.4, so no design in Milestones 2–4 needed adjusting:
+
+  ```text
+    Shiki.EffectfulContract
+      trySync lets a typed error through:           OK
+      trySync catches ExitCode:                     OK
+      trySync does not catch UserInterrupt:         OK
+      bracket cleanup runs under throwError:        OK
+      a dynamic effect works inside withAsync:      OK
+      throwError in a withAsync child reaches wait:  OK
+      displayException has no backtrace:            OK
+  ```
+
+- `file-io` did not need a Nix pin, and the plan's reading of the evaluation expression was
+  wrong about it. The expression maps a `null` attribute to `absent`, and nixpkgs sets an
+  attribute to `null` exactly when GHC already ships the library. GHC 9.12.4 ships `file-io`
+  behind its bundled `directory-1.3.10.1`, so overriding it made Cabal abort:
+
+  ```text
+  Warning:
+      This package indirectly depends on multiple versions of the same package. This is very likely to cause a compile failure.
+        package directory (directory-1.3.10.1-648c) requires file-io-0.1.6-4839
+        package effectful (effectful-2.7.1.0) requires file-io-0.1.6-IkjZGACTP3H6A2ajwrVuaT
+  *** abort because of serious configure-time warning from Cabal
+  ```
+
+  Dropping the `file-io` entry from `nix/haskell-overlay.nix` fixed it. `strict-mutable-base`
+  really is 1.1.0.0 in the set (a real version, not `null`) and does need its 2.0.0.0 pin.
+
+- `nix flake update haskell-nix` produced no change to `flake.lock`, so that input still pins
+  baikai-effectful 0.4.0.1 and effectful 2.6.1.0. All four pins listed in Milestone 1 were
+  therefore added to `nix/haskell-overlay.nix` by hand, with hashes obtained ahead of the
+  build rather than by reading them off a failure:
+
+  ```bash
+  $ nix-prefetch-url --unpack https://hackage.haskell.org/package/effectful-2.7.1.0/effectful-2.7.1.0.tar.gz \
+      | tail -1 | xargs nix hash to-sri --type sha256
+  sha256-1jr7uWldG/qzNljv41c8ustRFNLnD9DuOFBmL3BYT6g=
+  ```
+
+- Declaring an effect needs `{-# LANGUAGE TypeFamilies #-}`. `GHC2024`, the project's
+  `default-language`, does not include it, so `type instance DispatchOf E = Dynamic` fails
+  with `Illegal family instance for 'DispatchOf'`. Every module that declares an effect
+  carries the pragma; it is not added to `default-extensions`, so the extension stays visible
+  at each declaration site.
+
+- `shiki-cli-test`'s `Shiki.Cli.Agent.Launch` case "debug path writes the prompt and exits
+  success" fails intermittently (once in roughly six runs, both before and after this
+  milestone's changes). Its `captureStdout` helper swaps the process's stdout file
+  descriptor with `hDuplicateTo`, and tasty's own progress output for the preceding test can
+  still be sitting in stdout's buffer when the swap happens, so it lands in the captured
+  file. Nothing in this plan touches that path — Milestone 1 changes only dependency bounds
+  and adds a shiki-core test module — so the flake is pre-existing and is left alone here.
 
 
 ## Decision Log
@@ -368,6 +431,24 @@ Record every decision made while working on the plan.
   under `throwError`, effects are usable from a thread started with `withAsync`, and so on)
   that are easy to get wrong and would silently regress on a library upgrade. Tests make
   them visible. Milestone 1 also proves the Nix build before any code depends on 2.7.
+  Date: 2026-09-15.
+
+- Decision: Promote the prototype. All seven Milestone 1 contract facts hold as written, and
+  `nix build` produces a working binary against the pinned 2.7 packages, so Milestones 2–6
+  proceed exactly as planned with no fallback to effectful 2.6 and no change to the heartbeat
+  design.
+  Rationale: The promote-or-fall-back rule in Milestone 1 makes this the decision point. The
+  evidence is `cabal test shiki-core-test -p EffectfulContract` (seven OK lines, recorded in
+  Surprises) and `./result/bin/shiki --version` from a `nix build`.
+  Date: 2026-09-15.
+
+- Decision: Do not pin `file-io` in `nix/haskell-overlay.nix`, contrary to Milestone 1's
+  instruction to supply it.
+  Rationale: GHC 9.12.4 already ships `file-io` behind its bundled `directory`, and adding a
+  second copy makes Cabal abort at configure time with "indirectly depends on multiple
+  versions of the same package". The plan's premise came from reading `absent` in the
+  evaluation expression, which prints `absent` both for a missing attribute and for the
+  `null` that nixpkgs uses to mean "GHC provides this". Evidence is in Surprises.
   Date: 2026-09-15.
 
 
