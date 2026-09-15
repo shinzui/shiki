@@ -2,61 +2,17 @@ packages:
   shiki-core
   shiki-cli
 
--- `kubernetes-api` and `kubernetes-api-client` come from codedownio/kubernetes-api.
--- The repository ships one cabal package per Kubernetes minor version (the cabal
--- package name is `kubernetes-api`, the version reflects the cluster version, e.g.
--- 134.0.1 for the 1.34 subdir). Pinned to the 1.34 client because EP-3's Decision
--- Log fixed on it.
-source-repository-package
-  type: git
-  location: https://github.com/codedownio/kubernetes-api
-  tag: bdb513ea31001be4feeff5f380e8860b4bb6fbdc
-  subdir:
-    kubernetes-api-1.34
-    kubernetes-api-client
-
--- The generated Kubernetes API code and handwritten client still explicitly
--- derive Typeable. GHC 9.12 auto-derives Typeable; pass the suppression as a
--- compiler program option so it lands after the dependency's own -Wall.
+-- The Kubernetes API code and handwritten client (`kubernetes-api` 134.0.1 and
+-- `kubernetes-api-client` from Hackage) still explicitly derive Typeable. GHC
+-- 9.12 auto-derives Typeable; pass the suppression as a compiler program option
+-- so it lands after the dependency's own -Wall.
 program-options
   ghc-options: -Wno-deriving-typeable
 
--- jose-jwt 0.10.0 (Hackage) imports `Data.ByteArray` from upstream `memory`, but
--- `crypton 1.1.2` uses `ram` while the Hackage jose-jwt release still uses `memory`.
--- Upstream jose-jwt's master branch swaps memory for ram via commit f93bd94
--- ("Update crypton to 1.1.0 and use ram package instead of memory"); pin to HEAD
--- of master until tekul/jose-jwt cuts a release that includes it.
-source-repository-package
-  type: git
-  location: https://github.com/tekul/jose-jwt
-  tag: 95697890390f696cdcf43fbfe8d67f7262fd72bf
-
--- hoauth2 has the same issue and no upstream fix exists. shinzui/hoauth2 is a
--- one-line fork of freizl/hoauth2 swapping memory for ram in hoauth2.cabal; pin
--- to the patch commit. Build via subdir because the repo is a multi-package
--- monorepo (hoauth2, hoauth2-tutorial, providers, ...).
-source-repository-package
-  type: git
-  location: https://github.com/shinzui/hoauth2
-  tag: 3fa57f9ffe6baa6ed98d58919481ebb33f3f4d0d
-  subdir: hoauth2
-
--- Allow newer constraints where dhall and hoauth2 lag behind the kubernetes-api
--- side of the dep tree. dhall 1.42 caps http-client-tls < 0.4 via its
--- use-http-client-tls flag (manual, can't be flipped); hoauth2 caps crypton < 1.1
--- but works fine against the local 1.1.2 fork. The Hackage `claude` library
--- (pulled in by baikai-claude) caps http-client-tls < 0.4 but builds fine
--- against 0.4; same for the `openai` library against base/text bumps.
+-- The Hackage `claude` library (pulled in by baikai-claude) caps
+-- http-client-tls < 0.4 as of claude 1.5.0 but builds fine against 0.4.
 allow-newer:
-  dhall:http-client-tls,
-  hoauth2:crypton,
-  claude:http-client-tls,
-  openai:http-client-tls
-
--- aeson 2.3 breaks too much of the surrounding dep tree (hoauth2, kubernetes-api
--- transitive deps). Pin to 2.2.x explicitly.
-constraints:
-  aeson < 2.3
+  claude:http-client-tls
 
 -- GHC is provided by the Nix devShell from `nix-haskell-flake` (currently
 -- pinned to ghc9124). Add a `with-compiler:` line here if you want

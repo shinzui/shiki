@@ -10,7 +10,6 @@
           (inputs.haskell-nix.lib.haskellExtension pkgs.haskell.lib.compose pkgs)
           (import ./nix/haskell-overlay.nix {
             inherit pkgs gitRev;
-            inherit (inputs) kubernetes-api-src jose-jwt-src hoauth2-src;
           });
       };
     in

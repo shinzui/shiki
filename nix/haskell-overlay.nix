@@ -1,8 +1,5 @@
 { pkgs
 , gitRev
-, kubernetes-api-src
-, jose-jwt-src
-, hoauth2-src
 }:
 let
   inherit (pkgs.haskell.lib.compose) doJailbreak dontCheck dontHaddock overrideCabal;
@@ -11,13 +8,6 @@ let
     configureFlags = (drv.configureFlags or [ ]) ++ [
       "--ghc-option=-Wno-deriving-typeable"
     ];
-  };
-
-  stageKubernetesLicense = drv: {
-    prePatch = (drv.prePatch or "") + ''
-      rm -f LICENSE
-      cp ${kubernetes-api-src}/kubernetes-api/LICENSE LICENSE
-    '';
   };
 
   stageRootFiles = drv: {
@@ -36,21 +26,43 @@ let
 in
 final: prev:
 {
+  # nixpkgs' Haskell set lags Hackage here: it ships kubernetes-api 135 (shiki
+  # targets the 1.34 client), and jose-jwt 0.10 / hoauth2 2.14, which still use
+  # `memory` instead of the `ram` package crypton 1.1 needs. Pull the Hackage
+  # releases that match cabal.project's plan.
   kubernetes-api =
     dontCheck (doJailbreak
-      (overrideCabal (drv: noDerivingTypeable drv // stageKubernetesLicense drv)
-        (final.callCabal2nix "kubernetes-api" "${kubernetes-api-src}/kubernetes-api/kubernetes-api-1.34" { })));
+      (overrideCabal noDerivingTypeable
+        (final.callHackageDirect
+          {
+            pkg = "kubernetes-api";
+            ver = "134.0.1";
+            sha256 = "sha256-vFkrnALeuxpUqhW+Gpe65M73ycVx4gBhSOjHIj1oOjQ=";
+          }
+          { })));
 
   kubernetes-api-client =
-    dontCheck (doJailbreak
-      (overrideCabal (drv: noDerivingTypeable drv // stageKubernetesLicense drv)
-        (final.callCabal2nix "kubernetes-api-client" "${kubernetes-api-src}/kubernetes-api/kubernetes-api-client" { })));
+    dontCheck (doJailbreak (overrideCabal noDerivingTypeable prev.kubernetes-api-client));
 
   jose-jwt =
-    dontCheck (doJailbreak (final.callCabal2nix "jose-jwt" jose-jwt-src { }));
+    dontCheck (doJailbreak
+      (final.callHackageDirect
+        {
+          pkg = "jose-jwt";
+          ver = "0.11.0";
+          sha256 = "sha256-b2yixchUxx6AqCB07yq5to8nFG9h2tTJQZLLB/GWXmA=";
+        }
+        { }));
 
   hoauth2 =
-    dontCheck (doJailbreak (final.callCabal2nix "hoauth2" "${hoauth2-src}/hoauth2" { }));
+    dontCheck (doJailbreak
+      (final.callHackageDirect
+        {
+          pkg = "hoauth2";
+          ver = "2.15.2";
+          sha256 = "sha256-OKs2b3MGPq5mKWy1T0qYtaGtEp9v638Ynm4TNmBqNYw=";
+        }
+        { }));
 
   # `dontHaddock` below: shiki ships a CLI, not a library anyone reads Haddock
   # for, and these are exactly the derivations that rebuild on every `nix build`
