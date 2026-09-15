@@ -39,12 +39,14 @@ THE RUNS TABLE COLUMNS
   service_name          Logical service name from the config.
   command               argv passed to the container (text[]).
   namespace             The Kubernetes namespace the Job ran in.
-  job_name              <service>-<timestamp>-<rand>, unique per run.
+  job_name              <service>-oneoff-<timestamp>-<rand>, unique per
+                        run.
   image                 Image digest read from the live Deployment at
                         submit time.
   status                pending | running | succeeded | failed.
-  exit_code             The container's exit code; NULL on pending /
-                        running and on pre-container failures.
+  exit_code             0 for a succeeded Job, 1 for a failed one; NULL
+                        on pending / running, on a timed-out wait, and
+                        on failures before the Job reached a verdict.
   started_at            UTC timestamp of insert.
   ended_at              UTC timestamp of finalize; NULL while pending /
                         running.

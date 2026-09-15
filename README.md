@@ -15,7 +15,7 @@ PostgreSQL.
 
 ```console
 $ shiki run billing -- reconcile-invoices --since 2026-09-01
-run 3f9c2a1e Succeeded job=billing-oneoff-20260915-140211-qhxkvm
+run 3f9c2a1e-7b4d-4c1a-9e2f-5d8a6b0c3e71 Succeeded job=billing-oneoff-20260915-140211-qhxkvm
 
 $ shiki runs list
 ID        STARTED              SERVICE  STATUS     DURATION  EXIT  COMMAND
@@ -44,8 +44,8 @@ b71d04c9  2026-09-14 09:30:45  search   failed     38s       1     reindex --all
 - **Works well in the terminal.** Pick runs and services with `fzf`, get shell
   completions for bash, zsh, and fish, and read guides with `shiki help`.
 - **Works with AI agents.** `shiki agent assist` gives Claude Code or Codex
-  (or a one-shot Anthropic or OpenAI API call) your services, recent runs,
-  and cluster context up front.
+  (or a one-shot Anthropic or OpenAI API call) your services and recent
+  runs up front.
 
 ## How a run works
 
@@ -122,8 +122,8 @@ shiki completions bash|zsh|fish         # shell completions
 ```
 
 Wherever `[id]` or `[name]` is optional, leaving it out opens an `fzf`
-picker. Run IDs can be shortened to any unambiguous prefix of 8 or more
-characters.
+picker. Run IDs can be shortened to any unambiguous prefix, such as the
+8-character ID that `shiki runs list` shows.
 
 ## Documentation
 

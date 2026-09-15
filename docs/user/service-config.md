@@ -23,7 +23,7 @@ operator-facing reference for the fields you actually write.
 
 | Field                  | Type                                | Meaning                                                                                                                                                                  |
 |------------------------|-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `name`                 | `Text`                              | The canonical short name. Must match the filename: `services/my-svc.dhall` ⇒ `name = "my-svc"`.                                                                          |
+| `name`                 | `Text`                              | The canonical short name, recorded as the run's `service_name` and used in the Job name. Keep it equal to the filename (`services/my-svc.dhall` ⇒ `name = "my-svc"`); shiki does not enforce this, but `runs analyze` finds a run's service file by this name. |
 | `defaultNamespace`     | `Text`                              | Namespace to introspect and submit Jobs into. Overridable per-run with `--namespace`.                                                                                    |
 | `detectFromDeployment` | `Text`                              | Name of the live Deployment shiki should mirror. shiki reads its pod spec at run time to pick up the current image digest, ConfigMap names, Secret names, etc.            |
 | `containerName`        | `Text`                              | Which container inside that Deployment to mirror. Needed when there is more than one (e.g. a `cloud-sql-proxy` sidecar alongside the application container).             |
@@ -57,7 +57,7 @@ let EnvSource =
 let EnvVar = { name : Text, source : EnvSource }
 ```
 
-Three shapes:
+Four shapes:
 
 - `ConfigMap { key = "PROJECT_ID" }` — read from the ConfigMap shiki
   detected on the live Deployment, by key.
@@ -135,9 +135,12 @@ See [Error analysis → Declaring a default per service](./error-analysis.md#dec
 The checked-in [`services/mls-service-v2.dhall`](../../services/mls-service-v2.dhall)
 is the canonical worked example. It covers:
 
-- `cloud-sql-proxy` init container with `restartable = True`,
-- ConfigMap + Secret-sourced env vars,
-- a literal env var built from `$(VAR)` interpolation,
+- `cloud-sql-proxy` init container with `restartable = True`, whose
+  `args` use `$(VAR)` interpolation to reference its own env vars,
+- a `kafka-auth-server` init container whose image is copied from the
+  live Deployment with `DeploymentInitImage`,
+- ConfigMap + Secret-sourced env vars, and `DeploymentEnv` vars copied
+  from the live Deployment,
 - a `nodeSelector` requiring the GKE metadata server,
 - the Heuristic analyzer set as the service default.
 

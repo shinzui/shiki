@@ -56,7 +56,7 @@ shiki help services | less
 
 ## Topics
 
-Six topics ship today. Each is a condensed restatement of the
+Seven topics ship today. Each is a condensed restatement of the
 operator-guide material under `docs/user/`; those pages remain the
 canonical reference, and every topic ends with a `Full reference:` line
 pointing back to the page (or pages) it condenses. The catalog is not a
@@ -70,6 +70,7 @@ looks up mid-session, so there is no topic for
 |-------------|------------------------------------------|-----------------------------------------|
 | `services`  | Service configuration: `services/*.dhall`| [service-config.md](./service-config.md)|
 | `runs`      | Run lifecycle and the `runs` table       | [getting-started.md](./getting-started.md), [commands.md](./commands.md) |
+| `long-runs` | Running, watching, and recording long Jobs | [commands.md](./commands.md)          |
 | `analyzers` | Failure analysis backends                | [error-analysis.md](./error-analysis.md)|
 | `agent`     | `shiki agent assist`                     | [agent-assist.md](./agent-assist.md)    |
 | `schema`    | Postgres schema configuration            | [schema.md](./schema.md)                |
@@ -83,6 +84,7 @@ HELP TOPICS
 
   services   Service configuration: services/*.dhall
   runs       Run lifecycle and the runs table
+  long-runs  Running, watching, and recording long Jobs
   analyzers  Failure analysis backends
   agent      shiki agent assist
   schema     Postgres schema configuration

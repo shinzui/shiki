@@ -25,7 +25,7 @@ currently carries a PostgreSQL connection string:
 
 ```dhall
 let Schema =
-      https://raw.githubusercontent.com/shinzui/shiki/main/schema/package.dhall
+      https://raw.githubusercontent.com/shinzui/shiki/master/schema/package.dhall
 
 let mkEnv = \(url : Text) -> { databaseUrl = url } : Schema.Environment
 
@@ -62,6 +62,15 @@ The active shiki environment is resolved in this order:
 This selection controls which environment `shiki config show` displays and which database
 `run`, `runs`, and `agent` use when `--db` is not supplied.
 
+If a `shiki.dhall` is found but the selected name is not one of its declared
+environments, database commands exit with:
+
+```text
+shiki: environment <name> is not declared in <path> (declared: prod, staging)
+```
+
+`SHIKI_ENV` and `--env` have no effect when no `shiki.dhall` is found.
+
 For example:
 
 ```bash
@@ -90,8 +99,9 @@ Use `--db` for a one-off override:
 shiki --env staging --db postgresql://localhost/shiki runs list
 ```
 
-In that example, `--env staging` still selects the active project environment
-for configuration, but `--db` wins for the actual database connection.
+In that example, `--db` wins for the database connection and `--env staging`
+is not consulted at all by database commands, so it is not checked against the
+declared environments either.
 
 If the active environment has no usable database URL and neither fallback
 environment variable is set, shiki exits before opening a pool:

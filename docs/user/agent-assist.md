@@ -50,8 +50,9 @@ The snapshot includes:
   rendered with the same `--analyzer=...` vocabulary you'd use on the
   command line (`heuristic`, `baikai:<model-id>`, `none`).
 - **Recent runs** — up to the last twenty rows from the `runs` table.
-  Each row contributes its 8-character id prefix, service name, status,
-  and current `error_summary` (or `-`).
+  Each row contributes its 8-character id prefix, service name, displayed
+  status (`unwatched` for an unfinished row with no recent watcher
+  heartbeat), and current `error_summary` (or `-`).
 - **Operator hints** — anything you pass via `--service`, `--run`,
   `--prompt`. Each one lands as a markdown bullet inside the prompt's
   hints block. With none of the three set, the block renders as
@@ -65,7 +66,9 @@ shiki agent assist --debug --service my-service --run abc12345
 ```
 
 `--debug` prints the system prompt to stdout and exits `0` without
-spawning anything.
+spawning anything. It still needs a database: like every session, it
+resolves a connection string and applies migrations before gathering the
+recent runs, so it fails if no database is configured.
 
 ## Providers
 
@@ -103,13 +106,16 @@ export SHIKI_AGENT_PROVIDER=claude-cli
 export SHIKI_AGENT_MODEL=claude-sonnet-4-6
 ```
 
-A typo in either variable exits with:
+An unrecognized provider, from `--provider` or `SHIKI_AGENT_PROVIDER`,
+exits with:
 
 ```
 shiki: unknown agent provider '<x>'. Expected one of: claude-cli, codex-cli, anthropic, openai.
 ```
 
-…before any context-gathering or subprocess work happens.
+…before any context-gathering or subprocess work happens. The provider
+name is matched case-insensitively. shiki does not validate the model id;
+an unknown model is reported by the provider itself.
 
 ## Session safety policy
 
@@ -165,6 +171,7 @@ shiki agent assist [--provider PROVIDER] [--model MODEL]
 - Interactive providers return the spawned CLI's exit code.
 - API providers exit `0` on success, non-zero on API failure (the error
   is printed to stderr as `shiki: agent api call failed: ...`).
-- `--debug` always exits `0`.
+- `--debug` exits `0` once the prompt is rendered; it exits non-zero
+  earlier if the database cannot be resolved or migrated.
 - An invalid `--provider` / `SHIKI_AGENT_PROVIDER` exits non-zero before
   the session would have started.

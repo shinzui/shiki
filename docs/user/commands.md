@@ -136,14 +136,17 @@ shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...
 **Exit codes:**
 - `0` — the Job reached `Succeeded`.
 - non-zero — the Job failed, was killed by Kubernetes (timeout / backoff
-  limit), or submission itself threw. In every failure path shiki writes
-  a `failed` row before exiting.
+  limit), or submission itself threw. Once the run row exists, every failure
+  path finalizes it as `failed` before exiting. Failures that happen before
+  the row is inserted — the service Dhall file does not load, or the live
+  Deployment cannot be read — exit without recording a run.
 
-**Output:** one line. A Job that ran to a verdict prints
-`run <id> Succeeded job=<job-name>` or `run <id> Failed job=<job-name>`.
-A run that never got a verdict — submission threw, the API call failed,
-polling died — prints `FAILED run <id>: <message>` instead. With
-`--no-wait`, prints `submitted job <job-name> (run <id>)`.
+**Output:** one line, where `<id>` is the run's full UUID. A Job that ran to
+a verdict prints `run <id> Succeeded job=<job-name>` or
+`run <id> Failed job=<job-name>`. A run that never got a verdict —
+submission threw, the API call failed, polling died — prints
+`FAILED run <id>: <message>` instead. With `--no-wait`, prints
+`submitted job <job-name> (run <id>)`.
 
 The wait path polls at 5-second intervals for up to 96 hours (345 600
 seconds) and records a watcher heartbeat in PostgreSQL immediately and
@@ -156,18 +159,13 @@ removed while scaling down a node would fail the whole run with
 `BackoffLimitExceeded`; the annotation keeps the autoscaler off that node
 until the Job ends.
 
-If the waiting `shiki run` process dies before the Job ends (terminal
-closed, machine asleep, process killed), the row stays `running`. Run
-`shiki runs sync` to record what the Job actually did.
-
-The Job's pod carries `cluster-autoscaler.kubernetes.io/safe-to-evict:
-"false"`. The Job has `backoffLimit: 0`, so a pod the cluster autoscaler
-removed while scaling down a node would fail the whole run with
-`BackoffLimitExceeded`; the annotation keeps the autoscaler off that node
-until the Job ends.
+A Job that ends in failure is recorded with `exit_code = 1`, a succeeded Job
+with `0`, and a timed-out wait with no exit code; shiki does not read the
+container's own exit status.
 
 If the waiting `shiki run` process dies before the Job ends (terminal
-closed, machine asleep, process killed), the row stays `running`. Run
+closed, machine asleep, process killed), the stored row stays `running` and
+displays as `unwatched` once its heartbeat is more than five minutes old. Run
 `shiki runs sync` to record what the Job actually did.
 
 ## `shiki runs list`
@@ -198,7 +196,7 @@ stderr; run `shiki runs sync [ID]` to read the cluster's state.
 ## `shiki runs show [ID]`
 
 Print one `runs` row as pretty JSON. `ID` may be the full UUID or any
-unambiguous 8+ character prefix. Empty match → `no run matching <id>` on
+unambiguous prefix (the 8-character id `runs list` shows always works). Empty match → `no run matching <id>` on
 stderr and exit 1; multiple matches → `ambiguous id prefix <id>` on stderr
 and exit 1.
 
@@ -220,11 +218,12 @@ print `(no log captured)`. `ID` is optional — omit it to pick from
 an `fzf` picker. Id resolution failures (`no run matching <id>`,
 `ambiguous id prefix <id>`) print on stderr and exit 1.
 
-The tail is captured at run-finalize time: shiki fetches up to 1 000
-lines / 256 KiB of the failing pod's logs into memory, persists the
-last 200 lines / 64 KiB into `runs.log_tail`, and discards the rest. The
-wider in-memory buffer is what the inline Heuristic analyzer looks at on
-the wait-path; the stored tail is what `shiki runs analyze` reads later.
+The tail is captured when the run is finalized, whether the Job succeeded
+or failed: shiki fetches up to 1 000 lines / 256 KiB of the Job pod's logs
+into memory, persists the last 200 lines / 64 KiB into `runs.log_tail`, and
+discards the rest. For a failed Job, the wider in-memory buffer is what the
+inline Heuristic analyzer looks at (on the wait path and in `shiki runs
+sync`); the stored tail is what `shiki runs analyze` reads later.
 
 ## `shiki runs error [ID]`
 
@@ -334,7 +333,7 @@ shiki config init [--schema-ref REF] [--output PATH] [--default-environment NAME
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--schema-ref REF` | `main` | Git tag or commit used in `https://raw.githubusercontent.com/shinzui/shiki/<REF>/schema/package.dhall`. |
+| `--schema-ref REF` | `master` | Git branch, tag, or commit used in `https://raw.githubusercontent.com/shinzui/shiki/<REF>/schema/package.dhall`. |
 | `--output PATH` | `shiki.dhall` | File to create. Existing files are not overwritten. |
 | `--default-environment NAME` | `staging` | Initial `defaultEnvironment` value in the generated file. |
 
@@ -373,8 +372,14 @@ shiki agent assist [--provider PROVIDER] [--model MODEL]
 | `--provider` | `SHIKI_AGENT_PROVIDER`  | `claude-cli`|
 | `--model`    | `SHIKI_AGENT_MODEL`     | provider-specific |
 
-A typo in either env var exits with
+An unrecognized provider, from `--provider` or `SHIKI_AGENT_PROVIDER`, exits
+with
 `shiki: unknown agent provider '<x>'. Expected one of: claude-cli, codex-cli, anthropic, openai.`
+The model id is not validated by shiki; it is passed to the provider as is.
+
+`agent assist` is a database subcommand, including with `--debug`: it
+resolves a connection string and applies migrations before gathering the
+session context.
 
 ## `shiki completions`
 
@@ -408,7 +413,7 @@ Bash completion needs a Bash built with programmable completion (the
 |---------------------------|------------------------|------------------------------------------------------------------------|
 | `SHIKI_DATABASE_URL`      | every database subcommand | Postgres connection string fallback after `--db` and active `shiki.dhall` environment URL. |
 | `PG_CONNECTION_STRING`    | same                   | Final fallback. Set by the `nix develop` shell hook to a project-local socket. |
-| `SHIKI_DB_SCHEMA`         | every subcommand       | Postgres schema for shiki's tables.                                    |
+| `SHIKI_DB_SCHEMA`         | every database subcommand | Postgres schema for shiki's tables.                                    |
 | `SHIKI_ENV`               | `config show`, `run`, `runs`, `agent` | Active project environment when `--env` is absent.                      |
 | `SHIKI_AGENT_PROVIDER`    | `shiki agent assist`   | One of `claude-cli`, `codex-cli`, `anthropic`, `openai`.                |
 | `SHIKI_AGENT_MODEL`       | `shiki agent assist`   | Provider-specific model id.                                            |

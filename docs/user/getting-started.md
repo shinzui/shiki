@@ -103,7 +103,8 @@ checkout already ships [`services/mls-service-v2.dhall`](../../services/mls-serv
 as a worked example — copy it, rename it, and replace the fields that
 do not match your service. The minimum you need to fill in:
 
-- `name` — the service's short name (must match the filename).
+- `name` — the service's short name (keep it equal to the filename; shiki
+  records runs under this name).
 - `defaultNamespace` — the namespace to introspect and submit Jobs into.
 - `detectFromDeployment` — the Deployment name shiki should mirror.
   shiki reads the live Deployment's pod spec at run time, so it picks up
@@ -142,9 +143,10 @@ Walkthrough of what shiki does between the `--` and the first log line:
 4. Inserts a row into `runs` with status `pending`, then flips it to
    `running`.
 5. Submits the Job to Kubernetes.
-6. Streams the Job to completion (unless you passed `--no-wait`), then
-   completes the `runs` row with the final status, exit code, duration,
-   and a captured log tail.
+6. Polls the Job every 5 seconds until it finishes (unless you passed
+   `--no-wait`), then completes the `runs` row with the final status, exit
+   code, duration, and a captured log tail. Logs are not streamed while the
+   Job runs; read them afterwards with `shiki runs logs`.
 
 Common variations:
 
@@ -162,8 +164,9 @@ shiki runs logs <id-prefix>        # captured log tail
 shiki runs error <id-prefix>       # one-line error summary, if any
 ```
 
-Every `runs` subcommand accepts the **8-character prefix** of the run id
-shown in `runs list` — typing the full UUID is rarely necessary.
+Every `runs` subcommand accepts any unambiguous prefix of the run id, such
+as the **8-character id** shown in `runs list` — typing the full UUID is
+rarely necessary.
 
 ## Authentication
 

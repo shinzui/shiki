@@ -25,14 +25,14 @@ One row per submitted run. Written by `shiki run`, read by the
 
 | Column                 | Type           | Notes                                                                                                                                                      |
 |------------------------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                   | `uuid`         | Primary key. Surfaced to operators as an 8-character prefix in `runs list`.                                                                                |
+| `id`                   | `uuid`         | Primary key. Surfaced to operators as an 8-character prefix in `runs list`; commands accept any unambiguous prefix.                                                                                |
 | `service_name`         | `text`         | The `name` field from the service's Dhall config.                                                                                                          |
 | `command`              | `text[]`       | Everything passed after `--` on the `shiki run` command line.                                                                                              |
 | `namespace`            | `text`         | The namespace the Job was submitted into (may differ from the service default if `--namespace` was used).                                                  |
 | `job_name`             | `text`         | `<service>-oneoff-YYYYMMDD-HHMMSS-<6 random lowercase letters>` — unique per run.                                                                                                            |
-| `image`                | `text`         | Image digest read from the live Deployment at submit time. `NULL` only if introspection itself failed.                                                     |
+| `image`                | `text`         | Image digest read from the live Deployment at submit time. The column is nullable, but shiki always fills it: a run whose Deployment cannot be read is never inserted. |
 | `status`               | `text`         | One of `pending`, `running`, `succeeded`, `failed`. Enforced by `CHECK` constraint.                                                                        |
-| `exit_code`            | `integer`      | The container's exit code on `succeeded` / `failed`; `NULL` on `pending` / `running` and on failures that happened before the container could exit.        |
+| `exit_code`            | `integer`      | `0` for a succeeded Job and `1` for a failed one (shiki does not read the container's own exit status); `NULL` on `pending` / `running`, on a timed-out wait, and on failures that happened before the Job reached a verdict. |
 | `started_at`           | `timestamptz`  | Time shiki inserted the row.                                                                                                                                |
 | `ended_at`             | `timestamptz`  | Time shiki finalized the row; `NULL` while still `pending` / `running`.                                                                                    |
 | `duration_ms`          | `bigint`       | `ended_at - started_at`, rounded to the nearest millisecond. `NULL` until finalized.                                                                       |

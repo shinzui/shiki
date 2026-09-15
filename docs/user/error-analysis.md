@@ -52,8 +52,8 @@ The Heuristic analyzer currently understands:
 
 - Python tracebacks — the final exception line of the last
   `Traceback (most recent call last):` block.
-- JVM exception chains — `Exception in thread "X"` plus the latest
-  `Caused by:` line.
+- JVM exception chains — `Exception in thread "X"` plus the first
+  `Caused by:` line after it.
 - Go panics — the `panic:` header plus the preceding `goroutine`
   context if present.
 - Rust panics — `thread '...' panicked at ...`.
@@ -141,9 +141,10 @@ Notable error paths:
 
 - `shiki: analyzer disabled (backend = None)` — `--analyzer=none` was
   used (or the service's default is `None` and no override was passed).
-- `shiki: unknown analyzer override: ...` — typo in `--analyzer`.
-  Accepted forms: `heuristic`, `none`, `baikai:<model-id>` with a
-  non-empty model id.
+- `option --analyzer: expected 'heuristic', 'none', or 'baikai:<model-id>'`
+  followed by the usage text — typo in `--analyzer`, rejected by the
+  argument parser before shiki connects to anything. Accepted forms:
+  `heuristic`, `none`, `baikai:<model-id>` with a non-empty model id.
 - `shiki: baikai backend failed: unknown baikai model: <id>` — the model
   id is not one of the three this build dispatches (see
   [Baikai (LLM)](#baikai-llm)). Caught before any network call.
