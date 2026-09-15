@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- fix(shiki-cli): `shiki config init` now defaults `--schema-ref` to
+  `master`, the repository's default branch. The previous `main` default
+  generated a schema import URL that returned 404.
+
 ### Added
 
 - feat(shiki-cli): waiting `shiki run` processes now record a database-clock

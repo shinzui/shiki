@@ -10,7 +10,7 @@
      databaseUrl = env:SHIKI_STAGING_DATABASE_URL as Text
 -}
 let Schema =
-      https://raw.githubusercontent.com/shinzui/shiki/main/schema/package.dhall
+      https://raw.githubusercontent.com/shinzui/shiki/master/schema/package.dhall
 
 let mkEnv = \(url : Text) -> { databaseUrl = url } : Schema.Environment
 

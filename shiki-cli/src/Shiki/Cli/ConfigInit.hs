@@ -24,10 +24,11 @@ data ConfigInitOptions = ConfigInitOptions
   }
   deriving stock (Generic, Eq, Show)
 
--- | Temporary until release tooling injects a pushed tag or commit. Operators
---   can and should pass @--schema-ref@ to pin the generated URL explicitly.
+-- | The repository's default branch. Temporary until release tooling injects a
+--   pushed tag or commit. Operators can and should pass @--schema-ref@ to pin
+--   the generated URL explicitly.
 defaultSchemaRef :: Text
-defaultSchemaRef = "main"
+defaultSchemaRef = "master"
 
 renderProjectConfig :: ConfigInitOptions -> Text
 renderProjectConfig opts =

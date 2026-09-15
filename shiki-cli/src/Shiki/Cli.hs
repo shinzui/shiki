@@ -269,7 +269,7 @@ configInitOptionsParser =
           <> Opt.metavar "REF"
           <> Opt.value defaultSchemaRef
           <> Opt.showDefault
-          <> Opt.help "Git tag or commit to use in the GitHub raw schema URL"
+          <> Opt.help "Git branch, tag, or commit to use in the GitHub raw schema URL"
       )
     <*> Opt.strOption
       ( Opt.long "output"
