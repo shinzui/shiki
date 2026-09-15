@@ -13,3 +13,4 @@ result-*
 CLAUDE.local.md
 db/
 shiki.dhall
+.envrc.local
