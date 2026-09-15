@@ -17,6 +17,11 @@ provenance:
       at: 2026-09-11T19:58:55Z
       mode: "implement"
       note: "Implement milestones 6-10: hardened fzf core, shared run formatting, typed two-phase resolvers"
+    - model: "claude-opus-5[1m]"
+      harness: "claude-code"
+      at: 2026-09-15T21:52:24Z
+      mode: "update"
+      note: "Refresh against HEAD dc1bd14 (unwatched status, runs sync, pg-migrate); reopen with M11 for missing service config"
 ---
 
 # Integrate fzf for interactive ID selection
@@ -24,16 +29,22 @@ provenance:
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries,
 Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
-**Status (2026-09-11): complete.** Milestones 1–5 landed on 2026-05-28 (commits `811c9db`,
-`818e39b`, `cd32aa6`, `aa111b2`, `d51aecc`) and deliver the feature. An architecture review
-on 2026-09-11 found a real bug (a picker query that matches nothing reports "no runs
-recorded yet"), a stringly-typed seam between the picker and the command handlers, fzf
-detection in the wrong place, and several smaller defects. Milestones 6–10 (commits
-`66f8de2`, `2ccbeac`, `8ea5426`, `b18ef30`, and the M10 commit) fix all of them, plus a
+**Status (2026-09-15): reopened for milestone 11.** Milestones 1–5 landed on 2026-05-28
+(commits `811c9db`, `818e39b`, `cd32aa6`, `aa111b2`, `d51aecc`) and deliver the feature. An
+architecture review on 2026-09-11 found a real bug (a picker query that matches nothing
+reports "no runs recorded yet"), a stringly-typed seam between the picker and the command
+handlers, fzf detection in the wrong place, and several smaller defects. Milestones 6–10
+(commits `66f8de2`, `2ccbeac`, `8ea5426`, `b18ef30`, `a23b53e`) fix all of them, plus a
 pre-existing hang in `shiki runs list` found along the way. Milestones 1–5 describe the
 first implementation; where they disagree with milestones 6–10, milestones 6–10 win. The
 durable decisions are recorded in
 [ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md).
+
+A refresh on 2026-09-15 against `HEAD` `dc1bd14` found the feature intact after later work
+(the `unwatched` display status, `shiki runs sync`, and the pg-migrate cutover) and brought
+Context and Orientation and the interfaces up to date. It also found that one resolution
+failure still escapes ADR 2's rule: `shiki service show <missing-name>` dies with an
+uncaught `IOException` dump instead of a typed message. Milestone 11 fixes that.
 
 
 ## Purpose / Big Picture
@@ -80,6 +91,11 @@ Milestones 6–10 keep that behaviour and make it correct and honest. After them
 - A picked run is used as-is; shiki no longer throws the fetched row away and re-queries it
   by id text.
 
+Milestone 11 finishes that last point for services: after it, `shiki service show nope`
+(with no `services/nope.dhall`) prints `shiki: no service config at services/nope.dhall` on
+stderr and exits 1, instead of `shiki: Uncaught exception …IOException…` followed by a
+Haskell backtrace. A config that exists but does not parse still reports Dhall's own error.
+
 The runs picker reads from whichever database the invocation is routed to: the active
 `shiki.dhall` environment (or `--db`, `SHIKI_DATABASE_URL`, `PG_CONNECTION_STRING`, in
 that order of fallback; see
@@ -102,6 +118,8 @@ A reader can see the finished work by:
 5. Running `env PATH=/usr/bin "$(cabal list-bin shiki)" --db postgresql://127.0.0.1:1/none
    runs show </dev/null`: shiki prints `shiki: no run id given and fzf is not available`
    and exits 1, without any connection error.
+6. Running `"$(cabal list-bin shiki)" service show nope`: shiki prints
+   `shiki: no service config at services/nope.dhall` and exits 1 (after milestone 11).
 
 The scope stays limited to read paths. `shiki run SERVICE -- ARG...` is **not** changed:
 making `SERVICE` optional collides with the trailing positional `commandArgs` list (see
@@ -268,6 +286,28 @@ This section must always reflect the actual current state of the work.
 - [x] Write [ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md); fill
       in Outcomes & Retrospective; commit. [2026-09-11]
 
+### Refresh (2026-09-15, `HEAD` `dc1bd14`)
+
+- [x] Review the ten commits (of 21) since M10 (`a23b53e`) that touched this plan's files;
+      record what changed in Surprises & Discoveries. [2026-09-15]
+- [x] Re-verify: `cabal build all` warning-free, `cabal test shiki-cli-test` reports
+      `All 107 tests passed`, matrix row 10 still prints the fzf message with an
+      unreachable `--db`. [2026-09-15]
+- [x] Re-probe the open follow-ups: `service show <missing>` still dumps an `IOException`;
+      an unreachable database with a positional id now fails inside pg-migrate;
+      `shiki-core/src/Shiki/Analysis/Backend.hs` is now fourmolu-clean. [2026-09-15]
+- [x] Update Context and Orientation, the acceptance matrix, and the module signatures to
+      the current tree; add milestone 11. [2026-09-15]
+
+### M11 — Typed failure for a missing service config
+
+- [ ] Add `ServiceConfigNotFound !FilePath` to `ServiceLookupFailure`, `serviceConfigPath`,
+      and `resolveServiceIn`; make the `ServiceByName` path check the file exists.
+- [ ] Use `serviceConfigPath` in `serviceShowOne` in `shiki-cli/src/Shiki/Cli.hs`.
+- [ ] Extend `ServiceSpec` (rendering, existing name, missing name).
+- [ ] Update matrix row 15, `docs/user/commands.md`, and `CHANGELOG.md`.
+- [ ] Build warning-free, tests green, manual check of rows 14, 15, 16, 18; commit.
+
 
 ## Surprises & Discoveries
 
@@ -404,6 +444,57 @@ implementation. Provide concise evidence.
   [ADR 1](../adr/1-follow-haskell-jitsurei-conventions.md) after this plan was reopened, so
   the plan's "no ADR corpus" statements were out of date. `mori.dhall` still declares no
   profiled ADR bundle, so ADRs follow the plain Markdown convention of ADR 1.
+
+- 2026-09-15 (refresh): Later plans changed the resolver's signatures without changing its
+  behaviour. `docs/plans/17-mark-runs-that-no-shiki-process-is-watching-as-unwatched.md`
+  (commits `9e35a4e`, `52f66d9`) made the run table show `unwatched` for a `pending` or
+  `running` row with no watcher heartbeat in five minutes, judged against the database's
+  clock. So `runColumns`, `renderTable`, and `formatRunCandidates` now take an `observedAt ::
+  UTCTime` first, `lookupRun` takes it after the `CliEnv`, and `withRun` reads it with
+  `databaseNowStatement` inside the environment and passes it to the handler
+  (`CliEnv -> UTCTime -> RunRecord -> IO ()`). `doShow` prints an "is unwatched" hint on
+  stderr. The picker therefore shows `unwatched` rows too, which the unit test
+  `formatRunCandidates displays an unwatched unfinished row` covers.
+
+- 2026-09-15 (refresh): Commit `048235c` added `shiki runs sync [ID]`. An omitted id means
+  "sync every unfinished run", not "open a picker", so `RunsSync Nothing` goes straight to
+  `withEnv syncRuns`, while `RunsSync (Just id)` reuses `withRun` with `readRunOpts` and a
+  `Just`, which never probes fzf. Its help text says "syncs every unfinished run if omitted".
+
+- 2026-09-15 (refresh): Commit `8dff3db` moved migrations to pg-migrate;
+  `Shiki.Cli.Env.withCliEnv` now calls `runMigrations cs schema` (the connection string,
+  not the pool). The ordering fix of M8 is unaffected: with `env PATH=/usr/bin` and
+  `--db postgresql://127.0.0.1:1/none`, `runs show` still prints
+  `shiki: no run id given and fzf is not available` with exit 1. With a positional id and the
+  same unreachable database, the failure now comes from the migration step:
+
+  ```text
+  shiki: Uncaught exception ghc-internal:GHC.Internal.IO.Exception.IOException:
+
+  user error (shiki: migration failed for schema shiki: could not inspect migration history: NetworkingConnectionError "connection to server at \"127.0.0.1\", port 1 failed: Connection refused …")
+  ```
+
+- 2026-09-15 (refresh): `shiki service show <missing-name>` is still the one resolution
+  failure outside the typed renderer. `resolveService (ServiceByName n)` returns `Right n`
+  without looking, and `serviceShowOne` lets `loadServiceConfig`'s exception escape:
+
+  ```text
+  $ "$(cabal list-bin shiki)" service show nope-missing; echo "exit=$?"
+  shiki: Uncaught exception ghc-internal:GHC.Internal.IO.Exception.IOException:
+
+  services/nope-missing.dhall: openFile: does not exist (No such file or directory)
+
+  HasCallStack backtrace:
+    ioError, called at libraries/ghc-internal/src/GHC/Internal/Foreign/C/Error.hs:291:5 in ghc-internal:GHC.Internal.Foreign.C.Error
+
+  exit=1
+  ```
+
+- 2026-09-15 (refresh): `shiki-core/src/Shiki/Analysis/Backend.hs` was formatted by commit
+  `d005672`, so that follow-up is closed. `docs/adr/` now also holds
+  [ADR 3](../adr/3-model-run-watcher-liveness-as-a-display-only-heartbeat.md) and
+  [ADR 4](../adr/4-use-pg-migrate-with-per-shiki-schema-ledgers.md); neither changes the
+  resolver design. The CLI suite has 107 tests.
 
 
 ## Decision Log
@@ -630,6 +721,37 @@ Record every decision made while working on the plan.
   database, the `computeWidths` fix) stay here.
   Date: 2026-09-11.
 
+- Decision: Reopen the plan with milestone 11 to give a missing service config a typed
+  failure (`ServiceConfigNotFound`), checked in `resolveService` before `serviceShowOne`
+  loads the file.
+  Rationale: The user asked to refresh the plan and then implement what it still needs.
+  ADR 2 says every resolution failure is rendered on stderr from one place, and a typed name
+  that names no file is a resolution failure just like `no run matching <id>`. It is the
+  only one still printed as an uncaught exception with a backtrace. Checking with
+  `doesFileExist` keeps Dhall's own errors (a file that exists but does not type-check)
+  unchanged, since those describe the config, not the lookup.
+  Date: 2026-09-15.
+
+- Decision: Resolve the name against a directory argument (`resolveServiceIn dir`) and keep
+  `resolveService = resolveServiceIn serviceConfigDir`; the failure carries the full path it
+  looked for.
+  Rationale: Tests can then point at a temporary directory instead of changing the process's
+  working directory, and the message names exactly the file the operator should create.
+  Anchoring `services/` to the project root stays out of scope, as decided on 2026-09-11.
+  Date: 2026-09-15.
+
+- Decision: Leave the unreachable-database error for a positional id out of this plan.
+  Rationale: It now comes from pg-migrate inside `withCliEnv`, which every database command
+  (`run`, `runs list`, `runs sync`, `agent assist`) shares. It is a connection failure, not
+  a resolution failure, so a friendlier message belongs in `withDbEnv` or in the migration
+  code for all commands at once, not in the `runs` resolver.
+  Date: 2026-09-15.
+
+- Decision: Do not add a picker to `shiki runs sync`.
+  Rationale: Its omitted id already means "every unfinished run" (commit `048235c`), which
+  is the useful default for reconciling. A picker would change that meaning.
+  Date: 2026-09-15.
+
 
 ## Outcomes & Retrospective
 
@@ -725,6 +847,18 @@ resolver design. The `extra-source-files` gotcha is documented in a comment in
 `shiki-cli/shiki-cli.cabal` instead (see the Decision Log). Execution details stay in this
 plan.
 
+### 2026-09-15 — Refresh
+
+The feature survived three later plans unchanged in behaviour: the `unwatched` display
+status threads a database timestamp through the formatter and resolver, `runs sync [ID]`
+reuses `withRun` for its positional path, and pg-migrate replaced the migration runner
+without disturbing the "decide before acquiring" ordering. Build warning-free, 107 tests
+green, row 10 re-verified. Of the 2026-09-11 follow-ups, the `Backend.hs` formatting pass is
+done; the missing-service-config message is scheduled as milestone 11; the unreachable
+database message is re-scoped as a cross-command concern outside this plan (see the
+Decision Log); `shiki run [SERVICE]`, `agent assist` run selection, and anchoring
+`services/` remain open and out of scope.
+
 
 ## Context and Orientation
 
@@ -764,7 +898,14 @@ records the haskell-jitsurei conventions summarized in the previous paragraph (u
 strict fields read with `^. #field`, a per-module `import Data.Generics.Labels ()`, a
 warning-free build) and lists fzf integration among the adopted CLI patterns.
 [ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md) was written by
-this plan's M10 and records the resolver design of milestones 6–9.
+this plan's M10 and is the one that governs milestone 11: an omitted positional resolves
+as positional > picker > explicit error; the target is decided before expensive resources
+are acquired; a resolver returns the entity or a typed failure; and every failure is
+rendered by one pure function and printed on stderr with exit 1, so stdout carries only a
+command's result. [ADR 3](../adr/3-model-run-watcher-liveness-as-a-display-only-heartbeat.md)
+(the `unwatched` display status) and
+[ADR 4](../adr/4-use-pg-migrate-with-per-shiki-schema-ledgers.md) (pg-migrate) explain the
+later signature changes described below but impose nothing on milestone 11.
 
 **How a command reaches its handler.** `shiki-cli/src/Shiki/Cli.hs` defines:
 
@@ -784,72 +925,97 @@ data Command
 touching the database. `Run`, `Runs`, and `Agent` go through `withDbEnv`, which resolves a
 connection string (`--db`, then the active `shiki.dhall` environment's `databaseUrl`, then
 `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING`), resolves the schema, and calls
-`Shiki.Cli.Env.withCliEnv`. Today the `Runs` branch reads:
+`Shiki.Cli.Env.withCliEnv`. The `Runs` branch hands the acquisition to `runRuns` so it can
+decide the target first:
 
 ```haskell
 Runs runsOpts ->
-  withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
-    runRuns env runsOpts
+  runRuns
+    (\k -> withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) (\_ env -> k env))
+    runsOpts
 ```
 
-**`CliEnv`** (`shiki-cli/src/Shiki/Cli/Env.hs`) bundles `pool :: !Pool.Pool`,
-`client :: !ClientEnv`, and (until M8) `fzf :: !FzfConfig`. `withCliEnv` acquires the pool,
-runs pending migrations, loads the Kubernetes client config, probes for fzf, calls the
-continuation, and releases the pool. `Shiki.Cli.Run` and `Shiki.Cli.Agent` also take a
-`CliEnv` but never read `fzf`.
+**`CliEnv`** (`shiki-cli/src/Shiki/Cli/Env.hs`) bundles exactly `pool :: !Pool.Pool` and
+`client :: !ClientEnv`. `withCliEnv` acquires the pool, runs pending migrations through
+pg-migrate (`runMigrations cs schema`), loads the Kubernetes client config, calls the
+continuation, and releases the pool. It knows nothing about fzf.
 
-**The `runs` read commands today** (`shiki-cli/src/Shiki/Cli/Runs.hs`). `RunsCommand` has
-`RunsList !(Maybe Text) !Int`, `RunsShow !(Maybe Text)`, `RunsLogs !(Maybe Text)`,
-`RunsError !(Maybe Text)`, and `RunsAnalyze !(Maybe Text) !(Maybe AnalyzerKind)`.
-`runRuns :: CliEnv -> RunsCommand -> IO ()` sends the four single-run commands through
-`withResolved`, which calls `resolveRunId` and then a handler taking the id text. Each
-handler starts with the same block:
+**The `runs` commands** (`shiki-cli/src/Shiki/Cli/Runs.hs`). `RunsCommand` has
+`RunsList !(Maybe Text) !Int`, `RunsShow`, `RunsLogs`, `RunsError` (each
+`!(Maybe Text)`), `RunsAnalyze !(Maybe Text) !(Maybe AnalyzerKind)`, and
+`RunsSync !(Maybe Text)`. `runRuns :: ((CliEnv -> IO ()) -> IO ()) -> RunsCommand -> IO ()`
+sends the single-run commands through `withRun withEnv opts mId body`, which calls
+`runTarget opts mId` before acquiring anything (a failure goes to `failLookup`, which prints
+`renderRunLookupFailure` on stderr and exits 1); otherwise it acquires the environment,
+reads the database clock with `databaseNowStatement` as `observedAt`, calls
+`lookupRun env observedAt target`, and passes `env`, `observedAt`, and the `RunRecord` to
+the handler. `show`, `logs`, `error`, and `sync <id>` use `readRunOpts`; `analyze` uses
+`analyzeRunOpts`; `sync` with no id syncs every unfinished run and never opens a picker.
+`doList` renders with `renderTable observedAt rows`.
 
-```haskell
-doShow :: CliEnv -> Text -> IO ()
-doShow env idText = do
-  matches <- runRead env findRunByPrefixStatement idText
-  case matches of
-    [] -> noMatch idText            -- stdout "no run matching <id>", exit 1
-    [r] -> BL8.putStrLn (AesonPretty.encodePretty r)
-    _ -> ambiguous idText           -- stdout "ambiguous id prefix <id>", exit 1
-```
-
-`runRead` turns a persistence error into an `error` call. The bottom of the file holds the
-table helpers used by `runs list`: `renderTable`, `renderRow` (the seven cells of one run:
-8-character id, start time, service, status, duration, exit code, command), `humanDuration`,
-`computeWidths` (the widest cell per column), and `formatRow` (pads every cell to its
-column width and joins with two spaces). `doAnalyze` also reads the service's Dhall file to
-choose an analyzer and writes the result with `updateErrorSummaryStatement`.
+**The run table helpers** live in `shiki-cli/src/Shiki/Cli/Runs/Format.hs`:
+`runTableHeader`, `runColumns :: UTCTime -> RunRecord -> [Text]` (8-character id, start
+time, service, display status, duration, exit code, command), `displayStatus` and
+`isUnwatched` (a `pending` or `running` row whose `lastWatchedAt` is missing or older than
+`watchStaleAfter`, 300 seconds, shows as `unwatched`), `humanDuration`, `computeWidths`,
+`formatRow`, and `renderTable :: UTCTime -> [RunRecord] -> Text`.
 
 **The persistence statements** live in `shiki-core/src/Shiki/Persistence/Run.hs`:
-`listRecentRunsStatement :: Statement Int [RunRecord]` (newest first, around line 212) and
-`findRunByPrefixStatement :: Statement Text [RunRecord]` (around line 251), which returns
-at most two rows whose `id::text LIKE $1 || '%'`, enough to tell "unique" from
-"ambiguous". `RunRecord` derives `Eq` and `Show`, so tests can compare it directly.
+`databaseNowStatement :: Statement () UTCTime` (around line 231),
+`listRecentRunsStatement :: Statement Int [RunRecord]` (newest first, around line 256), and
+`findRunByPrefixStatement :: Statement Text [RunRecord]` (around line 282), which returns at
+most two rows whose `id::text LIKE $1 || '%'`, enough to tell "unique" from "ambiguous".
+`RunRecord` derives `Eq` and `Show`, so tests can compare it directly.
 
-**The fzf modules today.** `shiki-cli/src/Shiki/Cli/Fzf.hs` holds the subprocess core:
-`FzfConfig` (`binary`, `available`, `stdinIsTerminal`, `stdoutIsTerminal`,
-`ttyAvailable`), `detectFzfConfig`, `isFzfAvailable`, the `FzfOpts` monoid (`prompt`,
-`header`, `height`, `ansi`, `noSort`) with smart constructors `withPrompt`, `withHeader`,
-`withHeight`, `withAnsi`, `withNoSort`, the `Candidate a` record (`display`, `value`),
-`FzfResult a` (`FzfSelected`, `FzfNoMatch`, `FzfCancelled`, `FzfError`), and
-`runFzf :: FzfConfig -> FzfOpts -> [Candidate a] -> IO (FzfResult a)`.
-`shiki-cli/src/Shiki/Cli/Fzf/Selector/Run.hs` holds `RunSelection`, `defaultRunOpts`,
-`formatRunCandidate`, `selectRun`, `resolveRunId`, and a private `formatDuration`.
-`shiki-cli/src/Shiki/Cli/Fzf/Selector/Service.hs` holds `ServiceSelection`,
-`defaultServiceOpts`, `selectService`, `resolveServiceName`, and a private `listEntries`
-that lists `services/*.dhall`. `serviceShowHandler` in `shiki-cli/src/Shiki/Cli.hs` calls
-`detectFzfConfig` and `resolveServiceName` when no name is given, then `serviceShowOne`
-loads `services/<NAME>.dhall` and prints it as JSON.
+**The fzf modules.** `shiki-cli/src/Shiki/Cli/Fzf.hs` holds the subprocess core:
+`FzfConfig` (`binary`, `available`, `ttyAvailable`), `detectFzfConfig`, `isFzfAvailable`,
+the `FzfOpts` monoid (`prompt`, `header`, `height`, `ansi`, `noSort`, `selectOne`,
+`headerRow`) with smart constructors, `Candidate a` (`display`, `value`), `FzfResult a`
+(`FzfSelected`, `FzfNoMatch`, `FzfCancelled`, `FzfError`), and `runFzf`.
+`shiki-cli/src/Shiki/Cli/Fzf/Selector/Run.hs` holds the run resolver (`RunTarget`,
+`RunLookupFailure`, `readRunOpts`, `analyzeRunOpts`, `formatRunCandidates`, `runTarget`,
+`pickerRunTarget`, `lookupRun`, `fromPrefixMatches`, `fromRunFzfResult`,
+`renderRunLookupFailure`).
+
+`shiki-cli/src/Shiki/Cli/Fzf/Selector/Service.hs`, the module milestone 11 changes, holds a
+private `serviceConfigDir = "services"`, `ServiceTarget` (`ServiceByName !Text` or
+`ServiceByPicker !FzfConfig`), `ServiceLookupFailure` (`NoServiceConfigs`,
+`ServicePickerNoMatch`, `ServicePickerCancelled`, `ServiceFzfUnavailable`,
+`ServicePickerFailed !Text`), `serviceOpts`, `serviceTarget`, `pickerServiceTarget`,
+`resolveService`, `listServiceNames`, `fromServiceFzfResult`, and
+`renderServiceLookupFailure`. Today `resolveService (ServiceByName n)` is `pure (Right n)`:
+it never checks that the file exists. `serviceShowHandler` in `shiki-cli/src/Shiki/Cli.hs`
+is:
+
+```haskell
+serviceShowHandler :: Maybe Text -> IO ()
+serviceShowHandler mName =
+  serviceTarget mName >>= \case
+    Left failure -> failService failure
+    Right target -> resolveService target >>= either failService serviceShowOne
+
+serviceShowOne :: Text -> IO ()
+serviceShowOne nm = do
+  let path = "services/" <> Text.unpack nm <> ".dhall"
+  cfg <- loadServiceConfig path
+  printConfig cfg
+```
+
+`loadServiceConfig` (from `shiki-core`) throws an `IOException` when the file is missing,
+and nothing catches it, so the program prints GHC's uncaught-exception banner and a
+backtrace (see Surprises).
 
 **Tests.** `shiki-cli/test/Spec.hs` runs one tasty tree with `localOption (NumThreads 1)`.
-`shiki-cli/test/Shiki/Cli/Fzf/Selector/RunSpec.hs` holds a `fixtureRow :: RunRecord` (id
-starting `3f2c1a9d`, service `ingest`, command `reindex --batch 100`, status `Succeeded`)
-and three formatter tests. Test modules must be listed in the `other-modules` of the
-`test-suite shiki-cli-test` stanza in `shiki-cli/shiki-cli.cabal`, whose dependencies
-already include `directory`, `filepath`, `temporary`, `text`, `time`, `uuid`, and
-`aeson`.
+`shiki-cli/test/Shiki/Cli/Fixtures.hs` holds `fixtureRow` (id starting `3f2c1a9d`, service
+`ingest`, status `Succeeded`) and `longServiceRow` (id `7a01bc22…`, service
+`a-much-longer-service`, status `Failed`). The fzf-related specs are
+`shiki-cli/test/Shiki/Cli/FzfSpec.hs`, `shiki-cli/test/Shiki/Cli/Runs/FormatSpec.hs`,
+`shiki-cli/test/Shiki/Cli/Fzf/Selector/RunSpec.hs`, and
+`shiki-cli/test/Shiki/Cli/Fzf/Selector/ServiceSpec.hs`; the last already builds temporary
+`services` directories with `withSystemTempDirectory` and `writeFile`. Test modules must be
+listed in the `other-modules` of the `test-suite shiki-cli-test` stanza in
+`shiki-cli/shiki-cli.cabal`, whose dependencies already include `directory`, `filepath`,
+`temporary`, `text`, `time`, `uuid`, and `aeson`.
 
 **Terminology.**
 
@@ -890,7 +1056,10 @@ introduced `RunOptions`; `5-runs-query-cli-commands.md` introduced `RunsCommand`
 `8-agent-assist-subcommand-backed-by-baikai.md` added `shiki agent assist`;
 `13-route-run-storage-to-the-active-environment-database.md` added environment routing;
 `16-adopt-haskell-jitsurei-conventions-for-the-initial-release.md` unprefixed the fzf
-records and declined a picker for bare `shiki help`.
+records and declined a picker for bare `shiki help`;
+`17-mark-runs-that-no-shiki-process-is-watching-as-unwatched.md` added the `observedAt`
+timestamp and `unwatched` status; `18-migrate-shiki-from-hasql-migration-to-pg-migrate.md`
+replaced the migration runner inside `withCliEnv`.
 
 
 ## Plan of Work
@@ -1495,6 +1664,79 @@ of reporting that no runs (or no service configs) exist.
 Then run the full validation (below), record the evidence in this plan, fill in Outcomes &
 Retrospective, and revisit the ADR distillation note.
 
+### Milestone 11 — Typed failure for a missing service config
+
+Scope: make a typed service name that names no file a `ServiceLookupFailure`, like every
+other resolution failure, so `shiki service show nope` prints one line on stderr and exits 1
+instead of an uncaught-exception banner with a backtrace. A config file that exists but does
+not parse or type-check keeps Dhall's error, because that describes the config rather than
+the lookup. Nothing else changes: the picker path, the messages of the other failures, and
+every `runs` command behave as before. At the end, `ServiceSpec` covers the new case and
+matrix row 15 has its new wording.
+
+**File `shiki-cli/src/Shiki/Cli/Fzf/Selector/Service.hs`.** Add a constructor to the failure
+type, a path helper, and a directory-parameterised resolver; export `serviceConfigPath` and
+`resolveServiceIn`:
+
+```haskell
+data ServiceLookupFailure
+  = NoServiceConfigs
+  | ServiceConfigNotFound !FilePath
+  | ServicePickerNoMatch
+  | ServicePickerCancelled
+  | ServiceFzfUnavailable
+  | ServicePickerFailed !Text
+  deriving stock (Eq, Show)
+
+-- | The file @shiki service show NAME@ loads: @services/NAME.dhall@.
+serviceConfigPath :: Text -> FilePath
+serviceConfigPath = serviceConfigPathIn serviceConfigDir
+
+serviceConfigPathIn :: FilePath -> Text -> FilePath
+serviceConfigPathIn dir n = dir </> Text.unpack n <.> "dhall"
+
+resolveService :: ServiceTarget -> IO (Either ServiceLookupFailure Text)
+resolveService = resolveServiceIn serviceConfigDir
+
+-- | 'resolveService' against an explicit directory, so tests need not change
+--   the working directory. A typed name must name an existing file.
+resolveServiceIn :: FilePath -> ServiceTarget -> IO (Either ServiceLookupFailure Text)
+resolveServiceIn dir = \case
+  ServiceByName n -> do
+    let path = serviceConfigPathIn dir n
+    exists <- doesFileExist path
+    pure (if exists then Right n else Left (ServiceConfigNotFound path))
+  ServiceByPicker cfg -> … -- the existing picker branch, listing @dir@
+```
+
+`renderServiceLookupFailure (ServiceConfigNotFound path)` is
+`Just ("shiki: no service config at " <> Text.pack path)`. `</>` and `<.>` come from
+`System.FilePath` and `doesFileExist` from `System.Directory`. With `dir = "services"` and
+`n = "nope"` the path is `services/nope.dhall`, the same file `serviceShowOne` loads today.
+
+**File `shiki-cli/src/Shiki/Cli.hs`.** Import `serviceConfigPath` and use it in
+`serviceShowOne` (`cfg <- loadServiceConfig (serviceConfigPath nm)`) so the checked path and
+the loaded path cannot drift apart. `serviceShowHandler` is unchanged; the new failure flows
+through `failService`.
+
+**File `shiki-cli/test/Shiki/Cli/Fzf/Selector/ServiceSpec.hs`.** Add
+`ServiceConfigNotFound "services/nope.dhall"` to the rendering test (message
+`shiki: no service config at services/nope.dhall`), and a test that, in a temporary
+directory holding `a.dhall`, `resolveServiceIn dir (ServiceByName "a")` is `Right "a"` and
+`resolveServiceIn dir (ServiceByName "nope")` is
+`Left (ServiceConfigNotFound (dir </> "nope.dhall"))`.
+
+**Docs.** In `docs/user/commands.md`, add the row "A typed service name has no config file
+| `shiki: no service config at services/<NAME>.dhall`" to the failure table and mention it
+in the `shiki service show [NAME]` entry. In `CHANGELOG.md`, under `## [Unreleased]` →
+`### Fixed`, add an entry saying `shiki service show <NAME>` with no matching file now
+prints that message instead of an uncaught exception.
+
+Acceptance: `cabal build all` prints no warnings; `cabal test shiki-cli-test` passes with
+the new `ServiceSpec` cases; `"$(cabal list-bin shiki)" service show nope` prints
+`shiki: no service config at services/nope.dhall` with exit 1; `service show
+mls-service-v2` still prints the JSON.
+
 
 ## Concrete Steps
 
@@ -1513,7 +1755,7 @@ Intention: intention_01ksp9d2g6e7hb7cvm51402pe7
 $ nix develop
 $ just up                              # PostgreSQL, needed for the runs checks
 $ cabal build all
-$ cabal test shiki-cli-test            # baseline: All 62 tests passed
+$ cabal test shiki-cli-test            # baseline before M6: 62 tests; before M11: 107
 $ just shiki runs list -l 3            # seed runs with `just shiki run <service> -- echo hi` if empty
 ```
 
@@ -1607,6 +1849,26 @@ $ cabal run -v0 shiki -- help runs | grep -i fzf
 
 Commit `docs(shiki): EP-10 M10 — document the revised picker behaviour`.
 
+### M11
+
+```bash
+$ $EDITOR shiki-cli/src/Shiki/Cli/Fzf/Selector/Service.hs shiki-cli/src/Shiki/Cli.hs
+$ $EDITOR shiki-cli/test/Shiki/Cli/Fzf/Selector/ServiceSpec.hs
+$ $EDITOR docs/user/commands.md CHANGELOG.md
+$ cabal build all 2>&1 | grep -i warning     # expect no output
+$ cabal test shiki-cli-test                  # expect more than 107 tests, all passing
+$ bin="$(cabal list-bin shiki)"
+$ "$bin" service show nope; echo "exit=$?"
+shiki: no service config at services/nope.dhall
+exit=1
+$ "$bin" service show mls-service-v2 | head -2
+{
+    "analyzer": {
+$ nix fmt && git status --short               # only the files above
+```
+
+Commit `fix(shiki-cli): EP-10 M11 — typed failure for a missing service config`.
+
 
 ## Validation and Acceptance
 
@@ -1632,13 +1894,15 @@ run (at least two where stated).
 | 12 | `shiki runs analyze` (no arg) + Enter | Analysis runs for the chosen row and prints `analyzed run <id> with <source>: …`. | 0 |
 | 13 | `shiki runs list` | Title line plus one aligned line per run, same layout as before (*changed*: with any row it used to hang); `(no runs recorded yet)` on stdout with exit 0 for an empty table. | 0 |
 | 14 | `shiki service show <existing-name>` | Prints JSON. | 0 |
-| 15 | `shiki service show <missing-name>` | Dhall load error on stderr. | non-zero |
+| 15 | `shiki service show <missing-name>` | `shiki: no service config at services/<missing-name>.dhall` on stderr (*changed* in M11: was an uncaught `IOException` with a backtrace). | 1 |
 | 16 | `shiki service show` (no arg) | Picker over `services/*.dhall` with ≥2 files; a lone file prints immediately. | 0 |
 | 17 | `shiki service show` (no arg, no `services/`) | `shiki: no service configs found in services/` on stderr (*changed*: was stdout). | 1 |
 | 18 | `env PATH=/usr/bin shiki service show </dev/null` | `shiki: no service name given and fzf is not available`. | 1 |
 | 19 | `shiki service show` (no arg), type `zzzz`, Enter | `shiki: no service matches the picker query` (*changed*). | 1 |
 | 20 | `shiki run <svc> -- echo hi` | Unchanged — no fzf integration on `shiki run`. | 0 / non-zero |
 | 21 | `shiki runs show --help`, `shiki service show --help` | `[ID]` / `[NAME]` with "opens an fzf picker if omitted". | 0 |
+| 22 | `shiki runs sync` (no arg) | Syncs every unfinished run; never opens a picker (added after M10 by commit `048235c`; `sync <prefix>` resolves like rows 1–3). | 0 / 1 |
+| 23 | `shiki runs show` (no arg) with an unfinished, unwatched run | The picker's STATUS cell reads `unwatched` (added after M10 by plan 17). | 0 |
 
 ### Test commands
 
@@ -1808,7 +2072,11 @@ No new dependencies and no flake changes.
 - Exit codes: 0 accepted, 1 no match, 130 Esc or Ctrl-C (delivered to fzf by
   `delegate_ctlc = True`), other values are errors.
 
-### Module signatures after M10
+### Module signatures after M11
+
+These are the signatures in the tree on 2026-09-15 plus milestone 11's additions to
+`Shiki.Cli.Fzf.Selector.Service`. The `UTCTime` arguments were added after M10 by
+`docs/plans/17-mark-runs-that-no-shiki-process-is-watching-as-unwatched.md`.
 
 `Shiki.Cli.Fzf`:
 
@@ -1855,11 +2123,14 @@ runFzf :: FzfConfig -> FzfOpts -> [Candidate a] -> IO (FzfResult a)
 
 ```haskell
 runTableHeader :: [Text]
-runColumns :: RunRecord -> [Text]
+watchStaleAfter :: NominalDiffTime
+isUnwatched :: UTCTime -> RunRecord -> Bool
+displayStatus :: UTCTime -> RunRecord -> Text
+runColumns :: UTCTime -> RunRecord -> [Text]
 humanDuration :: Int -> Text
 computeWidths :: [[Text]] -> [Int]
 formatRow :: [Int] -> [Text] -> Text
-renderTable :: [RunRecord] -> Text
+renderTable :: UTCTime -> [RunRecord] -> Text
 ```
 
 `Shiki.Cli.Fzf.Selector.Run`:
@@ -1872,30 +2143,33 @@ data RunLookupFailure
   | RunPickerFailed !Text | RunLookupPersistenceError !Text
 
 readRunOpts, analyzeRunOpts :: FzfOpts
-formatRunCandidates :: [RunRecord] -> (Text, [Candidate RunRecord])
+formatRunCandidates :: UTCTime -> [RunRecord] -> (Text, [Candidate RunRecord])
 runTarget :: FzfOpts -> Maybe Text -> IO (Either RunLookupFailure RunTarget)
 pickerRunTarget :: FzfOpts -> FzfConfig -> Either RunLookupFailure RunTarget
-lookupRun :: CliEnv -> RunTarget -> IO (Either RunLookupFailure RunRecord)
+lookupRun :: CliEnv -> UTCTime -> RunTarget -> IO (Either RunLookupFailure RunRecord)
 fromPrefixMatches :: Text -> [RunRecord] -> Either RunLookupFailure RunRecord
 fromRunFzfResult :: FzfResult RunRecord -> Either RunLookupFailure RunRecord
 renderRunLookupFailure :: RunLookupFailure -> Maybe Text
 ```
 
-`Shiki.Cli.Runs`: `RunsCommand` is unchanged;
-`runRuns :: ((CliEnv -> IO ()) -> IO ()) -> RunsCommand -> IO ()`.
+`Shiki.Cli.Runs`: `RunsCommand` gained `RunsSync !(Maybe Text)` after M10;
+`runRuns :: ((CliEnv -> IO ()) -> IO ()) -> RunsCommand -> IO ()`; the private `withRun`
+hands handlers `CliEnv -> UTCTime -> RunRecord -> IO ()`.
 
 `Shiki.Cli.Fzf.Selector.Service`:
 
 ```haskell
 data ServiceTarget = ServiceByName !Text | ServiceByPicker !FzfConfig
 data ServiceLookupFailure
-  = NoServiceConfigs | ServicePickerNoMatch | ServicePickerCancelled
-  | ServiceFzfUnavailable | ServicePickerFailed !Text
+  = NoServiceConfigs | ServiceConfigNotFound !FilePath | ServicePickerNoMatch
+  | ServicePickerCancelled | ServiceFzfUnavailable | ServicePickerFailed !Text
 
 serviceOpts :: FzfOpts
 serviceTarget :: Maybe Text -> IO (Either ServiceLookupFailure ServiceTarget)
 pickerServiceTarget :: FzfConfig -> Either ServiceLookupFailure ServiceTarget
+serviceConfigPath :: Text -> FilePath
 resolveService :: ServiceTarget -> IO (Either ServiceLookupFailure Text)
+resolveServiceIn :: FilePath -> ServiceTarget -> IO (Either ServiceLookupFailure Text)
 listServiceNames :: FilePath -> IO [Text]
 fromServiceFzfResult :: FzfResult Text -> Either ServiceLookupFailure Text
 renderServiceLookupFailure :: ServiceLookupFailure -> Maybe Text
@@ -1911,6 +2185,9 @@ The `Command` type in `Shiki.Cli` keeps `ServiceShow !(Maybe Text)`.
 - `shiki run [SERVICE]` selection — collides with the trailing `commandArgs` variadic.
 - `shiki agent assist` run selection — needs its own design.
 - Anchoring `services/` to the project root — cross-cutting (see the Decision Log).
+- A friendlier message when the database is unreachable — it comes from `withCliEnv`,
+  shared by every database command (see the Decision Log).
+- A picker for `shiki runs sync` — its omitted id means "every unfinished run".
 - A picker for bare `shiki help` — declined by
   `docs/plans/16-adopt-haskell-jitsurei-conventions-for-the-initial-release.md`.
 
@@ -1948,3 +2225,15 @@ The `Command` type in `Shiki.Cli` keeps `ServiceShow !(Maybe Text)`.
   file, and the now-existing ADR corpus. Updated Context and Orientation to cite ADR 1 and
   ADR 2, added evidence for every acceptance row, marked the plan complete, and wrote the
   retrospective.
+
+- 2026-09-15 — Refreshed the completed plan against `HEAD` `dc1bd14` and reopened it with
+  milestone 11, at the user's request ("refresh the plan then implement"). Context and
+  Orientation now describes the tree as it is (it still described the code before M6):
+  `CliEnv` without fzf, `withRun` and `runs sync`, the `observedAt` timestamp and
+  `unwatched` status from plan 17, pg-migrate from plan 18, the current fzf and selector
+  modules, the shared test fixtures, and ADRs 3 and 4. Surprises records those later changes
+  and re-probed follow-ups with evidence; the Decision Log records M11's scope, the
+  directory-parameterised resolver, and why the unreachable-database message and a `runs
+  sync` picker stay out. Updated the Purpose, the acceptance matrix (row 15 changes; rows 22
+  and 23 added), the bootstrap baseline, and the module signatures, and added M11 to
+  Progress, Plan of Work, and Concrete Steps.
