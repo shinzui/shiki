@@ -129,7 +129,7 @@ shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...
 |------------------------|--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `SERVICE`              | *(required)* | Short name of the service; resolved to `<config-dir>/<SERVICE>.dhall`.                                                                                               |
 | `--namespace NS`, `-n` | `defaultNamespace` from the service Dhall | Override the namespace shiki introspects and submits into.                                                                                |
-| `--no-wait`            | off          | Submit the Job and exit immediately. shiki still writes the `pending` and `running` rows, but the row stays at `running` until something else completes it.          |
+| `--no-wait`            | off          | Submit the Job and exit immediately. shiki still writes the `pending` and `running` rows; the row stays at `running` until `shiki runs sync` finalizes it.          |
 | `--config-dir DIR`     | `services`   | Directory holding `<name>.dhall` files.                                                                                                                              |
 | `-- ARG...`            | *(empty)*    | Everything after `--` becomes the container's command-line arguments. The literal `--` prevents optparse from claiming subcommand flags like `--batch-size`.         |
 
@@ -148,6 +148,16 @@ polling died — prints `FAILED run <id>: <message>` instead. With
 The wait-path timeout is 96 hours (345 600 seconds) of polling at 5-second
 intervals. Jobs that exceed this exit as `JobTimedOut` and record
 `error = "timed out"`.
+
+The Job's pod carries `cluster-autoscaler.kubernetes.io/safe-to-evict:
+"false"`. The Job has `backoffLimit: 0`, so a pod the cluster autoscaler
+removed while scaling down a node would fail the whole run with
+`BackoffLimitExceeded`; the annotation keeps the autoscaler off that node
+until the Job ends.
+
+If the waiting `shiki run` process dies before the Job ends (terminal
+closed, machine asleep, process killed), the row stays `running`. Run
+`shiki runs sync` to record what the Job actually did.
 
 The Job's pod carries `cluster-autoscaler.kubernetes.io/safe-to-evict:
 "false"`. The Job has `backoffLimit: 0`, so a pod the cluster autoscaler
@@ -244,6 +254,49 @@ dispatched: `anthropic_claude_haiku_4_5`, `anthropic_claude_sonnet_4_6`
 `--analyzer none` exits with `shiki: analyzer disabled (backend = None)`.
 
 Rows with no captured logs print `(no logs captured; cannot analyze)`.
+
+## `shiki runs sync [ID]`
+
+Finalize unfinished runs from the state of their Jobs in the cluster.
+
+```
+shiki runs sync [ID]
+```
+
+A row is normally finalized by the `shiki run` process following its Job.
+When that process is gone, the row stays `pending` or `running`. `sync`
+reads each such run's Job and writes the outcome:
+
+| Job in the cluster                   | Result                                                                                                            |
+|--------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| still active                         | left `running`                                                                                                    |
+| succeeded or failed                  | finalized exactly as `shiki run` would have: status, exit code, the Job's own end time, log tail, error summary |
+| not found, run under 2 minutes old   | left alone (the Job may not be created yet)                                                                       |
+| not found, run older                 | `failed`, with `error` saying the Job no longer exists and its outcome is unknown                                |
+
+Without `ID`, every `pending` or `running` run is synced, oldest first.
+With `ID`, only that run; a run that already finished prints
+`already <status>`. Each run prints one line, `run <id8>: <result>`.
+
+Finished Jobs are deleted `ttlSecondsAfterFinished` seconds after they end
+(7 days unless the service config sets it), taking their status and pods
+with them, so sync within that window to keep the real verdict and logs.
+
+For commands that run longer than a few minutes, prefer
+`shiki run --no-wait` followed by an occasional `shiki runs sync <id>`
+(every 15-30 minutes, not a tight loop) over a blocking `shiki run`; see
+`shiki help long-runs`.
+
+Safeguards:
+
+- A missing Job only counts as gone if the service's Deployment
+  (`detectFromDeployment` from the run's stored service config) exists in
+  the run's namespace. Otherwise shiki assumes the kube context points at a
+  different cluster, reports that on stderr, and leaves the row unchanged.
+- The update applies only while the row is still unfinished, so a sync
+  never overwrites a result a live `shiki run` recorded first.
+- Any other cluster API error is reported for that run on stderr; the
+  remaining runs still sync, and the command exits 1.
 
 ## `shiki service show [NAME]`
 

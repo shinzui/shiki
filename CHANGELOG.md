@@ -9,6 +9,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- feat(shiki-core): Jobs stay in the cluster for 7 days after finishing
+  (was 1 hour), configurable per service with the optional
+  `ttlSecondsAfterFinished` field. An hour was too short for `shiki runs
+  sync` to reliably collect a multi-day import's result. Service files
+  that omit the field keep loading.
+- docs(shiki-cli): `shiki help long-runs` sets the rules for long Jobs,
+  aimed at agents as much as operators: submit with `--no-wait`, poll every
+  15-30 minutes rather than continuously, record outcomes with `runs sync`
+  within the TTL, and check the kube context first. `shiki help env` now
+  says KUBECONFIG is a single file, not a merged list.
+- feat(shiki-cli): `shiki runs sync [ID]` finalizes runs left `pending` or
+  `running` because no `shiki run` process was following their Job (it
+  died, or `--no-wait` was used). A finished Job is recorded with its own
+  end time, log tail, and error summary; a Job already gone is recorded as
+  `failed` with an "outcome is unknown" error, but only after confirming
+  the service's Deployment exists in that namespace, so a kube context
+  pointed at another cluster cannot fail live runs.
 - Initial scaffold: `shiki-core` library and `shiki-cli` (executable `shiki`).
 - feat(shiki-cli): EP-8 — `shiki agent assist` opens an interactive AI session
   preloaded with shiki context (services, recent runs, schema, cluster).

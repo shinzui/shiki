@@ -69,6 +69,7 @@ helpTopics :: [HelpTopic]
 helpTopics =
   [ HelpTopic "services" "Service configuration: services/*.dhall" servicesContent,
     HelpTopic "runs" "Run lifecycle and the runs table" runsContent,
+    HelpTopic "long-runs" "Running, watching, and recording long Jobs" longRunsContent,
     HelpTopic "analyzers" "Failure analysis backends" analyzersContent,
     HelpTopic "agent" "shiki agent assist" agentContent,
     HelpTopic "schema" "Postgres schema configuration" schemaContent,
@@ -80,6 +81,9 @@ servicesContent = $(embedStringFile "data/help/services.md")
 
 runsContent :: Text
 runsContent = $(embedStringFile "data/help/runs.md")
+
+longRunsContent :: Text
+longRunsContent = $(embedStringFile "data/help/long-runs.md")
 
 analyzersContent :: Text
 analyzersContent = $(embedStringFile "data/help/analyzers.md")

@@ -63,5 +63,15 @@ The agent's subprocess access is scoped to:
 There is no escape hatch; the allow-list is hard-coded.
 
 
+DRIVING LONG RUNS
+
+Agent sessions are the worst place to block on a Job: the host may stop a
+background process at any time, and a stopped 'shiki run' leaves its row
+'running' with nothing to finish it. For anything that may take more than
+a few minutes, submit with --no-wait, check back every 15-30 minutes with
+'shiki runs sync <id>', and confirm the kube context first. The full rules
+are in 'shiki help long-runs'.
+
+
 Full reference: docs/user/agent-assist.md
-See also: 'shiki help analyzers', 'shiki help env'.
+See also: 'shiki help long-runs', 'shiki help analyzers', 'shiki help env'.

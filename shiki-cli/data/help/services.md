@@ -79,4 +79,4 @@ ADDING A NEW SERVICE
 
 
 Full reference: docs/user/service-config.md
-See also: 'shiki help runs', 'shiki help analyzers'.
+See also: 'shiki help runs', 'shiki help long-runs', 'shiki help analyzers'.

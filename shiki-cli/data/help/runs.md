@@ -20,6 +20,16 @@ RUN LIFECYCLE
   4. On terminal status, shiki finalizes the row with status ('succeeded'
      or 'failed'), exit code, duration, and (on failure) an
      error_summary derived by the Heuristic analyzer.
+  5. If the waiting process dies first (or --no-wait was passed), the row
+     stays 'running' until 'shiki runs sync' reads the Job and finalizes
+     it. Finished Jobs are deleted after ttlSecondsAfterFinished (7 days
+     by default), so sync within that window to keep the real verdict and
+     logs; a run whose Job is already gone is recorded as failed with an
+     "outcome is unknown" error.
+
+For commands that may run longer than a few minutes, read
+'shiki help long-runs' first: submit with --no-wait, poll sparingly, and
+record the result with 'shiki runs sync'.
 
 
 THE RUNS TABLE COLUMNS
@@ -80,4 +90,4 @@ non-zero.
 
 
 Full reference: docs/user/getting-started.md, docs/user/commands.md
-See also: 'shiki help analyzers', 'shiki help schema'.
+See also: 'shiki help long-runs', 'shiki help analyzers', 'shiki help schema'.

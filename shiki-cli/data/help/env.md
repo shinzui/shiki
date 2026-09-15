@@ -62,11 +62,16 @@ AGENT ASSIST
 
 KUBERNETES
 
-shiki uses the standard kube client search path:
+shiki reads one kubeconfig file and uses its current-context:
 
-  KUBECONFIG              Path(s) to kubeconfig file(s). When unset,
-                          shiki reads ~/.kube/config.
+  KUBECONFIG              Path to a single kubeconfig file. When unset,
+                          shiki reads ~/.kube/config. Unlike kubectl,
+                          shiki does not merge a colon-separated list.
+
+There is no --context flag. Check 'kubectl config current-context' before
+'shiki run'; to target another context without changing the global one,
+point KUBECONFIG at a one-context copy (see 'shiki help long-runs').
 
 
 Full reference: docs/user/commands.md (environment variable summary)
-See also: 'shiki help schema', 'shiki help agent'.
+See also: 'shiki help schema', 'shiki help agent', 'shiki help long-runs'.
