@@ -1,11 +1,19 @@
 module Shiki.Service.ConfigSpec (tests) where
 
 import Data.Generics.Labels ()
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
 import Shiki.Prelude
-import Shiki.Service.Config (AnalyzerBackend (..), ServiceName (..))
+import Shiki.Service.Config
+  ( AnalyzerBackend (..),
+    ServiceName (..),
+    defaultTtlSecondsAfterFinished,
+    effectiveTtlSecondsAfterFinished,
+  )
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 import System.Directory (doesDirectoryExist, getCurrentDirectory)
 import System.FilePath (takeDirectory, (</>))
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
 
@@ -34,7 +42,23 @@ tests :: TestTree
 tests =
   testGroup
     "Shiki.Service.Config"
-    [ testCase "loadServiceConfig parses mls-service-v2.dhall" $ do
+    [ testCase "a service file without ttlSecondsAfterFinished gets the 7-day default" $ do
+        path <- serviceConfigPath "mls-service-v2"
+        cfg <- loadServiceConfig path
+        assertEqual "field" Nothing (cfg ^. #ttlSecondsAfterFinished)
+        assertEqual "effective" (7 * 24 * 60 * 60) (effectiveTtlSecondsAfterFinished cfg)
+        assertEqual "default" defaultTtlSecondsAfterFinished (effectiveTtlSecondsAfterFinished cfg),
+      testCase "a service file that sets ttlSecondsAfterFinished keeps its value" $ do
+        base <- serviceConfigPath "mls-service-v2"
+        withSystemTempDirectory "shiki-ttl" $ \dir -> do
+          let path = dir </> "mls-service-v2.dhall"
+          TIO.writeFile
+            path
+            ("(" <> Text.pack base <> ") // { ttlSecondsAfterFinished = Some 86400 }")
+          cfg <- loadServiceConfig path
+          assertEqual "field" (Just 86400) (cfg ^. #ttlSecondsAfterFinished)
+          assertEqual "effective" 86400 (effectiveTtlSecondsAfterFinished cfg),
+      testCase "loadServiceConfig parses mls-service-v2.dhall" $ do
         path <- serviceConfigPath "mls-service-v2"
         cfg <- loadServiceConfig path
         assertEqual

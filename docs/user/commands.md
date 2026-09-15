@@ -149,6 +149,16 @@ The wait-path timeout is 96 hours (345 600 seconds) of polling at 5-second
 intervals. Jobs that exceed this exit as `JobTimedOut` and record
 `error = "timed out"`.
 
+The Job's pod carries `cluster-autoscaler.kubernetes.io/safe-to-evict:
+"false"`. The Job has `backoffLimit: 0`, so a pod the cluster autoscaler
+removed while scaling down a node would fail the whole run with
+`BackoffLimitExceeded`; the annotation keeps the autoscaler off that node
+until the Job ends.
+
+If the waiting `shiki run` process dies before the Job ends (terminal
+closed, machine asleep, process killed), the row stays `running`. Run
+`shiki runs sync` to record what the Job actually did.
+
 ## `shiki runs list`
 
 Recent runs as a fixed-width table, newest first.

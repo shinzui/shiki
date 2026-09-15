@@ -26,6 +26,7 @@ import Shiki.Service.Config
     Resources,
     ServiceConfig,
     ServiceName (..),
+    effectiveTtlSecondsAfterFinished,
   )
 import System.Random qualified as Random
 
@@ -71,7 +72,8 @@ buildJob svc snap inputs =
     spec =
       (K8s.mkV1JobSpec podTemplate)
         { K8s.v1JobSpecBackoffLimit = Just 0,
-          K8s.v1JobSpecTtlSecondsAfterFinished = Just 3600
+          K8s.v1JobSpecTtlSecondsAfterFinished =
+            Just (fromIntegral (effectiveTtlSecondsAfterFinished svc))
         }
 
     podTemplate =
@@ -80,10 +82,16 @@ buildJob svc snap inputs =
           K8s.v1PodTemplateSpecSpec = Just podSpec
         }
 
+    -- The Job runs a single pod with backoffLimit 0, so a pod lost to a
+    -- voluntary disruption fails the whole run. Without this annotation the
+    -- cluster autoscaler drains the node under a long import whenever it
+    -- scales down, and the run is recorded as BackoffLimitExceeded.
     templateMetadata =
       K8s.mkV1ObjectMeta
         { K8s.v1ObjectMetaLabels =
-            Just (Map.singleton "app" (serviceName <> "-oneoff"))
+            Just (Map.singleton "app" (serviceName <> "-oneoff")),
+          K8s.v1ObjectMetaAnnotations =
+            Just (Map.singleton "cluster-autoscaler.kubernetes.io/safe-to-evict" "false")
         }
 
     podSpec =

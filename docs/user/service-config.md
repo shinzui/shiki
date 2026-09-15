@@ -34,6 +34,11 @@ operator-facing reference for the fields you actually write.
 | `env`                  | `[EnvVar]`                          | Environment variables for the main container.                                                                                                                            |
 | `resources`            | `Resources`                         | CPU / memory requests and limits for the main container.                                                                                                                  |
 | `analyzer`             | `AnalyzerBackend`                   | Default analyzer for this service's runs. See [Error analysis](./error-analysis.md).                                                                                      |
+| `ttlSecondsAfterFinished` | `Optional Natural` (may be omitted) | Seconds a finished Job, its pod, and its logs stay in the cluster. Omitted or `None Natural` means 7 days. `shiki runs sync` needs the Job to exist to record the real outcome. |
+
+`ttlSecondsAfterFinished` is the one field a service file may leave out:
+the loader fills in `None Natural`, so files written before the field
+existed keep loading.
 
 Dynamic values (image digest, ConfigMap name, Secret name) are
 deliberately **not** in the Dhall config — shiki reads them from the

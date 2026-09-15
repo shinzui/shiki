@@ -15,10 +15,14 @@ module Shiki.Service.Config
     EnvSource (..),
     Resources (..),
     AnalyzerBackend (..),
+    defaultTtlSecondsAfterFinished,
+    effectiveTtlSecondsAfterFinished,
   )
 where
 
+import Data.Generics.Labels ()
 import Data.Map.Strict (Map)
+import Numeric.Natural (Natural)
 import Shiki.Prelude
 
 -- | The canonical short name of a microservice (e.g. @"mls-service-v2"@).
@@ -44,10 +48,26 @@ data ServiceConfig = ServiceConfig
     initContainers :: ![InitContainer],
     env :: ![EnvVar],
     resources :: !Resources,
-    analyzer :: !AnalyzerBackend
+    analyzer :: !AnalyzerBackend,
+    -- | Seconds a finished Job (and its pod and logs) stays in the cluster
+    --   before Kubernetes deletes it. 'Nothing' uses
+    --   'defaultTtlSecondsAfterFinished'. @shiki runs sync@ needs the Job to
+    --   still exist to record its real outcome.
+    ttlSecondsAfterFinished :: !(Maybe Natural)
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
+
+-- | Seven days. Long enough that a run whose waiting process died (or that
+--   was submitted with @--no-wait@) can still be synced after a weekend or a
+--   multi-day import, rather than the hour a laptop-bound watcher can miss.
+defaultTtlSecondsAfterFinished :: Natural
+defaultTtlSecondsAfterFinished = 7 * 24 * 60 * 60
+
+-- | The TTL a Job for this service is created with.
+effectiveTtlSecondsAfterFinished :: ServiceConfig -> Natural
+effectiveTtlSecondsAfterFinished svc =
+  fromMaybe defaultTtlSecondsAfterFinished (svc ^. #ttlSecondsAfterFinished)
 
 -- | Which analyzer backend should be used for runs of this service. The
 --   constructors mirror "Shiki.Analysis.Backend.AnalyzerKind" verbatim so

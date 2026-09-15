@@ -89,9 +89,16 @@ tests =
         assertEqual "backoffLimit" (Just 0) (spec ^. K8sLens.v1JobSpecBackoffLimitL)
         assertEqual
           "ttlSecondsAfterFinished"
-          (Just 3600)
+          (Just 604800)
           (spec ^. K8sLens.v1JobSpecTtlSecondsAfterFinishedL)
         assertEqual "restart policy" (Just "Never") (pspec ^. K8sLens.v1PodSpecRestartPolicyL)
+        assertEqual
+          "pod is not evictable by the cluster autoscaler"
+          (Just "false")
+          ( tmpl ^. K8sLens.v1PodTemplateSpecMetadataL
+              >>= (^. K8sLens.v1ObjectMetaAnnotationsL)
+              >>= Map.lookup "cluster-autoscaler.kubernetes.io/safe-to-evict"
+          )
     ]
 
 expectJust :: (HasCallStack) => String -> Maybe a -> a

@@ -50,6 +50,15 @@ SERVICE CONFIG FIELDS
                         analyze' honors this default unless --analyzer
                         overrides it.
 
+  ttlSecondsAfterFinished
+                        Optional (Natural). Seconds a finished Job, its
+                        pod, and its logs stay in the cluster; omit it
+                        for the 7-day default. 'shiki runs sync' needs
+                        the Job to still exist to record the real
+                        outcome, so keep this longer than the longest gap
+                        in which nobody will sync. Example:
+                        ttlSecondsAfterFinished = Some 1209600
+
 
 INSPECTING A SERVICE
 

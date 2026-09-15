@@ -97,6 +97,11 @@ run>
 
 ### Fixed
 
+- fix(shiki-core): one-off Job pods carry
+  `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`. The Job has
+  `backoffLimit: 0`, so a pod the cluster autoscaler removed while scaling
+  down its node failed the run with `BackoffLimitExceeded`; a Houston
+  property import in prod was lost this way 1h37m in.
 - fix(shiki-core): a Kubernetes credential that expires mid-run no longer
   fails the run. shiki minted an exec-plugin token once, when it built the
   client, and reused it for the whole wait; GKE's plugin hands out what is
