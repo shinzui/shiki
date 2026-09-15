@@ -17,9 +17,8 @@ import Shiki.Persistence.Connection
     acquirePool,
     releasePool,
   )
-import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Schema (schemaText)
-import Shiki.Persistence.TestPg (freshSchema)
+import Shiki.Persistence.TestPg (freshSchema, migrateOrFail)
 import Shiki.Prelude
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
@@ -33,7 +32,7 @@ tests =
         result <- EpPg.with $ \db -> do
           let cs = ConnectionString (EpPg.connectionString db)
           bracket (acquirePool cs schema) releasePool $ \pool -> do
-            runMigrations cs schema
+            migrateOrFail cs schema
             n <-
               Pool.use pool (Session.statement (schemaText schema) errorSummaryColumnCount)
                 >>= either (fail . show) pure

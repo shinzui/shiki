@@ -14,13 +14,13 @@ import Shiki.Persistence.Connection
     acquirePool,
     releasePool,
   )
-import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Run
   ( NewRun (..),
     insertRunStatement,
     newRunId,
   )
 import Shiki.Persistence.Schema (Schema, mkSchema, schemaText)
+import Shiki.Persistence.TestPg (migrateOrFail)
 import Shiki.Prelude
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
@@ -51,7 +51,7 @@ tests =
 runOnePool :: ConnectionString -> Schema -> IO ()
 runOnePool cs schema =
   bracket (acquirePool cs schema) releasePool $ \pool -> do
-    runMigrations cs schema
+    migrateOrFail cs schema
     now <- getCurrentTime
     rid <- newRunId
     let r =

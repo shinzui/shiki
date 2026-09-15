@@ -11,12 +11,27 @@ module Shiki.Cli.Env
   )
 where
 
-import Control.Exception (bracket)
+import Data.Text qualified as Text
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
+import Effectful.Exception qualified as Exc
 import Hasql.Pool qualified as Pool
+import Shiki.Error
+  ( KubeError (..),
+    ShikiError (..),
+    StoreError (..),
+    collapseWhitespace,
+    renderConnectionError,
+  )
 import Shiki.K8s.Client (ClientEnv, loadDefaultClientConfig)
+import Shiki.K8s.ExecCredential (ExecCredentialError)
 import Shiki.Persistence.Connection (ConnectionString, acquirePool, releasePool)
-import Shiki.Persistence.Migration (runMigrations)
-import Shiki.Persistence.Schema (Schema)
+import Shiki.Persistence.Migration
+  ( MigrationFailure (..),
+    renderMigrationFailure,
+    runMigrations,
+  )
+import Shiki.Persistence.Schema (Schema, schemaText)
 import Shiki.Prelude
 
 data CliEnv = CliEnv
@@ -30,9 +45,52 @@ data CliEnv = CliEnv
 --   release the pool on exit. The Kubernetes 'ClientEnv' owns an
 --   @http-client@ 'Network.HTTP.Client.Manager' that does not require
 --   explicit teardown.
-withCliEnv :: ConnectionString -> Schema -> (CliEnv -> IO a) -> IO a
+--
+--   Everything that can go wrong on the way in becomes a typed 'ShikiError':
+--   an unreachable server is 'DatabaseUnavailable', any other migration
+--   problem is 'MigrationFailed', a failing credential plugin is
+--   'KubeCredentialFailed', and an unreadable kubeconfig is
+--   'KubeConfigUnavailable'. Pool acquisition itself is lazy — hasql-pool
+--   connects on first use — so the migration step is where an unreachable
+--   database is first noticed.
+withCliEnv ::
+  (IOE :> es, Error ShikiError :> es) =>
+  ConnectionString ->
+  Schema ->
+  (CliEnv -> IO a) ->
+  Eff es a
 withCliEnv cs schema action =
-  bracket (acquirePool cs schema) releasePool $ \p -> do
-    runMigrations cs schema
-    cl <- loadDefaultClientConfig
-    action CliEnv {pool = p, client = cl}
+  Exc.bracket (liftIO (acquirePool cs schema)) (liftIO . releasePool) $ \p -> do
+    migrate
+    cl <- loadClient
+    liftIO (action CliEnv {pool = p, client = cl})
+  where
+    migrate =
+      liftIO (runMigrations cs schema) >>= \case
+        Right () -> pure ()
+        Left (BootstrapConnectionFailed connectionError) ->
+          throwError
+            ( ShikiStoreError
+                (DatabaseUnavailable (renderConnectionError connectionError))
+            )
+        Left failure ->
+          throwError
+            ( ShikiStoreError
+                (MigrationFailed (schemaText schema) (renderMigrationFailure failure))
+            )
+    loadClient =
+      Exc.trySync (liftIO loadDefaultClientConfig) >>= \case
+        Right cl -> pure cl
+        Left e
+          | Just credentialError <- Exc.fromException @ExecCredentialError e ->
+              throwError
+                ( ShikiKubeError
+                    (KubeCredentialFailed (kubeMessage credentialError))
+                )
+          | otherwise ->
+              throwError
+                ( ShikiKubeError
+                    (KubeConfigUnavailable (kubeMessage e))
+                )
+    kubeMessage :: (Exc.Exception e) => e -> Text
+    kubeMessage = collapseWhitespace . Text.pack . Exc.displayException

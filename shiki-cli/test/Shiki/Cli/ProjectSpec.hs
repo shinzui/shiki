@@ -2,6 +2,7 @@ module Shiki.Cli.ProjectSpec (tests) where
 
 import Control.Exception (bracket)
 import Data.Map.Strict qualified as Map
+import Effectful (runEff)
 import Shiki.Cli.Project
   ( EnvSelectionSource (..),
     discoverProjectConfigPath,
@@ -30,15 +31,15 @@ tests =
             assertEqual "config path" (Just (root </> "shiki.dhall")) found,
       testCase "resolves active environment by flag, env var, then default" $
         withCleanShikiEnv $ do
-          flag <- resolveActiveEnvironmentName fixtureConfig (Just "prod")
+          flag <- runEff (resolveActiveEnvironmentName fixtureConfig (Just "prod"))
           assertEqual "flag wins" ("prod", FromFlag) flag
 
           setEnv "SHIKI_ENV" "qa"
-          fromEnv <- resolveActiveEnvironmentName fixtureConfig Nothing
+          fromEnv <- runEff (resolveActiveEnvironmentName fixtureConfig Nothing)
           assertEqual "env var wins without flag" ("qa", FromEnvVar) fromEnv
 
           unsetEnv "SHIKI_ENV"
-          fromDefault <- resolveActiveEnvironmentName fixtureConfig Nothing
+          fromDefault <- runEff (resolveActiveEnvironmentName fixtureConfig Nothing)
           assertEqual "default fallback" ("staging", FromDefault) fromDefault
     ]
 

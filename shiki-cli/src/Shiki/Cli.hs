@@ -30,7 +30,8 @@ import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
-import Data.Text.IO qualified as TIO
+import Effectful (Eff)
+import Effectful.Error.Static (throwError)
 import Options.Applicative (Parser, ParserInfo, (<**>))
 import Options.Applicative qualified as Opt
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
@@ -43,14 +44,14 @@ import Shiki.Cli.ConfigInit
   )
 import Shiki.Cli.ConfigShow (runConfigShow)
 import Shiki.Cli.Env (CliEnv, withCliEnv)
+import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Fzf.Selector.Service
-  ( ServiceLookupFailure,
-    renderServiceLookupFailure,
-    resolveService,
+  ( resolveService,
     serviceConfigPath,
     serviceTarget,
   )
 import Shiki.Cli.Help (HelpCommand, helpParser, runHelp)
+import Shiki.Cli.Main (CliEff, runShikiMain)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
@@ -59,7 +60,7 @@ import Shiki.Persistence.Schema qualified
 import Shiki.Prelude hiding (Options, argument)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import System.Exit (exitFailure)
+import System.Exit (ExitCode)
 import System.IO (stderr)
 
 data Command
@@ -92,51 +93,54 @@ data Options = Options
 cliPrefs :: Opt.ParserPrefs
 cliPrefs = Opt.prefs Opt.showHelpOnEmpty
 
-runCli :: IO ()
+-- | Parse the options, then run the chosen command inside the single
+--   top-level handler ("Shiki.Cli.Main"). The handler owns every exit: this
+--   function returns the code, and @shiki-cli\/app\/Main.hs@ calls 'exitWith'
+--   on it.
+runCli :: IO ExitCode
 runCli = do
   opts <- Opt.customExecParser cliPrefs parserInfo
-  case opts ^. #command of
-    ServiceShow nm -> serviceShowHandler nm
-    Help helpOpts -> runHelp helpOpts
-    Completions shell -> runCompletions shell
-    Config ConfigShow ->
-      runConfigShow (opts ^. #envName)
-    Config (ConfigInit initOpts) ->
-      runConfigInit initOpts
-    Run runOpts ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \_ env ->
-        runRun env runOpts
-    Runs runsOpts ->
-      runRuns
-        (\k -> withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) (\_ env -> k env))
-        runsOpts
-    Agent agentOpts ->
-      withDbEnv (opts ^. #dbConnStr) (opts ^. #dbSchema) (opts ^. #envName) $ \schema env ->
-        runAgent env schema agentOpts
+  runShikiMain stderr (dispatch opts)
+
+-- | Dispatch a parsed command. Handlers that have not yet been moved onto
+--   effects are still plain 'IO' and are called through 'liftIO'; the
+--   top-level handler covers them either way.
+dispatch :: Options -> Eff CliEff ()
+dispatch opts = case opts ^. #command of
+  ServiceShow nm -> serviceShowHandler nm
+  Help helpOpts -> liftIO (runHelp helpOpts)
+  Completions shell -> liftIO (runCompletions shell)
+  Config ConfigShow ->
+    runConfigShow (opts ^. #envName)
+  Config (ConfigInit initOpts) ->
+    liftIO (runConfigInit initOpts)
+  Run runOpts ->
+    withDbEnv opts $ \_ env ->
+      runRun env runOpts
+  Runs runsOpts ->
+    runRuns (\k -> withDbEnv opts (\_ env -> k env)) runsOpts
+  Agent agentOpts ->
+    withDbEnv opts $ \schema env ->
+      runAgent env schema agentOpts
 
 withDbEnv ::
-  Maybe Text ->
-  Maybe Text ->
-  Maybe Text ->
+  Options ->
   (Shiki.Persistence.Schema.Schema -> CliEnv -> IO a) ->
-  IO a
-withDbEnv mConn mSchema mEnv k = do
-  cs <- resolveConnectionString mConn mEnv
-  schema <- resolveSchema mSchema
+  Eff CliEff a
+withDbEnv opts k = do
+  cs <- resolveConnectionString (opts ^. #dbConnStr) (opts ^. #envName)
+  schema <- resolveSchema (opts ^. #dbSchema)
   withCliEnv cs schema (k schema)
 
 -- | Show the named config, or pick one with fzf when no name is given.
-serviceShowHandler :: Maybe Text -> IO ()
+serviceShowHandler :: Maybe Text -> Eff CliEff ()
 serviceShowHandler mName =
-  serviceTarget mName >>= \case
-    Left failure -> failService failure
-    Right target -> resolveService target >>= either failService serviceShowOne
-
--- | Print the failure's message (if any) on stderr and exit 1.
-failService :: ServiceLookupFailure -> IO a
-failService failure = do
-  mapM_ (TIO.hPutStrLn stderr) (renderServiceLookupFailure failure)
-  exitFailure
+  liftIO (serviceTarget mName) >>= \case
+    Left failure -> throwError (CliServiceLookup failure)
+    Right target ->
+      liftIO (resolveService target) >>= \case
+        Left failure -> throwError (CliServiceLookup failure)
+        Right nm -> liftIO (serviceShowOne nm)
 
 serviceShowOne :: Text -> IO ()
 serviceShowOne nm = do

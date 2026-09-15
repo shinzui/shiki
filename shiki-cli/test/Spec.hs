@@ -11,6 +11,7 @@ import Shiki.Cli.Fzf.Selector.ServiceSpec qualified as ServiceSelectorSpec
 import Shiki.Cli.FzfSpec qualified as FzfSpec
 import Shiki.Cli.HeartbeatSpec qualified as HeartbeatSpec
 import Shiki.Cli.HelpSpec qualified as HelpSpec
+import Shiki.Cli.MainSpec qualified as MainSpec
 import Shiki.Cli.ParserSpec qualified as ParserSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
 import Shiki.Cli.Runs.FormatSpec qualified as RunsFormatSpec
@@ -30,7 +31,8 @@ main =
     localOption (NumThreads 1) $
       testGroup
         "shiki-cli"
-        [ ProviderSpec.tests,
+        [ MainSpec.tests,
+          ProviderSpec.tests,
           ContextSpec.tests,
           PromptSpec.tests,
           LaunchSpec.tests,

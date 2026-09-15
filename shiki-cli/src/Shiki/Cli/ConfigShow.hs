@@ -11,12 +11,15 @@ import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error)
 import Shiki.Cli.Project
   ( EnvSelectionSource (..),
     discoverProjectConfigPath,
-    loadProjectConfig,
+    loadProjectConfigChecked,
     resolveActiveEnvironmentName,
   )
+import Shiki.Error (ShikiError)
 import Shiki.Prelude
 
 -- | Render a connection string with any password masked. Handles the URI
@@ -42,30 +45,35 @@ maskPassword url =
                 _ -> url
     _ -> url
 
-runConfigShow :: Maybe Text -> IO ()
+runConfigShow ::
+  (IOE :> es, Error ShikiError :> es) =>
+  Maybe Text ->
+  Eff es ()
 runConfigShow mEnvFlag =
-  discoverProjectConfigPath >>= \case
+  liftIO discoverProjectConfigPath >>= \case
     Nothing ->
-      TIO.putStrLn
-        "no shiki.dhall found (searched the current directory and its parents)"
+      liftIO $
+        TIO.putStrLn
+          "no shiki.dhall found (searched the current directory and its parents)"
     Just path -> do
-      cfg <- loadProjectConfig path
+      cfg <- loadProjectConfigChecked path
       (active, src) <- resolveActiveEnvironmentName cfg mEnvFlag
       let envNames = Text.intercalate ", " (Map.keys (cfg ^. #environments))
           srcLabel = case src of
             FromFlag -> "from --env"
             FromEnvVar -> "from SHIKI_ENV"
             FromDefault -> "from defaultEnvironment"
-      TIO.putStrLn ("config file:         " <> Text.pack path)
-      TIO.putStrLn ("environments:        " <> envNames)
-      TIO.putStrLn ("default environment: " <> cfg ^. #defaultEnvironment)
-      TIO.putStrLn ("active environment:  " <> active <> "   (" <> srcLabel <> ")")
-      case Map.lookup active (cfg ^. #environments) of
-        Just e ->
-          TIO.putStrLn ("database url:        " <> maskPassword (e ^. #databaseUrl))
-        Nothing ->
-          TIO.putStrLn
-            ( "database url:        <environment "
-                <> active
-                <> " is not declared in this file>"
-            )
+      liftIO $ do
+        TIO.putStrLn ("config file:         " <> Text.pack path)
+        TIO.putStrLn ("environments:        " <> envNames)
+        TIO.putStrLn ("default environment: " <> cfg ^. #defaultEnvironment)
+        TIO.putStrLn ("active environment:  " <> active <> "   (" <> srcLabel <> ")")
+        case Map.lookup active (cfg ^. #environments) of
+          Just e ->
+            TIO.putStrLn ("database url:        " <> maskPassword (e ^. #databaseUrl))
+          Nothing ->
+            TIO.putStrLn
+              ( "database url:        <environment "
+                  <> active
+                  <> " is not declared in this file>"
+              )

@@ -117,17 +117,25 @@ This section must always reflect the actual current state of the work.
 - [x] `cabal build all` warning-free, `cabal test all` green (63 + 108); all seven
       contract facts hold, so the design is **promoted** unchanged; commit. (2026-09-15)
 
-### M2 — Error types and the top-level handler
+### M2 — Error types and the top-level handler — done 2026-09-15
 
-- [ ] Create `shiki-core/src/Shiki/Error.hs` (`ShikiError` and its sub-types, `renderShikiError`).
-- [ ] Make `runMigrations` return `Either MigrationFailure ()` instead of calling `fail`;
-      export the failure type; update `MigrationSpec`.
-- [ ] Create `shiki-cli/src/Shiki/Cli/Error.hs` (`CliError`, `renderCliError`) and
-      `shiki-cli/src/Shiki/Cli/Main.hs` (`runShikiMain`, `CliEff`).
-- [ ] Run `runCli`'s dispatch in `Eff`; convert `resolveConnectionString`, `resolveSchema`,
-      `resolveActiveEnvironment`, and `withCliEnv` to throw typed errors.
-- [ ] Add `shiki-cli/test/Shiki/Cli/MainSpec.hs` and update `EnvRoutingSpec`.
-- [ ] Build warning-free, tests green, acceptance rows 1–6; commit.
+- [x] Create `shiki-core/src/Shiki/Error.hs` (`ShikiError` and its sub-types,
+      `renderShikiError`, plus `renderConnectionError` / `renderSessionError` /
+      `renderUsageError` / `collapseWhitespace` for interpreters to use). (2026-09-15)
+- [x] Make `runMigrations` return `Either MigrationFailure ()` instead of calling `fail`;
+      export the failure type and `renderMigrationFailure`; update `MigrationSpec` and the
+      seven other call sites (a `migrateOrFail` helper in `Shiki.Persistence.TestPg` and
+      one in each of `MigrationSpec` and `EnvRoutingSpec`). (2026-09-15)
+- [x] Create `shiki-cli/src/Shiki/Cli/Error.hs` (`CliError`, `renderCliError`) and
+      `shiki-cli/src/Shiki/Cli/Main.hs` (`runShikiMain`, `CliEff`). (2026-09-15)
+- [x] Run `runCli`'s dispatch in `Eff`; convert `resolveConnectionString`, `resolveSchema`,
+      `resolveActiveEnvironment`, `runConfigShow`, and `withCliEnv` to throw typed errors;
+      `shiki-cli/app/Main.hs` is now `main = runCli >>= exitWith`. (2026-09-15)
+- [x] Add `shiki-cli/test/Shiki/Cli/MainSpec.hs` (six handler outcomes plus a
+      sixteen-row `renderShikiError` table) and update `EnvRoutingSpec` and
+      `ProjectSpec`. (2026-09-15)
+- [x] Build warning-free, tests green (63 + 115), acceptance rows 1–6 checked against the
+      built binary; commit. (2026-09-15)
 
 ### M3 — The `RunStore` effect
 
@@ -290,6 +298,19 @@ Findings from implementation:
   file. Nothing in this plan touches that path — Milestone 1 changes only dependency bounds
   and adds a shiki-core test module — so the flake is pre-existing and is left alone here.
 
+- Milestone 2, 2026-09-15: three library messages are laid out for a terminal and are not
+  one line. libpq adds a tab-indented hint to a connection failure, `yaml` prefixes its
+  exception with `YAML exception:` and a newline, and Dhall prints a full caret diagnostic.
+  The first two are collapsed with `Shiki.Error.collapseWhitespace`, which turns
+
+  ```text
+  shiki: cannot connect to the database: connection to server at "127.0.0.1", port 1 failed: Connection refused
+  	Is the server running on that host and accepting TCP/IP connections?
+  ```
+
+  into one line that keeps the hint. Dhall's diagnostic is kept as it is (see the Decision
+  Log), so acceptance rows 4 and 16 read "one message", not "one line".
+
 
 ## Decision Log
 
@@ -449,6 +470,41 @@ Record every decision made while working on the plan.
   versions of the same package". The plan's premise came from reading `absent` in the
   evaluation expression, which prints `absent` both for a missing attribute and for the
   `null` that nixpkgs uses to mean "GHC provides this". Evidence is in Surprises.
+  Date: 2026-09-15.
+
+- Decision: A failure to load a Dhall file keeps Dhall's own multi-line diagnostic after the
+  `shiki: cannot load <path>: ` prefix, instead of being collapsed onto one line. libpq's and
+  yaml's messages *are* collapsed.
+  Rationale: The point of the acceptance matrix's "one line" is that the operator gets one
+  readable message instead of GHC's banner, and that holds either way. Dhall's diagnostic is
+  a caret pointing at the offending token; flattening it destroys the only thing that tells
+  the operator where the typo is, while libpq's hint and yaml's prefix lose nothing when
+  collapsed. Acceptance rows 4 and 16 are reworded to "one message, no banner, no backtrace".
+  Date: 2026-09-15.
+
+- Decision: `CliError.UnknownHelpTopic` carries the available topic names as well as the
+  requested one (`UnknownHelpTopic !Text ![Text]`), rather than just the topic.
+  Rationale: The plan's one-field version forces `renderCliError` to import
+  `Shiki.Cli.Help` for `helpTopics`, and Milestone 5 has `Shiki.Cli.Help` importing
+  `Shiki.Cli.Error` to throw the error — a module cycle. Passing the list at the throw site
+  keeps both modules acyclic and the message identical.
+  Date: 2026-09-15.
+
+- Decision: `CliError` also has `AgentBinaryMissing !Text !Text` (binary name plus install
+  hint) and a separate `AgentPromptInvalid !Text`, where the plan had `AgentBinaryMissing
+  !Text` and folded the prompt-render error into `AgentRequestFailed`.
+  Rationale: Today's messages differ per binary (`claude` points at its install docs,
+  `codex` says to authenticate the CLI), and the prompt-render error prints
+  `shiki: <message>`, not `shiki: agent api call failed: <message>`. Both extra fields exist
+  only so Milestone 5 can move the wording across unchanged, which is what the acceptance
+  matrix asks for.
+  Date: 2026-09-15.
+
+- Decision: `Shiki.Error` also exports `renderConnectionError`, `renderSessionError`,
+  `renderUsageError`, and `collapseWhitespace`, which the plan named but did not place.
+  Rationale: They are the pieces that turn a hasql failure into the `Text` a `StoreError`
+  carries, and every interpreter that touches the database needs them. Putting them beside
+  the type they feed keeps the mapping in one file and lets `MainSpec` assert the wording.
   Date: 2026-09-15.
 
 
@@ -1466,7 +1522,7 @@ command prints exactly one line on stderr, nothing on stdout, and no `Uncaught e
 | 1 | Any DB command with no `--db`, no `shiki.dhall`, no `SHIKI_DATABASE_URL` or `PG_CONNECTION_STRING` | One line: `shiki: no Postgres connection string; …` | 1 | M2 |
 | 2 | `shiki --db "$DB" --db-schema 'bad name' runs list` (schema names must match `[A-Za-z_][A-Za-z0-9_]*`) | One line: `shiki: invalid schema name: …` | 1 | M2 |
 | 3 | `shiki --env typo runs list` in a project with `shiki.dhall` | One line: `shiki: environment typo is not declared in <path> (declared: …)` | 1 | M2 |
-| 4 | `shiki runs list` with a syntax error in `shiki.dhall` | One line: `shiki: cannot load <path>: …` | 1 | M2 |
+| 4 | `shiki runs list` with a syntax error in `shiki.dhall` | One message: `shiki: cannot load <path>: ` followed by Dhall's own diagnostic; no banner, no backtrace | 1 | M2 |
 | 5 | `shiki --db postgresql://127.0.0.1:1/none runs show 3f` | One line: `shiki: cannot connect to the database: …` | 1 | M2 |
 | 6 | `shiki help runs`, `shiki --version`, a successful `shiki runs list` | Unchanged output | 0 | M2 |
 | 7 | `shiki runs list` / `show <id>` / `logs <id>` / `error <id>` on a working database | Unchanged output | 0 | M3 |
@@ -1478,7 +1534,7 @@ command prints exactly one line on stderr, nothing on stdout, and no `Uncaught e
 | 13 | `shiki run <svc> -- sleep 600`, then Ctrl-C | stderr: `shiki: interrupted; job <name> keeps running; …`; the row stays `running` and shows `unwatched` after 5 minutes; `shiki runs sync <id>` later records the outcome | 130 | M4 |
 | 14 | `shiki runs sync` with a failing run among several | Per-run `run <id>: sync failed: …` lines, others still sync | 1 | M4 |
 | 15 | `shiki run no-such-service -- echo hi` | One line: `shiki: no service config at services/no-such-service.dhall` | 1 | M5 |
-| 16 | `shiki run <svc>` / `service show <svc>` / `runs analyze <id>` with a syntax error in `services/<svc>.dhall` | One line: `shiki: cannot load services/<svc>.dhall: …` | 1 | M5 |
+| 16 | `shiki run <svc>` / `service show <svc>` / `runs analyze <id>` with a syntax error in `services/<svc>.dhall` | One message: `shiki: cannot load services/<svc>.dhall: ` followed by Dhall's own diagnostic; no banner, no backtrace | 1 | M5 |
 | 17 | `shiki help nope` | The existing unknown-topic text on stderr | 1 | M5 |
 | 18 | `shiki config init` when `shiki.dhall` exists | The existing refusal message on stderr | 1 | M5 |
 | 19 | `shiki config init --output /nonexistent/dir/shiki.dhall` | One line: `shiki: cannot write /nonexistent/dir/shiki.dhall: …` | 1 | M5 |

@@ -54,6 +54,7 @@ library
     Shiki.Analysis.Backend
     Shiki.Analysis.Baikai
     Shiki.Analysis.Heuristic
+    Shiki.Error
     Shiki.K8s.Client
     Shiki.K8s.ExecCredential
     Shiki.K8s.Introspection

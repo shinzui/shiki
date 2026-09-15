@@ -16,6 +16,8 @@ import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
+import Effectful (Eff)
+import Effectful.Error.Static (throwError)
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)
@@ -39,13 +41,13 @@ import Options.Applicative
   )
 import Options.Applicative qualified as Opt
 import Shiki.Analysis.Backend
-  ( AnalyzerError (..),
-    AnalyzerKind (..),
+  ( AnalyzerKind (..),
     AnalyzerResult (..),
     analyzerBackendToKind,
     runAnalyzer,
   )
 import Shiki.Cli.Env (CliEnv (..))
+import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Fzf (FzfOpts)
 import Shiki.Cli.Fzf.Selector.Run
   ( RunLookupFailure,
@@ -55,8 +57,10 @@ import Shiki.Cli.Fzf.Selector.Run
     renderRunLookupFailure,
     runTarget,
   )
+import Shiki.Cli.Main (CliEff)
 import Shiki.Cli.Runs.Format (isUnwatched, renderTable)
 import Shiki.Cli.Runs.Sync (syncRun, syncRuns)
+import Shiki.Error (renderAnalyzerError)
 import Shiki.Persistence.Run
   ( RunId (..),
     RunRecord,
@@ -68,7 +72,7 @@ import Shiki.Persistence.Run
 import Shiki.Prelude hiding (argument)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
 import System.Exit (exitFailure)
-import System.IO (hPutStrLn, stderr)
+import System.IO (stderr)
 
 data RunsCommand
   = RunsList !(Maybe Text) !Int
@@ -179,7 +183,7 @@ analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
 --   it as an argument lets the single-run commands decide their target
 --   first, so a missing positional with no usable fzf fails before any
 --   connection is made (see "Shiki.Cli.Fzf.Selector.Run").
-runRuns :: ((CliEnv -> IO ()) -> IO ()) -> RunsCommand -> IO ()
+runRuns :: ((CliEnv -> IO ()) -> Eff CliEff ()) -> RunsCommand -> Eff CliEff ()
 runRuns withEnv = \case
   RunsList mService limit -> withEnv (\env -> doList env mService limit)
   RunsShow mId -> withRun withEnv readRunOpts mId (const doShow)
@@ -193,20 +197,24 @@ runRuns withEnv = \case
 -- | Decide the target before acquiring the environment (so a missing fzf never
 --   costs a database connection), then look the run up and run the handler.
 withRun ::
-  ((CliEnv -> IO ()) -> IO ()) ->
+  ((CliEnv -> IO ()) -> Eff CliEff ()) ->
   FzfOpts ->
   Maybe Text ->
   (CliEnv -> UTCTime -> RunRecord -> IO ()) ->
-  IO ()
+  Eff CliEff ()
 withRun withEnv opts mId body =
-  runTarget opts mId >>= \case
-    Left failure -> failLookup failure
+  liftIO (runTarget opts mId) >>= \case
+    Left failure -> throwError (CliRunLookup failure)
     Right target ->
       withEnv $ \env -> do
         observedAt <- runRead env databaseNowStatement ()
         lookupRun env observedAt target >>= either failLookup (body env observedAt)
 
--- | Print the failure's message (if any) on stderr and exit 1.
+-- | Print the failure's message (if any) on stderr and exit 1. Still an 'IO'
+--   exit because the lookup itself runs inside the 'IO' continuation
+--   @withEnv@ hands out; Milestone 3 moves the lookup into 'Eff' and replaces
+--   this with @throwError (CliRunLookup failure)@. 'runShikiMain' passes the
+--   'ExitCode' through unchanged, so the behaviour is the same either way.
 failLookup :: RunLookupFailure -> IO a
 failLookup failure = do
   mapM_ (TIO.hPutStrLn stderr) (renderRunLookupFailure failure)
@@ -259,7 +267,7 @@ doAnalyze env r override = do
       result <- runAnalyzer kind t
       case result of
         Left err -> do
-          hPutStrLn stderr (renderAnalyzerError err)
+          TIO.hPutStrLn stderr ("shiki: " <> renderAnalyzerError err)
           exitFailure
         Right res -> do
           runWrite
@@ -279,12 +287,6 @@ effectiveBackend r Nothing = do
   case mCfg of
     Left _ -> pure Heuristic
     Right cfg -> pure (analyzerBackendToKind (cfg ^. #analyzer))
-
-renderAnalyzerError :: AnalyzerError -> String
-renderAnalyzerError = \case
-  AnalyzerBackendDisabled -> "shiki: analyzer disabled (backend = None)"
-  AnalyzerUnknown t -> "shiki: unknown analyzer override: " <> Text.unpack t
-  AnalyzerBaikaiError t -> "shiki: baikai backend failed: " <> Text.unpack t
 
 renderAnalyzeOutcome :: RunId -> AnalyzerResult -> Text
 renderAnalyzeOutcome rid res =

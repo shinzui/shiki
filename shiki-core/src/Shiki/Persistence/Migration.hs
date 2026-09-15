@@ -9,11 +9,15 @@
 -- @hasql-migration@ ledgers from the released SQL files.
 module Shiki.Persistence.Migration
   ( runMigrations,
+    MigrationFailure (..),
+    renderMigrationFailure,
     migrationsDirectory,
   )
 where
 
 import Control.Exception (bracket)
+import Control.Monad.Except (ExceptT (..), runExceptT)
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Functor.Contravariant ((>$<))
 import Data.Int (Int64)
@@ -92,21 +96,24 @@ shikiMigrationPlan =
 -- unchanged, unqualified SQL targets @<schema>,public@. Before the normal pg-migrate run,
 -- a valid non-empty prefix in the predecessor @schema_migrations@ table is imported as
 -- already applied. The predecessor table is retained as recovery evidence.
-runMigrations :: ConnectionString -> Schema -> IO ()
-runMigrations cs schema = do
+--
+-- Every way this can fail comes back as @Left@ so the caller decides how to
+-- report it; nothing here throws or exits. 'Shiki.Cli.Env.withCliEnv' turns a
+-- 'BootstrapConnectionFailed' into @shiki: cannot connect to the database: …@
+-- and anything else into @shiki: migration failed for schema …@.
+runMigrations :: ConnectionString -> Schema -> IO (Either MigrationFailure ())
+runMigrations cs schema = runExceptT $ do
   let settings = migrationSettings cs schema
       provider = connectionProviderFromSettings settings
-  runOptions <- either (migrationFailure schema) pure (migrationRunOptions schema)
-  probeLegacyHistory settings schema >>= \case
-    Left bootstrapError -> migrationFailure schema bootstrapError
-    Right NoLegacyImport -> pure ()
-    Right (ImportLegacyHistory filenames) ->
-      importLegacyHistory provider runOptions schema filenames
-        >>= either (migrationFailure schema) (const (pure ()))
-  runMigrationPlanWith runOptions provider shikiMigrationPlan
-    >>= either
-      (migrationFailure schema . MigrationExecutionFailed)
-      (const (pure ()))
+  runOptions <- ExceptT (pure (migrationRunOptions schema))
+  decision <- ExceptT (probeLegacyHistory settings schema)
+  case decision of
+    NoLegacyImport -> pure ()
+    ImportLegacyHistory filenames ->
+      ExceptT (importLegacyHistory provider runOptions schema filenames)
+  void . ExceptT $
+    first MigrationExecutionFailed
+      <$> runMigrationPlanWith runOptions provider shikiMigrationPlan
 
 migrationSettings :: ConnectionString -> Schema -> Settings.Settings
 migrationSettings (ConnectionString cs) schema =
@@ -115,7 +122,7 @@ migrationSettings (ConnectionString cs) schema =
       "options"
       ("-csearch_path=" <> schemaText schema <> ",public")
 
-migrationRunOptions :: Schema -> Either MigrationBootstrapError RunOptions
+migrationRunOptions :: Schema -> Either MigrationFailure RunOptions
 migrationRunOptions schema =
   case ledgerConfig (schemaText schema) 0x7368696B695F6D67 of
     Left definitionError -> Left (LedgerDefinitionFailed definitionError)
@@ -125,7 +132,10 @@ data LegacyHistoryDecision
   = NoLegacyImport
   | ImportLegacyHistory !(NonEmpty FilePath)
 
-data MigrationBootstrapError
+-- | Why 'runMigrations' could not bring a schema up to date. Exported so the
+-- CLI can tell "the database is unreachable" ('BootstrapConnectionFailed')
+-- apart from every other migration problem and word its message accordingly.
+data MigrationFailure
   = BootstrapConnectionFailed !Errors.ConnectionError
   | BootstrapSessionFailed !Errors.SessionError
   | LegacyHistoryNotPrefix ![FilePath] ![FilePath]
@@ -133,11 +143,12 @@ data MigrationBootstrapError
   | LegacyImportDefinitionFailed !Text
   | LegacyImportFailed !HasqlMigrationImportError
   | MigrationExecutionFailed !MigrationError
+  deriving stock (Generic, Show)
 
 probeLegacyHistory ::
   Settings.Settings ->
   Schema ->
-  IO (Either MigrationBootstrapError LegacyHistoryDecision)
+  IO (Either MigrationFailure LegacyHistoryDecision)
 probeLegacyHistory settings schema = do
   acquired <- Connection.acquire settings
   case acquired of
@@ -171,7 +182,7 @@ legacyHistoryProbeSession schema = do
         then Just . fmap Text.unpack <$> Session.statement () (legacyFilenamesStatement schema)
         else pure Nothing
 
-validateLegacyPrefix :: [FilePath] -> Either MigrationBootstrapError LegacyHistoryDecision
+validateLegacyPrefix :: [FilePath] -> Either MigrationFailure LegacyHistoryDecision
 validateLegacyPrefix [] = Right NoLegacyImport
 validateLegacyPrefix observed
   | observed `List.isPrefixOf` expected =
@@ -187,7 +198,7 @@ importLegacyHistory ::
   RunOptions ->
   Schema ->
   NonEmpty FilePath ->
-  IO (Either MigrationBootstrapError ())
+  IO (Either MigrationFailure ())
 importLegacyHistory provider runOptions schema filenames =
   case legacyImportDefinition provider schema filenames of
     Left definitionError -> pure (Left definitionError)
@@ -204,7 +215,7 @@ legacyImportDefinition ::
   ConnectionProvider ->
   Schema ->
   NonEmpty FilePath ->
-  Either MigrationBootstrapError (HasqlMigrationSourceConfig, NonEmpty HistoryMapping)
+  Either MigrationFailure (HasqlMigrationSourceConfig, NonEmpty HistoryMapping)
 legacyImportDefinition provider schema filenames = do
   sourceTable <-
     mapLegacyDefinition
@@ -223,7 +234,7 @@ legacyImportDefinition provider schema filenames = do
   mappings <- traverse legacyMapping filenames
   pure (sourceConfig, mappings)
 
-legacyMapping :: FilePath -> Either MigrationBootstrapError HistoryMapping
+legacyMapping :: FilePath -> Either MigrationFailure HistoryMapping
 legacyMapping filename = do
   target <-
     case migrationId "shiki" (Text.pack (dropExtension filename)) of
@@ -235,40 +246,35 @@ legacyMapping filename = do
 
 mapLegacyDefinition ::
   Either HasqlMigrationDefinitionError value ->
-  Either MigrationBootstrapError value
+  Either MigrationFailure value
 mapLegacyDefinition = \case
   Left definitionError ->
     Left (LegacyImportDefinitionFailed (Text.pack (show definitionError)))
   Right value -> Right value
 
-migrationFailure :: Schema -> MigrationBootstrapError -> IO value
-migrationFailure schema migrationError =
-  fail
-    ( "shiki: migration failed for schema "
-        <> Text.unpack (schemaText schema)
-        <> ": "
-        <> renderMigrationBootstrapError migrationError
-    )
-
-renderMigrationBootstrapError :: MigrationBootstrapError -> String
-renderMigrationBootstrapError = \case
-  BootstrapConnectionFailed connectionError ->
-    "could not inspect migration history: " <> show connectionError
-  BootstrapSessionFailed sessionError ->
-    "could not inspect migration history: " <> show sessionError
-  LegacyHistoryNotPrefix expected observed ->
-    "legacy schema_migrations filenames are not an ordered prefix; expected prefix of "
-      <> show expected
-      <> ", observed "
-      <> show observed
-  LedgerDefinitionFailed definitionError ->
-    "invalid pg-migrate ledger configuration: " <> show definitionError
-  LegacyImportDefinitionFailed definitionError ->
-    "invalid legacy-history import definition: " <> Text.unpack definitionError
-  LegacyImportFailed importError ->
-    "legacy-history import failed: " <> show importError
-  MigrationExecutionFailed executionError ->
-    "pg-migrate execution failed: " <> show executionError
+-- | A human-readable description of one migration failure. It carries no
+-- @shiki: @ prefix and no schema name; 'Shiki.Error.renderShikiError' adds
+-- both when the CLI reports it.
+renderMigrationFailure :: MigrationFailure -> Text
+renderMigrationFailure =
+  Text.pack . \case
+    BootstrapConnectionFailed connectionError ->
+      "could not inspect migration history: " <> show connectionError
+    BootstrapSessionFailed sessionError ->
+      "could not inspect migration history: " <> show sessionError
+    LegacyHistoryNotPrefix expected observed ->
+      "legacy schema_migrations filenames are not an ordered prefix; expected prefix of "
+        <> show expected
+        <> ", observed "
+        <> show observed
+    LedgerDefinitionFailed definitionError ->
+      "invalid pg-migrate ledger configuration: " <> show definitionError
+    LegacyImportDefinitionFailed definitionError ->
+      "invalid legacy-history import definition: " <> Text.unpack definitionError
+    LegacyImportFailed importError ->
+      "legacy-history import failed: " <> show importError
+    MigrationExecutionFailed executionError ->
+      "pg-migrate execution failed: " <> show executionError
 
 tableExistsStatement :: Statement (Text, Text) Bool
 tableExistsStatement = preparable sql encoder decoder

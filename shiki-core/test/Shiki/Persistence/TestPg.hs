@@ -4,6 +4,7 @@
 --   trust that the existing tests no longer hardcode the default schema.
 module Shiki.Persistence.TestPg
   ( freshSchema,
+    migrateOrFail,
     withSchemaPool,
   )
 where
@@ -19,7 +20,7 @@ import Shiki.Persistence.Connection
     acquirePool,
     releasePool,
   )
-import Shiki.Persistence.Migration (runMigrations)
+import Shiki.Persistence.Migration (renderMigrationFailure, runMigrations)
 import Shiki.Persistence.Schema (Schema, mkSchema)
 
 -- | A fresh, randomly-named schema each call. Useful for test isolation.
@@ -43,8 +44,15 @@ withSchemaPool action = do
     bracket
       (acquirePool (ConnectionString (EpPg.connectionString db)) schema)
       releasePool
-      (\pool -> runMigrations (ConnectionString (EpPg.connectionString db)) schema *> action pool)
+      (\pool -> migrateOrFail (ConnectionString (EpPg.connectionString db)) schema *> action pool)
   case result of
     Right () -> pure ()
     Left err ->
       fail ("ephemeral-pg failed to start: " <> show (EpPg.renderStartError err))
+
+-- | 'runMigrations' where the test expects success: a 'Left' aborts the case
+--   with the rendered failure instead of being silently ignored.
+migrateOrFail :: ConnectionString -> Schema -> IO ()
+migrateOrFail cs schema =
+  runMigrations cs schema
+    >>= either (fail . Text.unpack . renderMigrationFailure) pure

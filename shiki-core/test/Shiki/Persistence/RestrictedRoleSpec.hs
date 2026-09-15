@@ -10,7 +10,6 @@ import Shiki.Persistence.Connection
     acquirePool,
     releasePool,
   )
-import Shiki.Persistence.Migration (runMigrations)
 import Shiki.Persistence.Run
   ( NewRun (..),
     RunId,
@@ -19,7 +18,7 @@ import Shiki.Persistence.Run
     touchRunWatchedStatement,
   )
 import Shiki.Persistence.Schema (Schema, quoteSchema)
-import Shiki.Persistence.TestPg (freshSchema)
+import Shiki.Persistence.TestPg (freshSchema, migrateOrFail)
 import Shiki.Prelude
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase)
@@ -37,7 +36,7 @@ tests =
               restricted =
                 ConnectionString (EpPg.connectionString db <> " user=shiki_restricted")
           withPool owner schema $ \pool -> do
-            runMigrations owner schema
+            migrateOrFail owner schema
             exec pool (restrictedRoleGrants schema)
           withPool restricted schema $ \pool -> do
             -- Guard against a vacuous pass: the role must really lack
@@ -46,7 +45,7 @@ tests =
             Pool.use pool (Session.script "CREATE SCHEMA shiki_probe;") >>= \case
               Left _ -> pure ()
               Right () -> assertFailure "restricted role unexpectedly has CREATE on the database"
-            runMigrations restricted schema
+            migrateOrFail restricted schema
             rid <- insertOneRun pool
             Pool.use pool (Session.statement rid touchRunWatchedStatement)
               >>= either (fail . show) pure

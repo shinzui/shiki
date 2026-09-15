@@ -1,10 +1,8 @@
 module Shiki.Persistence.MigrationSpec (tests) where
 
 import Control.Exception (bracket)
-import Control.Exception qualified as Exception
 import Data.Functor.Contravariant ((>$<))
 import Data.Int (Int32, Int64)
-import Data.List qualified as List
 import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
@@ -29,7 +27,12 @@ import Shiki.Persistence.Connection
     acquirePool,
     releasePool,
   )
-import Shiki.Persistence.Migration (migrationsDirectory, runMigrations)
+import Shiki.Persistence.Migration
+  ( MigrationFailure,
+    migrationsDirectory,
+    renderMigrationFailure,
+    runMigrations,
+  )
 import Shiki.Persistence.Schema (Schema, mkSchema, quoteSchema, schemaText)
 import Shiki.Prelude
 import System.FilePath (dropExtension, (</>))
@@ -56,7 +59,7 @@ testFreshInstall :: IO ()
 testFreshInstall =
   withEphemeralDatabase $ \cs -> do
     schema <- requireSchema "shiki_migration_fresh"
-    runMigrations cs schema
+    migrateOrFail cs schema
     withPool cs schema $ \pool -> do
       assertCurrentLedger pool
       tableCount <- query pool ledgerTableCountStatement ()
@@ -64,7 +67,7 @@ testFreshInstall =
       sourceExists <- query pool tableExistsStatement "schema_migrations"
       assertEqual "fresh install has no predecessor ledger" False sourceExists
       before <- query pool finishedAtStatement ()
-      runMigrations cs schema
+      migrateOrFail cs schema
       after <- query pool finishedAtStatement ()
       assertEqual "repeat run preserves applied timestamps" before after
 
@@ -76,7 +79,7 @@ testLegacyPrefixes =
     exercisePrefix cs prefixLength = do
       schema <- requireSchema ("shiki_migration_prefix_" <> Text.pack (show prefixLength))
       prepareLegacyHistory cs schema (take prefixLength legacyMigrations) True
-      runMigrations cs schema
+      migrateOrFail cs schema
       withPool cs schema $ \pool -> do
         assertCurrentLedger pool
         imported <- query pool importedMigrationsStatement ()
@@ -87,7 +90,7 @@ testLegacyPrefixes =
         sourceExists <- query pool tableExistsStatement "schema_migrations"
         assertEqual "predecessor evidence is retained" True sourceExists
         before <- query pool finishedAtStatement ()
-        runMigrations cs schema
+        migrateOrFail cs schema
         after <- query pool finishedAtStatement ()
         assertEqual "repeat conversion preserves applied timestamps" before after
 
@@ -100,7 +103,7 @@ testInitializedEmptyLedger =
     withPool cs schema $ \pool -> do
       before <- targetMigrationCount pool
       assertEqual "failed bootstrap left no target rows" 0 before
-    runMigrations cs schema
+    migrateOrFail cs schema
     withPool cs schema $ \pool -> do
       assertCurrentLedger pool
       imported <- query pool importedMigrationsStatement ()
@@ -233,15 +236,26 @@ requireSchema name =
 requireRight :: (Show error) => Either error value -> value
 requireRight = either (error . show) id
 
-expectFailureContaining :: String -> IO () -> IO ()
-expectFailureContaining expected action = do
-  result <- Exception.try action
-  case result :: Either Exception.SomeException () of
+-- | 'runMigrations' where the test expects failure: assert on the rendered
+--   'MigrationFailure' rather than on the text of a thrown exception.
+expectFailureContaining :: Text -> IO (Either MigrationFailure ()) -> IO ()
+expectFailureContaining expected action =
+  action >>= \case
     Left actual ->
       assertBool
-        ("expected failure containing " <> show expected <> ", got " <> show actual)
-        (expected `List.isInfixOf` show actual)
+        ( "expected failure containing "
+            <> show expected
+            <> ", got "
+            <> show (renderMigrationFailure actual)
+        )
+        (expected `Text.isInfixOf` renderMigrationFailure actual)
     Right () -> assertFailure ("expected failure containing " <> show expected)
+
+-- | 'runMigrations' where the test expects success.
+migrateOrFail :: ConnectionString -> Schema -> IO ()
+migrateOrFail cs schema =
+  runMigrations cs schema
+    >>= either (fail . Text.unpack . renderMigrationFailure) pure
 
 exec :: Pool.Pool -> Text -> IO ()
 exec pool sql =

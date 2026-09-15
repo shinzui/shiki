@@ -10,16 +10,23 @@ where
 
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
 import Shiki.Cli.Project (resolveActiveEnvironment)
+import Shiki.Error (ConfigError (..), ShikiError (..))
 import Shiki.Persistence.Connection (ConnectionString (..))
 import Shiki.Prelude
 import System.Environment (lookupEnv)
 
 -- | Pick a 'ConnectionString' from the @--db@ flag, then the active
---   environment in @shiki.dhall@, then environment variables. Errors out
---   if none is set so a missing connection string can never silently fall
---   through to the cluster work.
-resolveConnectionString :: Maybe Text -> Maybe Text -> IO ConnectionString
+--   environment in @shiki.dhall@, then environment variables. Throws
+--   'NoConnectionString' if none is set, so a missing connection string can
+--   never silently fall through to the cluster work.
+resolveConnectionString ::
+  (IOE :> es, Error ShikiError :> es) =>
+  Maybe Text ->
+  Maybe Text ->
+  Eff es ConnectionString
 resolveConnectionString mDb mEnv = case mDb of
   Just t -> pure (ConnectionString t)
   Nothing -> do
@@ -29,14 +36,10 @@ resolveConnectionString mDb mEnv = case mDb of
         | not (Text.null (e ^. #databaseUrl)) ->
             pure (ConnectionString (e ^. #databaseUrl))
       _ -> do
-        fromEnv <- firstEnv ["SHIKI_DATABASE_URL", "PG_CONNECTION_STRING"]
+        fromEnv <- liftIO (firstEnv ["SHIKI_DATABASE_URL", "PG_CONNECTION_STRING"])
         case fromEnv of
           Just s -> pure (ConnectionString s)
-          Nothing ->
-            error
-              "shiki: no Postgres connection string. \
-              \Pass --db, add a shiki.dhall, or set \
-              \SHIKI_DATABASE_URL / PG_CONNECTION_STRING."
+          Nothing -> throwError (ShikiConfigError NoConnectionString)
 
 firstEnv :: [String] -> IO (Maybe Text)
 firstEnv [] = pure Nothing

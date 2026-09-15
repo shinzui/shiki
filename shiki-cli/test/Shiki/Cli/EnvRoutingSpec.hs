@@ -1,19 +1,22 @@
 module Shiki.Cli.EnvRoutingSpec (tests) where
 
-import Control.Exception (SomeException, bracket, try)
+import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
 import Data.Text qualified as Text
+import Effectful (Eff, IOE, runEff)
+import Effectful.Error.Static (Error, runErrorNoCallStack)
 import EphemeralPg qualified as EpPg
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)
 import Shiki.Cli.Config (resolveConnectionString)
+import Shiki.Error (ConfigError (..), ShikiError (..))
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
     acquirePool,
     releasePool,
   )
-import Shiki.Persistence.Migration (runMigrations)
+import Shiki.Persistence.Migration (renderMigrationFailure, runMigrations)
 import Shiki.Persistence.Run
   ( NewRun (..),
     RunRecord,
@@ -21,13 +24,13 @@ import Shiki.Persistence.Run
     listRecentRunsStatement,
     newRunId,
   )
-import Shiki.Persistence.Schema (defaultSchema)
+import Shiki.Persistence.Schema (Schema, defaultSchema)
 import Shiki.Prelude
 import System.Directory (getCurrentDirectory, setCurrentDirectory)
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =
@@ -39,8 +42,8 @@ tests =
             withSystemTempDirectory "shiki-env-routing" $ \tmp -> do
               writeFile (tmp <> "/shiki.dhall") (projectConfig stagingConn prodConn)
               withCurrentDirectory' tmp $ do
-                resolvedStaging <- resolveConnectionString Nothing (Just "staging")
-                resolvedProd <- resolveConnectionString Nothing (Just "prod")
+                resolvedStaging <- resolveOrFail Nothing (Just "staging")
+                resolvedProd <- resolveOrFail Nothing (Just "prod")
                 assertEqual "staging URL" stagingConn resolvedStaging
                 assertEqual "prod URL" prodConn resolvedProd
 
@@ -71,7 +74,7 @@ tests =
           withSystemTempDirectory "shiki-env-fallback" $ \tmp ->
             withCurrentDirectory' tmp $ do
               setEnv "SHIKI_DATABASE_URL" "postgresql://legacy/fallback"
-              fallback <- resolveConnectionString Nothing Nothing
+              fallback <- resolveOrFail Nothing Nothing
               assertEqual
                 "SHIKI_DATABASE_URL fallback"
                 (ConnectionString "postgresql://legacy/fallback")
@@ -79,26 +82,31 @@ tests =
 
               unsetEnv "SHIKI_DATABASE_URL"
               unsetEnv "PG_CONNECTION_STRING"
-              missing <- try @SomeException (resolveConnectionString Nothing Nothing)
-              case missing of
-                Left e ->
-                  assertBool
-                    "missing-source message"
-                    ( "no Postgres connection string"
-                        `Text.isInfixOf` Text.pack (show e)
-                    )
-                Right cs ->
-                  fail ("expected missing-source error, got " <> show cs)
+              missing <- runResolver (resolveConnectionString Nothing Nothing)
+              assertEqual
+                "a missing source is a typed error, not an exception"
+                (Left (ShikiConfigError NoConnectionString))
+                missing
 
               writeFile
                 (tmp <> "/shiki.dhall")
                 (projectConfig (ConnectionString "postgresql://config/staging") (ConnectionString "postgresql://config/prod"))
-              override <- resolveConnectionString (Just "postgresql://flag/override") (Just "prod")
+              override <- resolveOrFail (Just "postgresql://flag/override") (Just "prod")
               assertEqual
                 "--db override"
                 (ConnectionString "postgresql://flag/override")
                 override
     ]
+
+-- | Run a resolver to its 'Either', the way 'Shiki.Cli.Main.runShikiMain'
+--   does, so the test sees the typed error rather than an exception.
+runResolver :: Eff '[Error ShikiError, IOE] a -> IO (Either ShikiError a)
+runResolver action = runEff (runErrorNoCallStack @ShikiError action)
+
+resolveOrFail :: Maybe Text -> Maybe Text -> IO ConnectionString
+resolveOrFail mDb mEnv =
+  runResolver (resolveConnectionString mDb mEnv)
+    >>= either (fail . show) pure
 
 withTwoDatabases :: (ConnectionString -> ConnectionString -> IO ()) -> IO ()
 withTwoDatabases action = do
@@ -120,7 +128,7 @@ withMigratedPool conn action =
   bracket
     (acquirePool conn defaultSchema)
     releasePool
-    (\pool -> runMigrations conn defaultSchema *> action pool)
+    (\pool -> migrateOrFail conn defaultSchema *> action pool)
 
 useStmt :: Pool.Pool -> Statement a () -> a -> IO ()
 useStmt pool stmt input =
@@ -174,3 +182,9 @@ withCleanEnvAndCwd body =
     restoreOne name = \case
       Just v -> setEnv name v
       Nothing -> unsetEnv name
+
+-- | 'runMigrations' where the test expects success.
+migrateOrFail :: ConnectionString -> Schema -> IO ()
+migrateOrFail cs schema =
+  runMigrations cs schema
+    >>= either (fail . Text.unpack . renderMigrationFailure) pure

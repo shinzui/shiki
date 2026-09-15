@@ -7,6 +7,7 @@ module Shiki.Cli.Project
     Environment (..),
     discoverProjectConfigPath,
     loadProjectConfig,
+    loadProjectConfigChecked,
     resolveActiveEnvironmentName,
     resolveActiveEnvironment,
     EnvSelectionSource (..),
@@ -16,6 +17,10 @@ where
 import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
+import Effectful.Exception qualified as Exc
+import Shiki.Error (ConfigError (..), ShikiError (..))
 import Shiki.Prelude
 import Shiki.Project.Config (Environment (..), ProjectConfig (..))
 import Shiki.Project.Config.Dhall (loadProjectConfig)
@@ -52,39 +57,60 @@ discoverProjectConfigPath = getCurrentDirectory >>= go
 --   loaded config and the optional @--env@ flag value. Precedence:
 --   @--env@ flag, then @SHIKI_ENV@ env var, then @defaultEnvironment@.
 resolveActiveEnvironmentName ::
+  (IOE :> es) =>
   ProjectConfig ->
   Maybe Text ->
-  IO (Text, EnvSelectionSource)
+  Eff es (Text, EnvSelectionSource)
 resolveActiveEnvironmentName cfg mFlag =
   case mFlag of
     Just name | not (Text.null name) -> pure (name, FromFlag)
     _ -> do
-      mEnv <- lookupEnv "SHIKI_ENV"
+      mEnv <- liftIO (lookupEnv "SHIKI_ENV")
       pure $ case mEnv of
         Just s | not (null s) -> (Text.pack s, FromEnvVar)
         _ -> (cfg ^. #defaultEnvironment, FromDefault)
 
+-- | 'loadProjectConfig' with Dhall's exceptions turned into a typed
+--   'ProjectConfigInvalid'. Dhall reports a syntax error, a failed import, and
+--   a type mismatch by throwing; catching them here is what turns
+--   @shiki runs list@ against a broken @shiki.dhall@ into one
+--   @shiki: cannot load \<path\>: \<message\>@ line instead of a banner.
+loadProjectConfigChecked ::
+  (IOE :> es, Error ShikiError :> es) =>
+  FilePath ->
+  Eff es ProjectConfig
+loadProjectConfigChecked path =
+  Exc.trySync (liftIO (loadProjectConfig path)) >>= \case
+    Right cfg -> pure cfg
+    Left e ->
+      throwError
+        ( ShikiConfigError
+            (ProjectConfigInvalid path (Text.strip (Text.pack (Exc.displayException e))))
+        )
+
 -- | Discover, load, and resolve in one step. Returns 'Nothing' when no
 --   @shiki.dhall@ is discovered (callers fall back to legacy behavior).
 --   When a config IS found but the resolved environment name is not one of
---   its declared environments, this calls 'error' with a clear message
---   (an explicit @--env typo@ should fail loudly, not silently fall back).
-resolveActiveEnvironment :: Maybe Text -> IO (Maybe (Text, Environment))
+--   its declared environments, this throws 'UndeclaredEnvironment' (an
+--   explicit @--env typo@ should fail loudly, not silently fall back).
+resolveActiveEnvironment ::
+  (IOE :> es, Error ShikiError :> es) =>
+  Maybe Text ->
+  Eff es (Maybe (Text, Environment))
 resolveActiveEnvironment mFlag =
-  discoverProjectConfigPath >>= \case
+  liftIO discoverProjectConfigPath >>= \case
     Nothing -> pure Nothing
     Just path -> do
-      cfg <- loadProjectConfig path
+      cfg <- loadProjectConfigChecked path
       (name, _src) <- resolveActiveEnvironmentName cfg mFlag
       case Map.lookup name (cfg ^. #environments) of
         Just e -> pure (Just (name, e))
         Nothing ->
-          error
-            ( "shiki: environment "
-                <> Text.unpack name
-                <> " is not declared in "
-                <> path
-                <> " (declared: "
-                <> Text.unpack (Text.intercalate ", " (Map.keys (cfg ^. #environments)))
-                <> ")"
+          throwError
+            ( ShikiConfigError
+                ( UndeclaredEnvironment
+                    name
+                    path
+                    (Map.keys (cfg ^. #environments))
+                )
             )
