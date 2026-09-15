@@ -9,6 +9,7 @@ import Shiki.Cli.EnvRoutingSpec qualified as EnvRoutingSpec
 import Shiki.Cli.Fzf.Selector.RunSpec qualified as RunSelectorSpec
 import Shiki.Cli.Fzf.Selector.ServiceSpec qualified as ServiceSelectorSpec
 import Shiki.Cli.FzfSpec qualified as FzfSpec
+import Shiki.Cli.HeartbeatSpec qualified as HeartbeatSpec
 import Shiki.Cli.HelpSpec qualified as HelpSpec
 import Shiki.Cli.ParserSpec qualified as ParserSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
@@ -36,6 +37,7 @@ main =
           ConfigInitSpec.tests,
           EnvRoutingSpec.tests,
           HelpSpec.tests,
+          HeartbeatSpec.tests,
           ParserSpec.tests,
           VersionSpec.tests,
           FzfSpec.tests,

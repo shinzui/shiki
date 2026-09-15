@@ -74,9 +74,9 @@ Milestone 1 — Store a watch heartbeat
 
 Milestone 2 — Heartbeat from the waiting process
 
-- [ ] Add `shiki-cli/src/Shiki/Cli/Heartbeat.hs` with `withHeartbeat`.
-- [ ] Wrap the wait in `waitPath` (`shiki-cli/src/Shiki/Cli/Run.hs`) with a 60-second heartbeat; leave `noWaitPath` untouched.
-- [ ] Add deterministic, synchronization-based tests in `shiki-cli/test/Shiki/Cli/HeartbeatSpec.hs`; `cabal test all` passes; commit.
+- [x] (2026-09-15T14:53:10Z) Add `shiki-cli/src/Shiki/Cli/Heartbeat.hs` with `withHeartbeat`.
+- [x] (2026-09-15T14:53:10Z) Wrap the wait in `waitPath` (`shiki-cli/src/Shiki/Cli/Run.hs`) with a 60-second heartbeat; leave `noWaitPath` untouched.
+- [x] (2026-09-15T14:53:10Z) Add deterministic, synchronization-based tests in `shiki-cli/test/Shiki/Cli/HeartbeatSpec.hs`; `nix fmt`, `cabal build all --enable-tests`, and `cabal test all` pass with 51 core tests and 102 CLI tests; commit.
 
 Milestone 3 — Show unwatched runs
 

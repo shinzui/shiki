@@ -38,6 +38,7 @@ import Options.Applicative
     value,
   )
 import Shiki.Cli.Env (CliEnv (..))
+import Shiki.Cli.Heartbeat (withHeartbeat)
 import Shiki.K8s.Introspection
   ( DeploymentName (..),
     DeploymentSnapshot,
@@ -59,6 +60,7 @@ import Shiki.Persistence.Run
     insertRunStatement,
     markRunRunningStatement,
     newRunId,
+    touchRunWatchedStatement,
   )
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Prelude hiding (Strict, argument)
@@ -185,10 +187,22 @@ waitPath ::
   JobInputs ->
   IO ()
 waitPath env rid startedAt cfg snap inputs = do
-  result <- try (runJob (env ^. #client) cfg snap inputs 5 345600)
+  result <-
+    try
+      ( withHeartbeat
+          heartbeatInterval
+          (runSessionUnit env touchRunWatchedStatement rid)
+          (runJob (env ^. #client) cfg snap inputs 5 345600)
+      )
   case result of
     Left (e :: SomeException) -> finalizeFailed env rid startedAt e
     Right outcome -> finalizeOutcome env rid startedAt outcome
+
+-- One write a minute keeps watcher liveness visible without coupling it to
+-- the five-second Kubernetes polling interval. The display allows five
+-- missed beats before classifying the run as unwatched.
+heartbeatInterval :: Int
+heartbeatInterval = 60_000_000
 
 finalizeFailed :: CliEnv -> RunId -> UTCTime -> SomeException -> IO ()
 finalizeFailed env rid startedAt e = do

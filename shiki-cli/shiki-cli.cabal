@@ -63,6 +63,7 @@ library
     Shiki.Cli.Fzf
     Shiki.Cli.Fzf.Selector.Run
     Shiki.Cli.Fzf.Selector.Service
+    Shiki.Cli.Heartbeat
     Shiki.Cli.Help
     Shiki.Cli.Project
     Shiki.Cli.Run
@@ -133,6 +134,7 @@ test-suite shiki-cli-test
     Shiki.Cli.Fzf.Selector.RunSpec
     Shiki.Cli.Fzf.Selector.ServiceSpec
     Shiki.Cli.FzfSpec
+    Shiki.Cli.HeartbeatSpec
     Shiki.Cli.HelpSpec
     Shiki.Cli.ParserSpec
     Shiki.Cli.ProjectSpec
