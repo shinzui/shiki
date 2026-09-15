@@ -1,112 +1,303 @@
--- | Apply the SQL migrations shipped with @shiki-core@. Loads every
---   script from @sql\/migrations\/@ (located at runtime via the
---   @Paths_shiki_core@ data-files mechanism) and runs each through
---   @hasql-migration@, which tracks applied scripts in a
---   @schema_migrations@ table keyed by filename + MD5 checksum.
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -fplugin=Database.PostgreSQL.Migrate.Embed.RecompilePlugin #-}
+
+-- | Define and apply the SQL migrations shipped with @shiki-core@.
+--
+-- The ordered manifest and exact SQL bytes are embedded at compile time. Production
+-- execution therefore does not depend on runtime file discovery, while
+-- 'migrationsDirectory' remains available to integration tests that construct legacy
+-- @hasql-migration@ ledgers from the released SQL files.
 module Shiki.Persistence.Migration
   ( runMigrations,
     migrationsDirectory,
   )
 where
 
-import Data.Text.Encoding qualified as Text.Encoding
+import Control.Exception (bracket)
+import Data.ByteString (ByteString)
+import Data.Functor.Contravariant ((>$<))
+import Data.Int (Int64)
+import Data.List qualified as List
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
+import Data.Text qualified as Text
+import Database.PostgreSQL.Migrate
+  ( ConnectionProvider,
+    DefinitionError,
+    EvidenceRequirement (Evidence),
+    HistoryMapping,
+    MigrationError,
+    MigrationPlan,
+    PayloadRelation (SamePayload),
+    RunOptions,
+    connectionProviderFromSettings,
+    defaultImportOptions,
+    defaultRunOptions,
+    historyMapping,
+    ledgerConfig,
+    migrationComponentFromEmbeddedSql,
+    migrationId,
+    migrationPlan,
+    runMigrationPlanWith,
+    withImportRunOptions,
+    withLedger,
+  )
+import Database.PostgreSQL.Migrate.Embed (embedMigrationManifest)
+import Database.PostgreSQL.Migrate.History.HasqlMigration
+  ( HasqlMigrationDefinitionError,
+    HasqlMigrationImportError,
+    HasqlMigrationSourceConfig,
+    hasqlMigrationEvidenceKey,
+    hasqlMigrationSourceConfig,
+    importHasqlMigrationHistory,
+    qualifiedTable,
+  )
+import Hasql.Connection qualified as Connection
+import Hasql.Connection.Settings qualified as Settings
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
-import Hasql.Migration qualified as Migration
-import Hasql.Pool qualified as Pool
+import Hasql.Errors qualified as Errors
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement, preparable)
-import Hasql.Transaction qualified as Transaction
-import Hasql.Transaction.Sessions
-  ( IsolationLevel (Serializable),
-    Mode (Write),
-    transaction,
-  )
 import Paths_shiki_core qualified as Paths
+import Shiki.Persistence.Connection (ConnectionString (..))
 import Shiki.Persistence.Schema (Schema, quoteSchema, schemaText)
 import Shiki.Prelude
+import System.FilePath (dropExtension)
 
--- | Absolute path of the SQL migrations directory bundled with this
---   package, resolved via cabal's @data-files@ machinery.
+-- | Absolute path of the SQL migrations directory bundled with this package. The
+-- production runner uses embedded bytes; this path exists for migration-transition tests.
 migrationsDirectory :: IO FilePath
 migrationsDirectory = Paths.getDataFileName "sql/migrations"
 
--- | Apply every unapplied migration script in 'migrationsDirectory'
---   inside the given 'Schema'. The pool's @initSession@ hook (see
---   "Shiki.Persistence.Connection") has already set @search_path@ on the
---   connection, so the @schema_migrations@ table and the unqualified table
---   references in the migration scripts resolve into the configured schema
---   rather than @public@.
---
---   The schema and the @schema_migrations@ table are only created when
---   they are missing. PostgreSQL checks creation privileges before it
---   checks existence, so an unconditional @CREATE SCHEMA IF NOT EXISTS@
---   fails for a role without @CREATE@ on the database even when the schema
---   is already there, and @create table if not exists@ likewise fails
---   without @CREATE@ on the schema. Skipping them lets a restricted role
---   use an already-bootstrapped schema with only @USAGE@ on the schema,
---   @SELECT@ on @schema_migrations@, and @SELECT, INSERT, UPDATE@ on
---   @runs@. Such a role still cannot apply a new migration script (that
---   needs the table owner), so after upgrading shiki run it once as the
---   owning role.
---
---   Throws 'error' on pool/transaction failure; 'hasql-migration' also
---   throws if a previously-applied script's checksum no longer matches
---   what was recorded.
-runMigrations :: Pool.Pool -> Schema -> IO ()
-runMigrations pool schema = do
-  dir <- migrationsDirectory
-  scripts <- Migration.loadMigrationsFromDirectory dir
-  result <- Pool.use pool (migrationSession schema scripts)
-  case result of
-    Left poolErr ->
-      error ("shiki: migration pool error: " <> show poolErr)
-    Right Nothing -> pure ()
-    Right (Just merr) ->
-      error ("shiki: migration failed: " <> show merr)
+embeddedMigrationEntries :: NonEmpty (FilePath, ByteString)
+embeddedMigrationEntries = $(embedMigrationManifest "sql/migrations/manifest")
 
-migrationSession ::
-  Schema ->
-  [Migration.MigrationCommand] ->
-  Session.Session (Maybe Migration.MigrationError)
-migrationSession schema scripts =
-  transaction Serializable Write $ do
-    (schemaExists, ledgerExists) <-
-      Transaction.statement (schemaText schema) bootstrapStateStatement
-    unless schemaExists $
-      Transaction.sql
-        ( Text.Encoding.encodeUtf8
-            ("CREATE SCHEMA IF NOT EXISTS " <> quoteSchema schema <> ";")
-        )
-    let initialization = [Migration.MigrationInitialization | not ledgerExists]
-    runFirstError (initialization <> scripts)
+shikiMigrationPlan :: MigrationPlan
+shikiMigrationPlan =
+  case migrationComponentFromEmbeddedSql "shiki" Set.empty embeddedMigrationEntries of
+    Left definitionError -> invalidEmbeddedPlan definitionError
+    Right component ->
+      case migrationPlan (component :| []) of
+        Left planError -> invalidEmbeddedPlan planError
+        Right plan -> plan
   where
-    runFirstError [] = pure Nothing
-    runFirstError (c : cs) =
-      Migration.runMigration c >>= \case
-        Just err -> pure (Just err)
-        Nothing -> runFirstError cs
+    invalidEmbeddedPlan err =
+      error ("invalid embedded Shiki migration plan: " <> show err)
 
--- | Whether the schema, and the @schema_migrations@ table inside it,
---   already exist. Both lookups are qualified by the schema name so a
---   @schema_migrations@ table in another schema of the same database does
---   not count.
-bootstrapStateStatement :: Statement Text (Bool, Bool)
-bootstrapStateStatement = preparable sql encoder decoder
+-- | Apply the embedded Shiki migration plan inside the selected schema.
+--
+-- A dedicated connection receives a right-precedence libpq @options@ setting so the
+-- unchanged, unqualified SQL targets @<schema>,public@. Before the normal pg-migrate run,
+-- a valid non-empty prefix in the predecessor @schema_migrations@ table is imported as
+-- already applied. The predecessor table is retained as recovery evidence.
+runMigrations :: ConnectionString -> Schema -> IO ()
+runMigrations cs schema = do
+  let settings = migrationSettings cs schema
+      provider = connectionProviderFromSettings settings
+  runOptions <- either (migrationFailure schema) pure (migrationRunOptions schema)
+  probeLegacyHistory settings schema >>= \case
+    Left bootstrapError -> migrationFailure schema bootstrapError
+    Right NoLegacyImport -> pure ()
+    Right (ImportLegacyHistory filenames) ->
+      importLegacyHistory provider runOptions schema filenames
+        >>= either (migrationFailure schema) (const (pure ()))
+  runMigrationPlanWith runOptions provider shikiMigrationPlan
+    >>= either
+      (migrationFailure schema . MigrationExecutionFailed)
+      (const (pure ()))
+
+migrationSettings :: ConnectionString -> Schema -> Settings.Settings
+migrationSettings (ConnectionString cs) schema =
+  Settings.connectionString cs
+    <> Settings.other
+      "options"
+      ("-csearch_path=" <> schemaText schema <> ",public")
+
+migrationRunOptions :: Schema -> Either MigrationBootstrapError RunOptions
+migrationRunOptions schema =
+  case ledgerConfig (schemaText schema) 0x7368696B695F6D67 of
+    Left definitionError -> Left (LedgerDefinitionFailed definitionError)
+    Right config -> Right (withLedger config defaultRunOptions)
+
+data LegacyHistoryDecision
+  = NoLegacyImport
+  | ImportLegacyHistory !(NonEmpty FilePath)
+
+data MigrationBootstrapError
+  = BootstrapConnectionFailed !Errors.ConnectionError
+  | BootstrapSessionFailed !Errors.SessionError
+  | LegacyHistoryNotPrefix ![FilePath] ![FilePath]
+  | LedgerDefinitionFailed !DefinitionError
+  | LegacyImportDefinitionFailed !Text
+  | LegacyImportFailed !HasqlMigrationImportError
+  | MigrationExecutionFailed !MigrationError
+
+probeLegacyHistory ::
+  Settings.Settings ->
+  Schema ->
+  IO (Either MigrationBootstrapError LegacyHistoryDecision)
+probeLegacyHistory settings schema = do
+  acquired <- Connection.acquire settings
+  case acquired of
+    Left connectionError ->
+      pure (Left (BootstrapConnectionFailed connectionError))
+    Right connection ->
+      bracket (pure connection) Connection.release $ \openConnection -> do
+        Connection.use openConnection (legacyHistoryProbeSession schema) >>= \case
+          Left sessionError -> pure (Left (BootstrapSessionFailed sessionError))
+          Right Nothing -> pure (Right NoLegacyImport)
+          Right (Just observed) -> pure (validateLegacyPrefix observed)
+
+legacyHistoryProbeSession :: Schema -> Session.Session (Maybe [FilePath])
+legacyHistoryProbeSession schema = do
+  targetLedgerExists <-
+    Session.statement
+      (schemaText schema, "ledger_metadata")
+      tableExistsStatement
+  targetRowCount <-
+    if targetLedgerExists
+      then Session.statement () (targetMigrationCountStatement schema)
+      else pure 0
+  if targetRowCount > 0
+    then pure Nothing
+    else do
+      sourceLedgerExists <-
+        Session.statement
+          (schemaText schema, "schema_migrations")
+          tableExistsStatement
+      if sourceLedgerExists
+        then Just . fmap Text.unpack <$> Session.statement () (legacyFilenamesStatement schema)
+        else pure Nothing
+
+validateLegacyPrefix :: [FilePath] -> Either MigrationBootstrapError LegacyHistoryDecision
+validateLegacyPrefix [] = Right NoLegacyImport
+validateLegacyPrefix observed
+  | observed `List.isPrefixOf` expected =
+      case NonEmpty.nonEmpty observed of
+        Nothing -> Right NoLegacyImport
+        Just filenames -> Right (ImportLegacyHistory filenames)
+  | otherwise = Left (LegacyHistoryNotPrefix expected observed)
+  where
+    expected = fst <$> NonEmpty.toList embeddedMigrationEntries
+
+importLegacyHistory ::
+  ConnectionProvider ->
+  RunOptions ->
+  Schema ->
+  NonEmpty FilePath ->
+  IO (Either MigrationBootstrapError ())
+importLegacyHistory provider runOptions schema filenames =
+  case legacyImportDefinition provider schema filenames of
+    Left definitionError -> pure (Left definitionError)
+    Right (sourceConfig, mappings) ->
+      importHasqlMigrationHistory
+        (withImportRunOptions runOptions defaultImportOptions)
+        sourceConfig
+        provider
+        shikiMigrationPlan
+        mappings
+        >>= pure . either (Left . LegacyImportFailed) (const (Right ()))
+
+legacyImportDefinition ::
+  ConnectionProvider ->
+  Schema ->
+  NonEmpty FilePath ->
+  Either MigrationBootstrapError (HasqlMigrationSourceConfig, NonEmpty HistoryMapping)
+legacyImportDefinition provider schema filenames = do
+  sourceTable <-
+    mapLegacyDefinition
+      (qualifiedTable (schemaText schema <> ".schema_migrations"))
+  sourceConfig <-
+    mapLegacyDefinition
+      ( hasqlMigrationSourceConfig
+          provider
+          sourceTable
+          filenames
+          True
+          (Map.fromList (NonEmpty.toList embeddedMigrationEntries))
+          []
+          "Import verified Shiki hasql-migration history"
+      )
+  mappings <- traverse legacyMapping filenames
+  pure (sourceConfig, mappings)
+
+legacyMapping :: FilePath -> Either MigrationBootstrapError HistoryMapping
+legacyMapping filename = do
+  target <-
+    case migrationId "shiki" (Text.pack (dropExtension filename)) of
+      Left definitionError ->
+        Left (LegacyImportDefinitionFailed (Text.pack (show definitionError)))
+      Right migration -> Right migration
+  evidence <- mapLegacyDefinition (hasqlMigrationEvidenceKey filename)
+  pure (historyMapping target (Evidence evidence) (SamePayload evidence))
+
+mapLegacyDefinition ::
+  Either HasqlMigrationDefinitionError value ->
+  Either MigrationBootstrapError value
+mapLegacyDefinition = \case
+  Left definitionError ->
+    Left (LegacyImportDefinitionFailed (Text.pack (show definitionError)))
+  Right value -> Right value
+
+migrationFailure :: Schema -> MigrationBootstrapError -> IO value
+migrationFailure schema migrationError =
+  fail
+    ( "shiki: migration failed for schema "
+        <> Text.unpack (schemaText schema)
+        <> ": "
+        <> renderMigrationBootstrapError migrationError
+    )
+
+renderMigrationBootstrapError :: MigrationBootstrapError -> String
+renderMigrationBootstrapError = \case
+  BootstrapConnectionFailed connectionError ->
+    "could not inspect migration history: " <> show connectionError
+  BootstrapSessionFailed sessionError ->
+    "could not inspect migration history: " <> show sessionError
+  LegacyHistoryNotPrefix expected observed ->
+    "legacy schema_migrations filenames are not an ordered prefix; expected prefix of "
+      <> show expected
+      <> ", observed "
+      <> show observed
+  LedgerDefinitionFailed definitionError ->
+    "invalid pg-migrate ledger configuration: " <> show definitionError
+  LegacyImportDefinitionFailed definitionError ->
+    "invalid legacy-history import definition: " <> Text.unpack definitionError
+  LegacyImportFailed importError ->
+    "legacy-history import failed: " <> show importError
+  MigrationExecutionFailed executionError ->
+    "pg-migrate execution failed: " <> show executionError
+
+tableExistsStatement :: Statement (Text, Text) Bool
+tableExistsStatement = preparable sql encoder decoder
   where
     sql =
-      """
-      SELECT
-        EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = $1),
-        EXISTS (
-          SELECT 1 FROM pg_tables
-          WHERE schemaname = $1 AND tablename = 'schema_migrations'
-        )
-      """
-    encoder = Encoders.param (Encoders.nonNullable Encoders.text)
-    decoder =
-      Decoders.singleRow
-        ( (,)
-            <$> Decoders.column (Decoders.nonNullable Decoders.bool)
-            <*> Decoders.column (Decoders.nonNullable Decoders.bool)
-        )
+      "SELECT EXISTS (\
+      \SELECT 1 FROM information_schema.tables \
+      \WHERE table_schema = $1 AND table_name = $2)"
+    encoder =
+      (fst >$< Encoders.param (Encoders.nonNullable Encoders.text))
+        <> (snd >$< Encoders.param (Encoders.nonNullable Encoders.text))
+    decoder = Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.bool))
+
+targetMigrationCountStatement :: Schema -> Statement () Int64
+targetMigrationCountStatement schema =
+  preparable
+    ( "SELECT COUNT(*)::bigint FROM "
+        <> quoteSchema schema
+        <> ".migrations WHERE component = 'shiki'"
+    )
+    Encoders.noParams
+    (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int8)))
+
+legacyFilenamesStatement :: Schema -> Statement () [Text]
+legacyFilenamesStatement schema =
+  preparable
+    ( "SELECT filename FROM "
+        <> quoteSchema schema
+        <> ".schema_migrations ORDER BY executed_at, filename"
+    )
+    Encoders.noParams
+    (Decoders.rowList (Decoders.column (Decoders.nonNullable Decoders.text)))

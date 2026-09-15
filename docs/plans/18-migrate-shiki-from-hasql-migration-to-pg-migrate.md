@@ -10,6 +10,12 @@ provenance:
     model: "gpt-5.6-sol"
     harness: "codex-cli"
     at: 2026-09-15T16:46:27Z
+  revisions:
+    - model: "gpt-5.6-sol"
+      harness: "codex-cli"
+      at: 2026-09-15T18:20:26Z
+      mode: "implement"
+      note: "Milestones 1 and 2 implemented; transition coverage underway"
 ---
 
 # Migrate Shiki from hasql-migration to pg-migrate
@@ -46,12 +52,16 @@ deliberately corrupted legacy checksum will fail before the target ledger is tru
 - [x] (2026-09-15 17:05Z) Located `pg-migrate` through Mori, read its v1.1 core,
   embedding, and predecessor-import APIs and peer-project usage, and verified v1.1.0.0
   against Hackage and the upstream `v1.1.0.0` tag.
-- [ ] Milestone 1: adopt the released `pg-migrate` packages and an embedded,
-  manifest-backed Shiki migration plan.
-- [ ] Milestone 2: replace the runner with schema-aware `pg-migrate` execution and
-  automatic import of valid legacy-history prefixes.
-- [ ] Milestone 3: add transition coverage, update user documentation and Mori metadata,
-  and record the durable decision in an ADR.
+- [x] (2026-09-15 18:20Z) Milestone 1: adopted the released `pg-migrate` packages and an
+  embedded, manifest-backed Shiki migration plan; `cabal build shiki-core` passes and a
+  clean-build unlisted-SQL probe fails with `UnlistedSqlFiles` as intended.
+- [x] (2026-09-15 18:20Z) Milestone 2: replaced the runner with schema-aware
+  `pg-migrate` execution and automatic import of valid legacy-history prefixes.
+- [x] (2026-09-15 18:20Z) Added passing transition coverage for fresh and repeat runs,
+  legacy prefixes 1–3, initialized-but-empty recovery, checksum/prefix rejection,
+  per-schema ledgers, and restricted-role reuse.
+- [ ] Milestone 3 remaining: update user documentation and Mori metadata and record the
+  durable decision in an ADR.
 - [ ] Milestone 4: run the complete Cabal, Nix, documentation, packaging, and repository
   validation matrix and record the evidence here.
 
@@ -82,6 +92,14 @@ deliberately corrupted legacy checksum will fail before the target ledger is tru
   `ram >=0.20.1 && <0.23`, and all three `pg-migrate` packages needed here are published
   at 1.1.0.0. The unrelated `jose-jwt` and `hoauth2` overrides still serve the Kubernetes
   authentication graph and are outside this migration.
+
+- Observation: Cabal can decide a component is `Up to date` before invoking GHC, so adding
+  only an unlisted sibling SQL file did not run the module's `ForceRecompile` plugin in the
+  existing build directory. Evidence: the incremental probe printed `Up to date`, while
+  the same tree built in a fresh `--builddir` failed at the splice with
+  `UnlistedSqlFiles ["999-unlisted-probe.sql"]`. The plugin does force reconsideration once
+  GHC is invoked, as the subsequent test build reported `Impure plugin forced
+  recompilation`; final manifest-guard evidence therefore uses an isolated build directory.
 
 
 ## Decision Log
@@ -303,14 +321,17 @@ After Milestone 1, build the definition layer and verify the manifest guard:
 
 ```bash
 cabal build shiki-core
-tmp_sql=shiki-core/sql/migrations/999-unlisted-probe.sql
-touch "$tmp_sql"
-if cabal build shiki-core; then
+probe_sql=shiki-core/sql/migrations/999-unlisted-probe.sql
+probe_build_dir=$(mktemp -d /tmp/shiki-manifest-probe.XXXXXX)
+touch "$probe_sql"
+if cabal build shiki-core --builddir="$probe_build_dir"; then
   echo "unexpected success: unlisted SQL was accepted" >&2
-  rm -f "$tmp_sql"
+  rm -f "$probe_sql"
+  rm -rf "$probe_build_dir"
   exit 1
 fi
-rm -f "$tmp_sql"
+rm -f "$probe_sql"
+rm -rf "$probe_build_dir"
 cabal build shiki-core
 ```
 
@@ -476,3 +497,8 @@ It calls `runMigrations cs schema` before handing a pool to the continuation.
 
 Durable metadata uses `mori://shinzui/pg-migrate` and, when package specificity matters,
 the three `mori://shinzui/pg-migrate/packages/...` URIs named above.
+
+
+Revision note (2026-09-15): Recorded Milestones 1 and 2 and the transition-test portion of
+Milestone 3 as implemented. The manifest guard now specifies a fresh Cabal build directory
+because an already up-to-date Cabal component can skip GHC before the recompile plugin runs.

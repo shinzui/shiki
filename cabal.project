@@ -2,28 +2,6 @@ packages:
   shiki-core
   shiki-cli
 
--- The Hackage `hasql-migration 0.3.1` still uses the old hidden `Statement`
--- data constructor and does not compile against hasql 1.10. The
--- shinzui/hasql-migration fork has already been ported to the smart
--- constructor `Hasql.Statement.unpreparable`. That fork in turn expects the
--- `ram` fork of `memory` (and the matching `crypton` build that uses `ram`),
--- so pull all three from GitHub as a coherent pinned unit until upstream merges
--- equivalent changes.
-source-repository-package
-  type: git
-  location: https://github.com/shinzui/hasql-migration
-  tag: cc360138e6d932c521f10f7c417e7efb27552ec1
-
-source-repository-package
-  type: git
-  location: https://github.com/kazu-yamamoto/crypton
-  tag: f08a7202f5313c06afb67abb5d0fccb29b26a65e
-
-source-repository-package
-  type: git
-  location: https://github.com/jappeace/ram
-  tag: 021a0cf285f4258a7a4b40a4780aa45149362bd0
-
 -- `kubernetes-api` and `kubernetes-api-client` come from codedownio/kubernetes-api.
 -- The repository ships one cabal package per Kubernetes minor version (the cabal
 -- package name is `kubernetes-api`, the version reflects the cluster version, e.g.
@@ -44,7 +22,7 @@ program-options
   ghc-options: -Wno-deriving-typeable
 
 -- jose-jwt 0.10.0 (Hackage) imports `Data.ByteArray` from upstream `memory`, but
--- `crypton 1.1.2` (forked locally for hasql-migration) was rebuilt against `ram`.
+-- `crypton 1.1.2` uses `ram` while the Hackage jose-jwt release still uses `memory`.
 -- Upstream jose-jwt's master branch swaps memory for ram via commit f93bd94
 -- ("Update crypton to 1.1.0 and use ram package instead of memory"); pin to HEAD
 -- of master until tekul/jose-jwt cuts a release that includes it.

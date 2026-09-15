@@ -45,7 +45,7 @@ tests =
         result <- EpPg.with $ \db -> do
           let cs = ConnectionString (EpPg.connectionString db)
           bracket (acquirePool cs schema) releasePool $ \pool -> do
-            runMigrations pool schema
+            runMigrations cs schema
             n <-
               Pool.use pool (Session.statement (schemaText schema) lastWatchedAtColumnCount)
                 >>= either (fail . show) pure

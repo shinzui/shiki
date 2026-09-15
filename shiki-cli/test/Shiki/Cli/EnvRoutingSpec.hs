@@ -120,7 +120,7 @@ withMigratedPool conn action =
   bracket
     (acquirePool conn defaultSchema)
     releasePool
-    (\pool -> runMigrations pool defaultSchema *> action pool)
+    (\pool -> runMigrations conn defaultSchema *> action pool)
 
 useStmt :: Pool.Pool -> Statement a () -> a -> IO ()
 useStmt pool stmt input =

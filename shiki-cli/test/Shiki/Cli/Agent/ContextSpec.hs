@@ -193,7 +193,7 @@ withSchemaPool action = do
     bracket
       (acquirePool (ConnectionString (EpPg.connectionString db)) schema)
       releasePool
-      (\pool -> runMigrations pool schema *> action pool)
+      (\pool -> runMigrations (ConnectionString (EpPg.connectionString db)) schema *> action pool)
   case result of
     Right () -> pure ()
     Left err ->

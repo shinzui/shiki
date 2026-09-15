@@ -38,6 +38,8 @@ tests =
           runOnePool cs beta
           verifyCount cs alpha 1
           verifyCount cs beta 1
+          verifyLedgerCount cs alpha 3
+          verifyLedgerCount cs beta 3
           verifyMissingFromPublic cs
         case result of
           Right () -> pure ()
@@ -49,7 +51,7 @@ tests =
 runOnePool :: ConnectionString -> Schema -> IO ()
 runOnePool cs schema =
   bracket (acquirePool cs schema) releasePool $ \pool -> do
-    runMigrations pool schema
+    runMigrations cs schema
     now <- getCurrentTime
     rid <- newRunId
     let r =
@@ -81,6 +83,21 @@ countRuns :: Statement () Int32
 countRuns =
   preparable
     "SELECT COUNT(*)::int FROM runs"
+    Encoders.noParams
+    (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int4)))
+
+verifyLedgerCount :: ConnectionString -> Schema -> Int32 -> IO ()
+verifyLedgerCount cs schema expected =
+  bracket (acquirePool cs schema) releasePool $ \pool -> do
+    n <-
+      Pool.use pool (Session.statement () countMigrations)
+        >>= either (fail . show) pure
+    assertEqual ("migration rows in " <> show (schemaText schema)) expected n
+
+countMigrations :: Statement () Int32
+countMigrations =
+  preparable
+    "SELECT COUNT(*)::int FROM migrations WHERE component = 'shiki'"
     Encoders.noParams
     (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int4)))
 

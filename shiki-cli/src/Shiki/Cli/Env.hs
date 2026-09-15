@@ -33,6 +33,6 @@ data CliEnv = CliEnv
 withCliEnv :: ConnectionString -> Schema -> (CliEnv -> IO a) -> IO a
 withCliEnv cs schema action =
   bracket (acquirePool cs schema) releasePool $ \p -> do
-    runMigrations p schema
+    runMigrations cs schema
     cl <- loadDefaultClientConfig
     action CliEnv {pool = p, client = cl}

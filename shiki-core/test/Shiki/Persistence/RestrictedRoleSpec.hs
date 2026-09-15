@@ -37,7 +37,7 @@ tests =
               restricted =
                 ConnectionString (EpPg.connectionString db <> " user=shiki_restricted")
           withPool owner schema $ \pool -> do
-            runMigrations pool schema
+            runMigrations owner schema
             exec pool (restrictedRoleGrants schema)
           withPool restricted schema $ \pool -> do
             -- Guard against a vacuous pass: the role must really lack
@@ -46,7 +46,7 @@ tests =
             Pool.use pool (Session.script "CREATE SCHEMA shiki_probe;") >>= \case
               Left _ -> pure ()
               Right () -> assertFailure "restricted role unexpectedly has CREATE on the database"
-            runMigrations pool schema
+            runMigrations restricted schema
             rid <- insertOneRun pool
             Pool.use pool (Session.statement rid touchRunWatchedStatement)
               >>= either (fail . show) pure
@@ -63,7 +63,10 @@ restrictedRoleGrants schema =
   mconcat
     [ "CREATE ROLE shiki_restricted LOGIN;",
       "GRANT USAGE ON SCHEMA " <> s <> " TO shiki_restricted;",
-      "GRANT SELECT ON " <> s <> ".schema_migrations TO shiki_restricted;",
+      "GRANT SELECT ON " <> s <> ".ledger_metadata TO shiki_restricted;",
+      "GRANT SELECT ON " <> s <> ".migrations TO shiki_restricted;",
+      "GRANT SELECT ON " <> s <> ".history_imports TO shiki_restricted;",
+      "GRANT SELECT ON " <> s <> ".repairs TO shiki_restricted;",
       "GRANT SELECT, INSERT, UPDATE ON " <> s <> ".runs TO shiki_restricted;"
     ]
   where
