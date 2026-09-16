@@ -1,28 +1,25 @@
 cabal-version: 3.4
 name: shiki-core
 version: 0.1.0.0
-synopsis:
-  shiki conducts operational commands across Kubernetes services and records what ran, where it ran, and how long it took.
-
+synopsis: Run one-off Kubernetes Jobs with a durable run history in PostgreSQL
 description:
   Shiki is a CLI for conducting operational commands across Kubernetes services with a durable execution history. It helps operators run service-specific commands against the right cluster and environment, while recording each run in PostgreSQL with metadata such as the service, command, status, timing, and duration. The goal is to make ad hoc operational work safer, easier to audit, and easier to understand after the fact.
 
+category: Kubernetes, CLI, Systems
 license: BSD-3-Clause
-license-file: ../LICENSE
+license-file: LICENSE
 author: Nadeem Bitar
 maintainer: nadeem@gmail.com
 copyright: (c) 2026 Nadeem Bitar
 build-type: Simple
 tested-with: ghc ==9.12.4
-extra-doc-files: ../CHANGELOG.md
+extra-doc-files: CHANGELOG.md
 extra-source-files:
-  ../schema/*.dhall
   dhall/*.dhall
   sql/migrations/*.sql
   sql/migrations/manifest
 
 data-files:
-  ../schema/*.dhall
   dhall/*.dhall
   sql/migrations/*.sql
 
@@ -95,13 +92,12 @@ library
     effectful-core ^>=2.7.1.1,
     filepath ^>=1.5,
     generic-lens >=2.2 && <2.4,
-    hasql >=1.10,
-    hasql-pool >=1.4,
-    http-client >=0.7,
-    http-client-tls,
+    hasql >=1.10 && <1.11,
+    hasql-pool >=1.4 && <1.5,
+    http-client >=0.7 && <0.8,
     http-types >=0.12 && <0.13,
     kubernetes-api ==134.*,
-    kubernetes-api-client,
+    kubernetes-api-client >=0.6 && <0.7,
     lens ^>=5.3,
     mtl ^>=2.3,
     pg-migrate ^>=1.1,
@@ -113,7 +109,7 @@ library
     text ^>=2.1,
     time ^>=1.14,
     uuid ^>=1.3,
-    vector,
+    vector >=0.13 && <0.14,
     yaml ^>=0.11,
 
 executable shiki-run-once
@@ -169,8 +165,8 @@ test-suite shiki-core-test
     ephemeral-pg >=0.2,
     filepath ^>=1.5,
     generic-lens >=2.2 && <2.4,
-    hasql >=1.10,
-    hasql-pool >=1.4,
+    hasql >=1.10 && <1.11,
+    hasql-pool >=1.4 && <1.5,
     kubernetes-api ==134.*,
     pg-migrate ^>=1.1,
     shiki-core,
@@ -180,4 +176,4 @@ test-suite shiki-core-test
     text ^>=2.1,
     time ^>=1.14,
     uuid ^>=1.3,
-    vector,
+    vector >=0.13 && <0.14,

@@ -5,14 +5,15 @@ synopsis: Command-line interface for shiki
 description:
   Shiki is a CLI for conducting operational commands across Kubernetes services with a durable execution history. It helps operators run service-specific commands against the right cluster and environment, while recording each run in PostgreSQL with metadata such as the service, command, status, timing, and duration. The goal is to make ad hoc operational work safer, easier to audit, and easier to understand after the fact.
 
+category: Kubernetes, CLI, Systems
 license: BSD-3-Clause
-license-file: ../LICENSE
+license-file: LICENSE
 author: Nadeem Bitar
 maintainer: nadeem@gmail.com
 copyright: (c) 2026 Nadeem Bitar
 build-type: Simple
 tested-with: ghc ==9.12.4
-extra-doc-files: ../CHANGELOG.md
+extra-doc-files: CHANGELOG.md
 -- Embedded at compile time by Template Haskell; listing them here makes
 -- cabal rebuild the embedding modules when they change.
 extra-source-files:
@@ -93,16 +94,16 @@ library
     filepath ^>=1.5,
     generic-lens >=2.2 && <2.4,
     githash ^>=0.1,
-    hasql >=1.10,
-    hasql-pool >=1.4,
+    hasql >=1.10 && <1.11,
+    hasql-pool >=1.4 && <1.5,
     lens ^>=5.3,
     optparse-applicative >=0.19 && <0.20,
     process ^>=1.6,
-    shiki-core,
+    shiki-core ^>=0.1.0.0,
     terminal-size >=0.3.4 && <0.4,
     text ^>=2.1,
     time ^>=1.14,
-    vector,
+    vector >=0.13 && <0.14,
 
 executable shiki
   import: common
@@ -162,11 +163,11 @@ test-suite shiki-cli-test
     ephemeral-pg >=0.2,
     filepath ^>=1.5,
     generic-lens >=2.2 && <2.4,
-    hasql >=1.10,
-    hasql-pool >=1.4,
+    hasql >=1.10 && <1.11,
+    hasql-pool >=1.4 && <1.5,
     optparse-applicative >=0.19 && <0.20,
     shiki-cli,
-    shiki-core,
+    shiki-core ^>=0.1.0.0,
     tasty >=1.5.4 && <1.6,
     tasty-hunit ^>=0.10,
     temporary >=1.3,
