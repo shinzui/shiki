@@ -1,5 +1,9 @@
 # shiki User Documentation Log
 
+## 2026-09-16
+* **Update**: Add an "Errors and exit codes" section: every failure is one `shiki: …` line on stderr with exit 1, `agent assist` exits with its child's status, Ctrl-C during `shiki run` leaves the Job running, and only `run` and `runs sync` read a kubeconfig
+* **Update**: Correct the missing-connection-string message in the project configuration reference to match the wording shiki now prints
+
 ## 2026-09-15
 * **Update**: Document the `shiki service show` message for a typed name with no config file
 * **Update**: Audit the user guide against the code: correct the `config init` schema ref default, exit-code and image column semantics, pre-row failure behavior, analyzer override error, agent provider validation and `--debug` database requirement, run id prefix rules, and the help topic catalog; remove duplicated `shiki run` paragraphs

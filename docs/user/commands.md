@@ -6,7 +6,7 @@ docId: DOC-3
 tags: [shiki, cli, commands, reference]
 generated:
   by: process:claude-code
-  at: 2026-09-15T21:54:30Z
+  at: 2026-09-16T00:46:10Z
 ---
 
 # Commands reference
@@ -37,7 +37,7 @@ Database subcommands resolve their connection string in this order:
 If no source is available, shiki exits with:
 
 ```text
-shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.
+shiki: no Postgres connection string; pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING
 ```
 
 The `nix develop` shell hook exports `PG_CONNECTION_STRING` for the local
@@ -59,6 +59,66 @@ The `service`, `config init`, and `config show` subcommands do **not** need a da
 they parse Dhall files and exit. Neither do `help` and `completions`, which
 only print text embedded in the binary.
 
+Only `shiki run` and `shiki runs sync` read your kubeconfig. Every other
+subcommand, including `runs list`, `runs show`, `runs logs`, `runs error`,
+`runs analyze`, and `agent assist`, works with `KUBECONFIG` pointing at
+nothing at all.
+
+## Errors and exit codes
+
+Every failure prints exactly one message on **stderr**, starting with
+`shiki: `, and exits `1`. A command's result goes to stdout and nowhere else,
+so `shiki runs show abc | jq` stays safe to pipe.
+
+There are three exceptions to the exit code:
+
+- `shiki agent assist` exits with the status of the agent it launched, so a
+  `claude` session that exits `3` makes shiki exit `3`.
+- A successful command exits `0`, including one that legitimately has nothing
+  to show (`shiki runs list` on an empty table prints `(no runs recorded yet)`
+  and exits `0`).
+- Ctrl-C exits with your shell's interrupt status (`130` in bash and zsh) and
+  prints nothing extra — except during `shiki run`, which is described below.
+
+A failure shiki has not classified prints `shiki: unexpected error: <message>`
+on one line, with no stack trace. That wording means shiki hit something its
+authors did not anticipate; please report it.
+
+These are the messages you are most likely to meet. The picker's own messages
+are in [Interactive selection](#interactive-selection-fzf) above.
+
+| Situation | Message |
+|-----------|---------|
+| No connection string from any source | `shiki: no Postgres connection string; pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING` |
+| `--db-schema` is not a legal schema name | `shiki: invalid schema name: <reason>` |
+| `--env` or `SHIKI_ENV` names an environment `shiki.dhall` does not declare | `shiki: environment <name> is not declared in <path> (declared: <names>)` |
+| `shiki.dhall` or a `services/<name>.dhall` does not parse | `shiki: cannot load <path>: ` followed by Dhall's own diagnostic |
+| `shiki run` names a service with no config file | `shiki: no service config at services/<name>.dhall` |
+| The database is unreachable | `shiki: cannot connect to the database: <reason>` |
+| Migrations could not be applied | `shiki: migration failed for schema <schema>: <reason>` |
+| A statement failed | `shiki: database error during <operation>: <message> (SQLSTATE <code>)` |
+| Your kubeconfig is missing or unreadable | `shiki: cannot load the Kubernetes config: <reason>` |
+| A kubeconfig exec credential plugin failed | `shiki: Kubernetes credential plugin failed: <reason>` |
+| A Deployment could not be read | `shiki: cannot inspect deployment <name>: <reason>` |
+| Any other cluster request failed | `shiki: Kubernetes request failed during <operation>: <reason>` |
+| `--analyzer` names a model shiki does not know | `shiki: unknown analyzer override: baikai:<id>` |
+| The analyzer's model backend failed | `shiki: baikai backend failed: <reason>` |
+| `runs analyze` on a service whose analyzer is `None` | `shiki: analyzer disabled (backend = None)` |
+| `shiki config init` would overwrite a file | `shiki: <path> already exists; refusing to overwrite` |
+| `shiki config init` cannot write where you pointed it | `shiki: cannot write <path>: <reason>` |
+| `shiki help <topic>` does not know the topic | `Unknown topic: <topic>` followed by the list of topics |
+
+Pressing Ctrl-C while `shiki run` is waiting does **not** cancel the
+Kubernetes Job — only shiki's watching of it. shiki says so and leaves the run
+row alone:
+
+```text
+shiki: interrupted; job <job-name> keeps running; record its outcome later with 'shiki runs sync <id>'
+```
+
+The run stays `running` and, five minutes later, displays as `unwatched`. Run
+`shiki runs sync <id>` once the Job has finished to record its real outcome.
+
 ## Interactive selection (fzf)
 
 The subcommands that take a positional `ID` or `NAME` accept that argument as
@@ -77,9 +137,9 @@ The picker needs two things:
    usable `/dev/tty` is not enough.
 
 shiki checks this only when the positional is missing, and for the `runs`
-commands it checks **before** connecting to the database, running migrations,
-or loading the Kubernetes config, so an unusable picker fails fast even when
-the database is unreachable.
+commands it checks **before** connecting to the database or running
+migrations, so an unusable picker fails fast even when the database is
+unreachable.
 
 The run picker shows the 50 newest runs of the routed database, aligned in the
 same columns as `shiki runs list` under a row of column titles. The service

@@ -74,3 +74,12 @@ Interactive affordances live in `shiki-cli`, never in `shiki-core`.
 - `runFzf` can be tested without a terminal against a generated fake `fzf` script, as
   `shiki-cli/test/Shiki/Cli/FzfSpec.hs` does. New picker options should be covered the same
   way.
+- Since [EP-19](../plans/19-adopt-effectful-as-the-io-stack-with-a-shiki-wide-error-handler.md)
+  (2026-09-15), a resolution failure is a `CliError` thrown with `throwError` and rendered by
+  the shiki-wide handler of [ADR 5](./5-use-effectful-with-a-single-top-level-error-handler.md),
+  rather than a value each dispatcher prints and exits on. The rules above are unchanged —
+  stderr, exit 1, silent cancel, decide-before-connecting — and the failure sum types and
+  their pure renderers are still the source of the wording; what changed is that the same
+  handler now renders every other failure in the program too. The decide-first shape
+  survives as the `WithStore` argument `runRuns` takes, which opens the pool only after
+  `runTarget` has succeeded.

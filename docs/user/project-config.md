@@ -5,8 +5,8 @@ description: "Reference the project-local shiki.dhall file format, named environ
 docId: DOC-7
 tags: [shiki, configuration, dhall, environments]
 generated:
-  by: human:nadeem
-  at: 2026-06-11T20:19:47Z
+  by: process:claude-code
+  at: 2026-09-16T00:46:10Z
 ---
 
 # Project Configuration
@@ -107,7 +107,7 @@ If the active environment has no usable database URL and neither fallback
 environment variable is set, shiki exits before opening a pool:
 
 ```text
-shiki: no Postgres connection string. Pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING.
+shiki: no Postgres connection string; pass --db, add a shiki.dhall, or set SHIKI_DATABASE_URL / PG_CONNECTION_STRING
 ```
 
 `PG_CONNECTION_STRING` is the final fallback because the repository's

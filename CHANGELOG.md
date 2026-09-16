@@ -7,8 +7,48 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- refactor: shiki now describes its IO with the `effectful` library and reports
+  every failure from one place. A failure that used to end in GHC's
+  `Uncaught exception` banner — a missing connection string, an undeclared
+  `--env`, a `shiki.dhall` or `services/<name>.dhall` that does not parse, an
+  unreachable database, a failed statement, a missing or broken kubeconfig, a
+  Deployment that cannot be read, a failed `config init` write — now prints one
+  `shiki: …` line on stderr and exits 1. A failure nobody has classified prints
+  `shiki: unexpected error: <message>` with no stack trace. See
+  [Errors and exit codes](docs/user/commands.md#errors-and-exit-codes) and
+  [ADR 5](docs/adr/5-use-effectful-with-a-single-top-level-error-handler.md).
+- refactor(shiki-cli): `runs list`, `runs show`, `runs logs`, `runs error`,
+  `runs analyze`, and `agent assist` no longer read your kubeconfig. Only
+  `shiki run` and `shiki runs sync` talk to a cluster, so a broken kubeconfig
+  no longer breaks a pure database read.
+- refactor(shiki-core): `runMigrations` returns `Either MigrationFailure ()`
+  instead of calling `fail`, and `Shiki.Analysis.Backend.runAnalyzer` and the
+  IO `Shiki.Analysis.Baikai.runBaikai` are replaced by the `Analyzer` effect in
+  `Shiki.Effect.Analyzer`. shiki-core has never been published, so no version
+  bump is implied.
+- fix(shiki-cli): a failed statement now reports PostgreSQL's own message and
+  SQLSTATE (`relation "runs" does not exist (SQLSTATE 42P01)`) rather than
+  hasql's full dump of the SQL and its parameters, and a failed cluster request
+  reports the HTTP request line and reason rather than http-client's entire
+  `Request` record.
+
 ### Fixed
 
+- fix(shiki-cli): pressing Ctrl-C while `shiki run` waits no longer records the
+  run as `failed` with the message `user interrupt`. The Kubernetes Job keeps
+  running, so shiki now prints
+  `shiki: interrupted; job <name> keeps running; record its outcome later with 'shiki runs sync <id>'`,
+  leaves the row `running` (it displays as `unwatched` after five minutes), and
+  exits with the shell's interrupt status.
+- fix(shiki-cli): `shiki runs sync` reports a run it cannot reconcile as
+  `run <id>: sync failed: …` and carries on with the rest, instead of ending
+  the whole command on the first unreachable run.
+- fix(shiki-cli): `shiki runs analyze` on a service whose
+  `services/<name>.dhall` is *present but invalid* now reports the parse error
+  instead of silently falling back to the heuristic analyzer. A service with no
+  config file at all still falls back, as before.
 - fix(shiki-cli): `shiki service show <NAME>` with no `services/<NAME>.dhall`
   now prints `shiki: no service config at services/<NAME>.dhall` on stderr and
   exits 1, instead of an uncaught `IOException` with a backtrace.

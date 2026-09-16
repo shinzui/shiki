@@ -192,13 +192,17 @@ This section must always reflect the actual current state of the work.
       meant to catch, and add a regression test for each — see the Decision Log.
       (2026-09-15)
 
-### M6 — Documentation, ADRs, and retrospective
+### M6 — Documentation, ADRs, and retrospective — done 2026-09-15
 
-- [ ] Write ADR 5 (effect and error conventions) and update ADR 2.
-- [ ] Add "Errors and exit codes" to `docs/user/commands.md` (plus its log entry); update
-      `CHANGELOG.md`.
-- [ ] Full acceptance matrix, `nix build`, `just user-documentation-validate`; fill in
-      Outcomes & Retrospective; commit.
+- [x] Write [ADR 5](../adr/5-use-effectful-with-a-single-top-level-error-handler.md) (effect
+      and error conventions) and add a consequence bullet to
+      [ADR 2](../adr/2-resolve-omitted-positionals-with-typed-early-resolvers.md).
+      (2026-09-15)
+- [x] Add "Errors and exit codes" to `docs/user/commands.md`, correct the
+      connection-string message in `docs/user/project-config.md`, record both in
+      `docs/user/log.md`, and update `CHANGELOG.md`. (2026-09-15)
+- [x] Full acceptance matrix, `nix build`, `just user-documentation-validate`; fill in
+      Outcomes & Retrospective; commit. (2026-09-15)
 
 
 ## Surprises & Discoveries
@@ -727,7 +731,64 @@ Compare the result against the original purpose. Before marking the plan complet
 distill durable project context from the Decision Log, Surprises & Discoveries, and
 this section into docs/adr/. Keep task-local execution details here.
 
-(To be filled during and after implementation.)
+**Completed 2026-09-15.** All six milestones landed, one commit each, each leaving the
+build warning-free and both suites green. The tree grew from 171 to 190 tests
+(63 → 68 in shiki-core, 108 → 122 in shiki-cli).
+
+**What the operator can do now that they could not before.** The banner is gone. Every
+failure the plan named — and every one found along the way — prints one `shiki: …` line and
+exits 1, verified against the built binary:
+
+```text
+$ shiki --db postgresql://127.0.0.1:1/none runs show 3f; echo "exit=$?"
+shiki: cannot connect to the database: connection to server at "127.0.0.1", port 1 failed: Connection refused Is the server running on that host and accepting TCP/IP connections?
+exit=1
+$ KUBECONFIG=/nonexistent shiki --db "$DB" runs list -l 2; echo "exit=$?"
+ID        STARTED              SERVICE  STATUS     DURATION  EXIT  COMMAND
+3f2c1a9d  2026-09-16 00:34:06  ingest   unwatched  -         -     reindex
+exit=0
+$ shiki --db "$DB" run no-such-service -- echo hi; echo "exit=$?"
+shiki: no service config at services/no-such-service.dhall
+exit=1
+$ shiki --env typo runs list; echo "exit=$?"
+shiki: environment typo is not declared in /…/shiki.dhall (declared: dev, prod)
+exit=1
+```
+
+The developer-visible goal holds too: the audit grep over `shiki-core/src` and
+`shiki-cli/src` returns four sites, each with a comment saying why it is allowed (a retry
+loop that re-throws asynchronous exceptions, `fail` in an aeson `Parser`, the
+invalid-embedded-plan `error`, and the agent child's exit passthrough).
+
+**What was verified, and what was not.** Acceptance rows 1–11, 15, 17–19, and 22–23 were
+checked against the built binary, along with spot checks of plan 10's matrix. Row 14 was
+checked by pointing `runs sync` at an unreachable cluster. Rows 12, 13, 20, and 21 need
+something this machine does not have — a reachable cluster, a person at a terminal, an
+interactive agent session — so row 13's behaviour is pinned by
+`shiki-cli/test/Shiki/Cli/RunSpec.hs` instead, over fake `Kube` and `RunStore`
+interpreters.
+
+**Two bugs the plan's own shape invited.** The plan repeatedly says "wrap it in
+`runErrorNoCallStack`" for per-item error isolation. That is wrong whenever the effect's
+interpreter lives further out, which it always does here, and it produced two user-visible
+regressions that only manual acceptance caught: `runs analyze` stopped falling back to the
+heuristic for a service whose config file is gone, and one unreachable run ended the whole
+`runs sync`. `catchError` is the right tool, and the rule is now in ADR 5 with a regression
+test at each of the three sites.
+
+**What we fixed that was not in scope.** `shiki-cli-test` had an intermittent failure
+(roughly one run in six) whose cause was a stdout-descriptor swap racing tasty's reporter
+thread. `runAssistSession` now takes the handle it writes to, the same shape `runShikiMain`
+already used, and the capture is gone.
+
+**What is left.** `Shiki.Cli.Runs` threads three interpreter arguments (`WithStore`,
+`WithKube`, `WithAnalyzer`) because the run pickers must decide their target before anything
+is acquired. It works and it is honest about what each subcommand touches, but a fourth
+would be a smell; if one appears, bundle them. The `Kube` effect's `AwaitJob` still hides
+`runJob`'s whole poll loop, so a test cannot observe the intermediate states — acceptable
+while nothing needs to, worth splitting when something does. And the `Analyzer` interpreter
+registers baikai's providers through a `liftIO` call in the dispatch rather than through the
+effect; moving it inside would let a test assert that registration happened.
 
 
 ## Context and Orientation
