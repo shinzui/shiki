@@ -314,8 +314,15 @@ Backend resolution:
 1. `--analyzer ...` if passed.
 2. Otherwise the service's declared `analyzer` field from
    `services/<service>.dhall`.
-3. Otherwise `Heuristic` (e.g. the Dhall file was deleted after the
-   original run).
+3. Otherwise `Heuristic`, when there is no `services/<service>.dhall` at
+   all (e.g. the Dhall file was deleted after the original run — a run can
+   outlive the file that produced it).
+
+Only a *missing* file falls back. A `services/<service>.dhall` that is
+present but does not parse or type-check is reported as
+`shiki: cannot load <path>: ` followed by Dhall's own diagnostic, and
+nothing is analyzed — a broken config is a mistake to fix, not a reason to
+silently downgrade to the heuristic analyzer.
 
 `baikai:<model-id>` takes a baikai catalog id, and only three are
 dispatched: `anthropic_claude_haiku_4_5`, `anthropic_claude_sonnet_4_6`

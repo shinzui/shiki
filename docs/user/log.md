@@ -5,6 +5,9 @@
 * **Update**: Correct the missing-connection-string message in the project configuration reference to match the wording shiki now prints
 
 ## 2026-09-15
+* **Update**: Audit the user guide, help topics, and agent prompt for the 0.1.0.0 release
+* **Update**: Rewrite the `shiki agent assist` system prompt to match the hard-coded allow-list: scope the subprocess-access claim to the CLI providers (the `anthropic` and `openai` one-shot paths have no tools), list `runs sync`, `help <topic>`, `config show`, and the `pwd`/`ls`/`cat`/Read/Glob/Grep read primitives, and add the long-run protocol
+* **Update**: Document that `runs analyze` falls back to the heuristic analyzer only when `services/<name>.dhall` is absent; a file that is present but does not parse is reported
 * **Update**: Document the `shiki service show` message for a typed name with no config file
 * **Update**: Audit the user guide against the code: correct the `config init` schema ref default, exit-code and image column semantics, pre-row failure behavior, analyzer override error, agent provider validation and `--debug` database requirement, run id prefix rules, and the help topic catalog; remove duplicated `shiki run` paragraphs
 * **Update**: Document pg-migrate ledgers, legacy-history import, and restricted-role grants
