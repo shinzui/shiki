@@ -98,7 +98,8 @@ shikiMigrationPlan =
 -- already applied. The predecessor table is retained as recovery evidence.
 --
 -- Every way this can fail comes back as @Left@ so the caller decides how to
--- report it; nothing here throws or exits. 'Shiki.Cli.Env.withCliEnv' turns a
+-- report it; nothing here throws or exits.
+-- 'Shiki.Effect.RunStore.Postgres.withRunStore' turns a
 -- 'BootstrapConnectionFailed' into @shiki: cannot connect to the database: …@
 -- and anything else into @shiki: migration failed for schema …@.
 runMigrations :: ConnectionString -> Schema -> IO (Either MigrationFailure ())

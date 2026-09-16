@@ -156,17 +156,22 @@ This section must always reflect the actual current state of the work.
       `Concurrent`, and `Shiki.Cli.Env.withCliEnv` is `withKubeClient`. Acceptance row 10
       (`KUBECONFIG=/nonexistent shiki runs list`) therefore already holds. (2026-09-15)
 
-### M4 — The `Kube` effect, `shiki run`, and Ctrl-C
+### M4 — The `Kube` effect, `shiki run`, and Ctrl-C — done 2026-09-15
 
-- [ ] Create `Shiki.Effect.Kube` and `Shiki.Effect.Kube.Client` in shiki-core; load the client
-      only for commands whose stack includes `Kube`.
-- [ ] Convert `Shiki.Cli.Run` and `Shiki.Cli.Runs.Sync` fully; delete `Shiki.Cli.Env`.
+- [x] Create `Shiki.Effect.Kube` and `Shiki.Effect.Kube.Client` in shiki-core; load the client
+      only for commands whose stack includes `Kube`. (2026-09-15)
+- [x] Convert `Shiki.Cli.Run` and `Shiki.Cli.Runs.Sync` fully; delete `Shiki.Cli.Env`.
+      (2026-09-15)
 - [x] Move the heartbeat onto `Effectful.Concurrent.Async` and update `HeartbeatSpec`
       (done early, in M3 — see the Decision Log). (2026-09-15)
 - [x] Replace `try @SomeException` in the run path with `trySync` (done in M3 as part of
       converting `Shiki.Cli.Run`). (2026-09-15)
-- [ ] Print a `runs sync` hint on Ctrl-C and let the interrupt propagate.
-- [ ] Build warning-free, tests green, acceptance rows 11–14; commit.
+- [x] Print a `runs sync` hint on Ctrl-C and let the interrupt propagate. (2026-09-15)
+- [x] Build warning-free, tests green (65 + 119), `nix build` green; commit. (2026-09-15)
+- [x] Acceptance rows 10 and 11 checked against the built binary. Rows 12–14 need a reachable
+      cluster, which this machine does not have; row 13's behaviour is instead pinned by a
+      new test, `shiki-cli/test/Shiki/Cli/RunSpec.hs`, over fake `Kube` and `RunStore`
+      interpreters. (2026-09-15)
 
 ### M5 — Config and analyzer effects, and the remaining exits
 
@@ -332,6 +337,29 @@ Findings from implementation:
   The flake's source is the git tree, so an untracked `Shiki/Effect/RunStore.hs` produced
   `Error: [Cabal-7554] can't find source for Shiki/Effect/RunStore in src`. Staging the new
   files fixes it; `cabal build` never notices because it reads the working tree.
+
+- Milestone 4, 2026-09-15: `http-client`'s `Show` for an `HttpException` prints the entire
+  `Request` record, so the first cluster failure rendered as a 600-character line that began
+  `HttpExceptionRequest Request { host = "0.0.0.0" port = 55752 secure = True requestHeaders
+  = [("User-Agent","kubernetes-api/0.1.0.0"),…`. The `Kube` interpreter now renders the
+  request line and the reason and drops the rest:
+
+  ```text
+  shiki: Kubernetes request failed during inspect deployment: GET https://0.0.0.0:55752/apis/apps/v1/namespaces/prod/deployments/mls-service-v2-worker: HostCannotConnect "0.0.0.0" [Network.Socket.connect: <socket: 57>: does not exist (Connection refused)]
+  ```
+
+- Milestone 4, 2026-09-15: the new Ctrl-C behaviour is observable in the test suite's own
+  output, because the hint goes to the process's stderr:
+
+  ```text
+    Shiki.Cli.Run
+      Ctrl-C while waiting writes no completion and propagates: shiki: interrupted; job foo-oneoff-20260916-001537-svgend keeps running; record its outcome later with 'shiki runs sync b3daed69'
+    OK
+  ```
+
+  The case asserts the two things that matter and that a live cluster would otherwise be
+  needed to see: the interrupt escapes `runShikiMain`, and the fake store recorded no
+  completion, so the row is left `running` rather than `failed`.
 
 
 ## Decision Log
@@ -562,6 +590,24 @@ Record every decision made while working on the plan.
   statement is now the interpreter's `StatementFailed`, rendered like every other database
   failure. Keeping a second spelling of the same failure would have meant two messages for
   one condition. `RunSpec`'s `renderRunLookupFailure` table drops that row.
+  Date: 2026-09-15.
+
+- Decision: The `Kube` interpreter classifies every cluster failure in one place, and the
+  `DeploymentInspectionFailed` message names the Deployment rather than the operation.
+  Rationale: The plan's shape had each operation pass its own label, which for
+  `InspectDeployment` produced `cannot inspect deployment inspect deployment ingest`. The
+  interpreter now takes the operation label and, for the two operations that have one, the
+  `DeploymentName`; the inspection message uses the latter and everything else uses the
+  former.
+  Date: 2026-09-15.
+
+- Decision: Add `shiki-cli/test/Shiki/Cli/Effect/FakeKube.hs` and
+  `shiki-cli/test/Shiki/Cli/RunSpec.hs`, which the plan did not call for, and give
+  `FakeRunStore` a record of the completions written through it.
+  Rationale: Acceptance row 13 — Ctrl-C during `shiki run` leaves the run `running` — needs a
+  reachable cluster and a person at a terminal, and this machine has neither. Faking both
+  effects turns the plan's headline behaviour change into an assertion that runs on every
+  build: the interrupt escapes `runShikiMain`, and no completion was recorded.
   Date: 2026-09-15.
 
 

@@ -14,13 +14,14 @@ module Shiki.Cli.Run
   )
 where
 
+import Control.Exception (AsyncException (..))
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Time.Clock (diffUTCTime)
 import Effectful (Eff, IOE, type (:>))
 import Effectful.Concurrent (Concurrent)
-import Effectful.Error.Static (Error, throwError)
+import Effectful.Error.Static (Error, catchError, throwError)
 import Effectful.Exception qualified as Exc
 import Options.Applicative
   ( Parser,
@@ -37,9 +38,9 @@ import Options.Applicative
     switch,
     value,
   )
-import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Heartbeat (withHeartbeat)
+import Shiki.Effect.Kube (Kube, awaitJob, inspectDeployment, submitJob)
 import Shiki.Effect.RunStore
   ( RunStore,
     completeRun,
@@ -47,20 +48,14 @@ import Shiki.Effect.RunStore
     markRunRunning,
     touchRunWatched,
   )
-import Shiki.Error (ShikiError)
+import Shiki.Error (ShikiError, shikiErrorMessage)
 import Shiki.K8s.Introspection
   ( DeploymentName (..),
     DeploymentSnapshot,
     Namespace (..),
-    inspectDeployment,
   )
 import Shiki.K8s.JobBuilder (JobInputs (..), generateJobName)
-import Shiki.K8s.Runner
-  ( JobOutcome (..),
-    JobPhase (..),
-    runJob,
-    submitJob,
-  )
+import Shiki.K8s.Runner (JobOutcome (..), JobPhase (..))
 import Shiki.Persistence.Run
   ( NewRun (..),
     RunCompletion (..),
@@ -71,6 +66,7 @@ import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Prelude hiding (Strict, argument)
 import Shiki.Service.Config (ServiceConfig, ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)
+import System.IO (stderr)
 
 data RunOptions = RunOptions
   { service :: !Text,
@@ -115,19 +111,20 @@ runOptionsParser =
 --   @running@, submit the Job, then either exit (no-wait) or wait and
 --   finalize. Any exception is captured into a @failed@ row before
 --   re-exiting non-zero.
---   Every store write goes through the 'RunStore' effect; the cluster is
---   still reached through the 'CliEnv' client until Milestone 4.
+--   Every store write goes through the 'RunStore' effect and every cluster
+--   call through 'Kube', so this handler's type lists exactly what the command
+--   touches.
 runRun ::
   ( RunStore :> es,
+    Kube :> es,
     Concurrent :> es,
     IOE :> es,
     Error ShikiError :> es,
     Error CliError :> es
   ) =>
-  CliEnv ->
   RunOptions ->
   Eff es ()
-runRun env opts = do
+runRun opts = do
   cfg <-
     liftIO $
       loadServiceConfig
@@ -138,12 +135,10 @@ runRun env opts = do
           (fromMaybe (cfg ^. #defaultNamespace) (opts ^. #overrideNs))
 
   snap <-
-    liftIO $
-      inspectDeployment
-        (env ^. #client)
-        ns
-        (DeploymentName (cfg ^. #detectFromDeployment))
-        (cfg ^. #containerName)
+    inspectDeployment
+      ns
+      (DeploymentName (cfg ^. #detectFromDeployment))
+      (cfg ^. #containerName)
 
   rid <- liftIO newRunId
   startedAt <- liftIO getCurrentTime
@@ -171,21 +166,20 @@ runRun env opts = do
   markRunRunning rid
 
   if opts ^. #noWait
-    then noWaitPath env rid startedAt cfg snap inputs
-    else waitPath env rid startedAt cfg snap inputs
+    then noWaitPath rid startedAt cfg snap inputs
+    else waitPath rid startedAt cfg snap inputs
 
 noWaitPath ::
-  (RunStore :> es, IOE :> es, Error CliError :> es) =>
-  CliEnv ->
+  (RunStore :> es, Kube :> es, IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
   RunId ->
   UTCTime ->
   ServiceConfig ->
   DeploymentSnapshot ->
   JobInputs ->
   Eff es ()
-noWaitPath env rid startedAt cfg snap inputs =
-  Exc.trySync (liftIO (submitJob (env ^. #client) cfg snap inputs)) >>= \case
-    Left e -> finalizeFailed rid startedAt (Text.pack (Exc.displayException e))
+noWaitPath rid startedAt cfg snap inputs =
+  guarded rid inputs (submitJob cfg snap inputs) >>= \case
+    Left message -> finalizeFailed rid startedAt message
     Right () ->
       liftIO . TIO.putStrLn $
         "submitted job "
@@ -196,28 +190,67 @@ noWaitPath env rid startedAt cfg snap inputs =
 
 waitPath ::
   ( RunStore :> es,
+    Kube :> es,
     Concurrent :> es,
     IOE :> es,
     Error ShikiError :> es,
     Error CliError :> es
   ) =>
-  CliEnv ->
   RunId ->
   UTCTime ->
   ServiceConfig ->
   DeploymentSnapshot ->
   JobInputs ->
   Eff es ()
-waitPath env rid startedAt cfg snap inputs =
-  Exc.trySync
-    ( withHeartbeat
-        heartbeatInterval
-        (touchRunWatched rid)
-        (liftIO (runJob (env ^. #client) cfg snap inputs 5 345600))
-    )
+waitPath rid startedAt cfg snap inputs =
+  guarded
+    rid
+    inputs
+    (withHeartbeat heartbeatInterval (touchRunWatched rid) (awaitJob cfg snap inputs))
     >>= \case
-      Left e -> finalizeFailed rid startedAt (Text.pack (Exc.displayException e))
+      Left message -> finalizeFailed rid startedAt message
       Right outcome -> finalizeOutcome rid startedAt outcome
+
+-- | Run a cluster action, turning both shapes of /synchronous/ failure into a
+--   message the caller records on the run row: an exception from the client,
+--   and a typed 'ShikiError' from the 'Kube' interpreter.
+--
+--   Asynchronous exceptions deliberately pass straight through. Pressing
+--   Ctrl-C while @shiki run@ waits used to be caught here and written to the
+--   row as @failed@ with the message @user interrupt@, which was simply false:
+--   the Job keeps running in the cluster. Now the interrupt propagates, shiki
+--   exits with the shell's interrupt status, and the row stays @running@ —
+--   which is the situation ADR 3's @unwatched@ display and @shiki runs sync@
+--   exist for. 'Exc.withException' runs the hint only while an
+--   'AsyncException' is propagating, and re-throws it untouched.
+guarded ::
+  (IOE :> es, Error ShikiError :> es) =>
+  RunId ->
+  JobInputs ->
+  Eff es a ->
+  Eff es (Either Text a)
+guarded rid inputs act =
+  Exc.withException
+    ( Exc.trySync
+        ((Right <$> act) `catchError` \_ e -> pure (Left (shikiErrorMessage e)))
+    )
+    (interruptedHint inputs rid)
+    >>= \case
+      Left e -> pure (Left (Text.pack (Exc.displayException e)))
+      Right outcome -> pure outcome
+
+-- | Tell the operator their Job outlived the process, and how to catch up
+--   with it later.
+interruptedHint :: (IOE :> es) => JobInputs -> RunId -> AsyncException -> Eff es ()
+interruptedHint inputs rid = \case
+  UserInterrupt ->
+    liftIO . TIO.hPutStrLn stderr $
+      "shiki: interrupted; job "
+        <> (inputs ^. #jobName)
+        <> " keeps running; record its outcome later with 'shiki runs sync "
+        <> Text.take 8 (showRunId rid)
+        <> "'"
+  _ -> pure ()
 
 -- One write a minute keeps watcher liveness visible without coupling it to
 -- the five-second Kubernetes polling interval. The display allows five

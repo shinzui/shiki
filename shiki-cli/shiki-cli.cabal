@@ -59,7 +59,6 @@ library
     Shiki.Cli.Config
     Shiki.Cli.ConfigInit
     Shiki.Cli.ConfigShow
-    Shiki.Cli.Env
     Shiki.Cli.Error
     Shiki.Cli.Fzf
     Shiki.Cli.Fzf.Selector.Run
@@ -134,6 +133,7 @@ test-suite shiki-cli-test
     Shiki.Cli.Agent.PromptSpec
     Shiki.Cli.Agent.ProviderSpec
     Shiki.Cli.ConfigInitSpec
+    Shiki.Cli.Effect.FakeKube
     Shiki.Cli.Effect.FakeRunStore
     Shiki.Cli.EnvRoutingSpec
     Shiki.Cli.Fixtures
@@ -145,6 +145,7 @@ test-suite shiki-cli-test
     Shiki.Cli.MainSpec
     Shiki.Cli.ParserSpec
     Shiki.Cli.ProjectSpec
+    Shiki.Cli.RunSpec
     Shiki.Cli.Runs.FormatSpec
     Shiki.Cli.Runs.SyncSpec
     Shiki.Cli.RunsSpec

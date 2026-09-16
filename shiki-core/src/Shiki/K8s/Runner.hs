@@ -7,6 +7,7 @@ module Shiki.K8s.Runner
     JobPhase (..),
     JobInputs (..),
     JobObservation (..),
+    RunnerError (..),
     submitJob,
     runJob,
     observeJob,

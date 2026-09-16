@@ -43,7 +43,6 @@ import Shiki.Cli.ConfigInit
     runConfigInit,
   )
 import Shiki.Cli.ConfigShow (runConfigShow)
-import Shiki.Cli.Env (withKubeClient)
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Fzf.Selector.Service
   ( resolveService,
@@ -56,6 +55,7 @@ import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
 import Shiki.Cli.Version (appVersionWithGit)
+import Shiki.Effect.Kube.Client (runKubeDefault)
 import Shiki.Effect.RunStore (RunStore)
 import Shiki.Effect.RunStore.Postgres (withRunStore)
 import Shiki.Persistence.Schema (Schema)
@@ -118,9 +118,9 @@ dispatch opts = case opts ^. #command of
     liftIO (runConfigInit initOpts)
   Run runOpts ->
     withStore opts $ \_schema ->
-      withKubeClient (\env -> runRun env runOpts)
+      runKubeDefault (runRun runOpts)
   Runs runsOpts ->
-    runRuns (\action -> withStore opts (const action)) runsOpts
+    runRuns (\action -> withStore opts (const action)) runKubeDefault runsOpts
   Agent agentOpts ->
     withStore opts (\schema -> runAgent schema agentOpts)
 

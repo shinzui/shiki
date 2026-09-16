@@ -43,7 +43,6 @@ import Shiki.Analysis.Backend
     analyzerBackendToKind,
     runAnalyzer,
   )
-import Shiki.Cli.Env (withKubeClient)
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Fzf (FzfOpts)
 import Shiki.Cli.Fzf.Selector.Run
@@ -54,6 +53,7 @@ import Shiki.Cli.Fzf.Selector.Run
   )
 import Shiki.Cli.Runs.Format (isUnwatched, renderTable)
 import Shiki.Cli.Runs.Sync (syncRun, syncRuns)
+import Shiki.Effect.Kube (Kube)
 import Shiki.Effect.RunStore
   ( RunStore,
     databaseNow,
@@ -178,6 +178,10 @@ analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
 --   see "Shiki.Cli.Fzf.Selector.Run").
 type WithStore es = Eff (RunStore : es) () -> Eff es ()
 
+-- | How a @runs@ subcommand reaches the cluster. Only @sync@ asks for it, so
+--   only @sync@ ever reads the operator's kubeconfig.
+type WithKube es = Eff (Kube : RunStore : es) () -> Eff (RunStore : es) ()
+
 -- | Dispatch a parsed 'RunsCommand' to the right handler. Only @sync@ asks for
 --   a Kubernetes client, so a broken kubeconfig no longer breaks a pure
 --   database read.
@@ -187,19 +191,20 @@ runRuns ::
     Error CliError :> es
   ) =>
   WithStore es ->
+  WithKube es ->
   RunsCommand ->
   Eff es ()
-runRuns withStore = \case
+runRuns withStore withKube = \case
   RunsList mService limit -> withStore (doList mService limit)
   RunsShow mId -> withRun withStore readRunOpts mId (\observedAt r -> doShow observedAt r)
   RunsLogs mId -> withRun withStore readRunOpts mId (\_ r -> doLogs r)
   RunsError mId -> withRun withStore readRunOpts mId (\_ r -> doError r)
   RunsAnalyze mId override ->
     withRun withStore analyzeRunOpts mId (\_ r -> doAnalyze r override)
-  RunsSync Nothing -> withStore (withKubeClient syncRuns)
+  RunsSync Nothing -> withStore (withKube syncRuns)
   RunsSync (Just rid) ->
     withRun withStore readRunOpts (Just rid) $ \observedAt r ->
-      withKubeClient (\env -> syncRun env observedAt r)
+      withKube (syncRun observedAt r)
 
 -- | Decide the target before opening the store, then look the run up and run
 --   the handler.

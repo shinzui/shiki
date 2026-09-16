@@ -3,11 +3,10 @@
 --   typed id prefix matches nothing.
 module Shiki.Cli.RunsSpec (tests) where
 
-import Data.IORef (newIORef)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
-import Shiki.Cli.Effect.FakeRunStore (healthy, runFakeRunStore)
+import Shiki.Cli.Effect.FakeRunStore (healthy, newFakeStore, runFakeRunStore)
 import Shiki.Cli.Fixtures (fixtureRow)
 import Shiki.Cli.Main (runShikiMain)
 import Shiki.Cli.Runs (RunsCommand (..), runRuns)
@@ -41,8 +40,10 @@ tests =
 capture :: [RunRecord] -> (Text -> Bool) -> RunsCommand -> IO (Text, ExitCode)
 capture rows failing command =
   withSystemTempFile "shiki-runs" $ \path h -> do
-    ref <- newIORef rows
-    code <- runShikiMain h (runRuns (runFakeRunStore ref failing) command)
+    store <- newFakeStore rows
+    code <-
+      runShikiMain h $
+        runRuns (runFakeRunStore store failing) (\_ -> unreachableKube) command
     hClose h
     contents <- withFile path ReadMode readAll
     pure (contents, code)
@@ -51,3 +52,9 @@ capture rows failing command =
     readAll r = do
       t <- TIO.hGetContents r
       Text.length t `seq` pure t
+
+    -- No case here runs @runs sync@, the only subcommand that asks for a
+    -- cluster, so the Kube interpreter is never entered. Naming that fact
+    -- is better than wiring up a fake nothing exercises.
+    unreachableKube =
+      error "Shiki.Cli.RunsSpec: no case in this module reaches the cluster"

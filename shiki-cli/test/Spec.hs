@@ -14,6 +14,7 @@ import Shiki.Cli.HelpSpec qualified as HelpSpec
 import Shiki.Cli.MainSpec qualified as MainSpec
 import Shiki.Cli.ParserSpec qualified as ParserSpec
 import Shiki.Cli.ProjectSpec qualified as ProjectSpec
+import Shiki.Cli.RunSpec qualified as RunSpec
 import Shiki.Cli.Runs.FormatSpec qualified as RunsFormatSpec
 import Shiki.Cli.Runs.SyncSpec qualified as RunsSyncSpec
 import Shiki.Cli.RunsSpec qualified as RunsSpec
@@ -45,6 +46,7 @@ main =
           VersionSpec.tests,
           FzfSpec.tests,
           RunsFormatSpec.tests,
+          RunSpec.tests,
           RunsSpec.tests,
           RunsSyncSpec.tests,
           RunSelectorSpec.tests,

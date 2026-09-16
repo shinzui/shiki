@@ -54,6 +54,8 @@ library
     Shiki.Analysis.Backend
     Shiki.Analysis.Baikai
     Shiki.Analysis.Heuristic
+    Shiki.Effect.Kube
+    Shiki.Effect.Kube.Client
     Shiki.Effect.RunStore
     Shiki.Effect.RunStore.Postgres
     Shiki.Error

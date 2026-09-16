@@ -25,10 +25,10 @@ import Data.Time.Clock (NominalDiffTime, diffUTCTime)
 import Effectful (Eff, IOE, type (:>))
 import Effectful.Error.Static (Error, runErrorNoCallStack, throwError)
 import Effectful.Exception qualified as Exc
-import Shiki.Cli.Env (CliEnv (..))
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Run (completionForOutcome, elapsedMs)
 import Shiki.Cli.Runs.Format (isUnwatched)
+import Shiki.Effect.Kube (Kube, collectOutcome, deploymentExists, observeJob)
 import Shiki.Effect.RunStore
   ( RunStore,
     completeUnfinishedRun,
@@ -36,13 +36,8 @@ import Shiki.Effect.RunStore
     listUnfinishedRuns,
   )
 import Shiki.Error (ShikiError, shikiErrorMessage)
-import Shiki.K8s.Introspection (DeploymentName (..), Namespace (..), deploymentExists)
-import Shiki.K8s.Runner
-  ( JobObservation (..),
-    JobPhase (..),
-    collectOutcome,
-    observeJob,
-  )
+import Shiki.K8s.Introspection (DeploymentName (..), Namespace (..))
+import Shiki.K8s.Runner (JobObservation (..), JobPhase (..))
 import Shiki.Persistence.Run
   ( RunCompletion (..),
     RunId (..),
@@ -120,27 +115,25 @@ lostJobMessage r =
 -- | Reconcile every unfinished run. One run's error is reported and the
 --   rest still sync; the command exits non-zero if any run errored.
 syncRuns ::
-  (RunStore :> es, IOE :> es, Error CliError :> es) =>
-  CliEnv ->
+  (RunStore :> es, Kube :> es, IOE :> es, Error CliError :> es) =>
   Eff es ()
-syncRuns env = do
+syncRuns = do
   observedAt <- databaseNow
   rows <- listUnfinishedRuns
   if null rows
     then liftIO (TIO.putStrLn "(no unfinished runs)")
     else do
-      results <- traverse (trySyncOne env observedAt) rows
+      results <- traverse (trySyncOne observedAt) rows
       when (or results) (throwError CommandFailed)
 
 -- | Reconcile one run, exiting non-zero if it errored.
 syncRun ::
-  (RunStore :> es, IOE :> es, Error CliError :> es) =>
-  CliEnv ->
+  (RunStore :> es, Kube :> es, IOE :> es, Error CliError :> es) =>
   UTCTime ->
   RunRecord ->
   Eff es ()
-syncRun env observedAt r =
-  trySyncOne env observedAt r >>= \errored -> when errored (throwError CommandFailed)
+syncRun observedAt r =
+  trySyncOne observedAt r >>= \errored -> when errored (throwError CommandFailed)
 
 -- | Sync one run; report any failure on stderr and return whether one
 --   happened. Three shapes are caught, and all three read the same to an
@@ -149,17 +142,16 @@ syncRun env observedAt r =
 --   client. Asynchronous exceptions (Ctrl-C) still propagate, because
 --   'Exc.trySync' does not catch them.
 trySyncOne ::
-  (RunStore :> es, IOE :> es) =>
-  CliEnv ->
+  (RunStore :> es, Kube :> es, IOE :> es) =>
   UTCTime ->
   RunRecord ->
   Eff es Bool
-trySyncOne env observedAt r = do
+trySyncOne observedAt r = do
   outcome <-
     Exc.trySync
       . runErrorNoCallStack @ShikiError
       . runErrorNoCallStack @SyncFailure
-      $ syncOne env observedAt r
+      $ syncOne observedAt r
   case outcome of
     Right (Right (Right ())) -> pure False
     Right (Right (Left syncFailure)) -> reportFailure (renderSyncFailure syncFailure)
@@ -172,16 +164,15 @@ trySyncOne env observedAt r = do
       pure True
 
 syncOne ::
-  (RunStore :> es, IOE :> es, Error SyncFailure :> es) =>
-  CliEnv ->
+  (RunStore :> es, Kube :> es, IOE :> es, Error SyncFailure :> es) =>
   UTCTime ->
   RunRecord ->
   Eff es ()
-syncOne env observedAt r
+syncOne observedAt r
   | r ^. #status `notElem` [Pending, Running] =
       report ("already " <> runStatusToText (r ^. #status))
   | otherwise = do
-      obs <- liftIO (observeJob (env ^. #client) ns (r ^. #jobName))
+      obs <- observeJob ns (r ^. #jobName)
       now <- liftIO getCurrentTime
       case decideSync now r obs of
         SkipFinished st -> report ("already " <> runStatusToText st)
@@ -189,8 +180,7 @@ syncOne env observedAt r
         SkipRecentlySubmitted -> report "no job yet; submitted too recently to reconcile"
         FinalizeFinished phase endedAt -> do
           outcome <-
-            liftIO $
-              collectOutcome (env ^. #client) ns (r ^. #jobName) (r ^. #startedAt) endedAt phase
+            collectOutcome ns (r ^. #jobName) (r ^. #startedAt) endedAt phase
           write (completionForOutcome (r ^. #runId) (r ^. #startedAt) outcome)
         MarkLost -> do
           confirmSameCluster
@@ -229,7 +219,7 @@ syncOne env observedAt r
         Aeson.Error e ->
           throwError (ServiceConfigSnapshotUnreadable (Text.pack e))
       let dep = cfg ^. #detectFromDeployment
-      present <- liftIO (deploymentExists (env ^. #client) ns (DeploymentName dep))
+      present <- deploymentExists ns (DeploymentName dep)
       unless present $
         throwError (DeploymentMissingToo dep (r ^. #namespace))
 

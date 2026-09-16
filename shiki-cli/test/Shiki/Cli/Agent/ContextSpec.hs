@@ -19,6 +19,7 @@ import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)
 import Shiki.Cli.Agent.Context (AgentContext, gatherAgentContext)
+import Shiki.Cli.Fixtures (minimalServiceDhall)
 import Shiki.Effect.RunStore.Postgres (runRunStorePostgres)
 import Shiki.Error (ShikiError)
 import Shiki.Persistence.Connection
@@ -56,7 +57,7 @@ tests =
           withSystemTempDirectory "shiki-context-spec" $ \tmp -> do
             let svcDir = tmp </> "services"
             createDirectory svcDir
-            writeFile (svcDir </> "foo.dhall") (Text.unpack fooDhall)
+            writeFile (svcDir </> "foo.dhall") (Text.unpack (minimalServiceDhall "foo"))
             writeFile (svcDir </> "bad.dhall") "this is not dhall"
 
             now <- getCurrentTime
@@ -118,62 +119,6 @@ tests =
             assertEqual "no services" [] (ctx ^. #services)
             assertEqual "no errors" [] (ctx ^. #serviceLoadErrors)
             assertBool "database observation time is present" (isJust (ctx ^. #observedAt))
-    ]
-
--- | A minimal Dhall record that satisfies 'ServiceConfig'. Inlined
---   rather than reading the repo's @services/@ so the test does not
---   depend on the repo's services-dir path resolving from the tmp dir.
-fooDhall :: Text.Text
-fooDhall =
-  Text.unlines
-    [ "let EnvSource =",
-      "      < ConfigMap : { key : Text }",
-      "      | Secret : { key : Text }",
-      "      | Literal : { value : Text }",
-      "      | DeploymentEnv : { name : Text }",
-      "      >",
-      "",
-      "let EnvVar = { name : Text, source : EnvSource }",
-      "",
-      "let ContainerImageSource =",
-      "      < StaticImage : { value : Text }",
-      "      | DeploymentInitImage : { name : Text }",
-      "      >",
-      "",
-      "let InitContainer =",
-      "      { name : Text",
-      "      , image : ContainerImageSource",
-      "      , args : List Text",
-      "      , env : List EnvVar",
-      "      , resources :",
-      "          { cpuRequest : Text",
-      "          , cpuLimit : Text",
-      "          , memoryRequest : Text",
-      "          , memoryLimit : Text",
-      "          }",
-      "      , restartable : Bool",
-      "      }",
-      "",
-      "let AnalyzerBackend =",
-      "      < Heuristic | Baikai : { model : Text } | None >",
-      "",
-      "in  { name = \"foo\"",
-      "    , defaultNamespace = \"default\"",
-      "    , detectFromDeployment = \"foo\"",
-      "    , containerName = \"foo\"",
-      "    , commandPath = \"/foo\"",
-      "    , serviceAccount = \"foo\"",
-      "    , nodeSelector = toMap {=} : List { mapKey : Text, mapValue : Text }",
-      "    , initContainers = [] : List InitContainer",
-      "    , env = [] : List EnvVar",
-      "    , resources =",
-      "        { cpuRequest = \"100m\"",
-      "        , cpuLimit = \"500m\"",
-      "        , memoryRequest = \"128Mi\"",
-      "        , memoryLimit = \"256Mi\"",
-      "        }",
-      "    , analyzer = AnalyzerBackend.Heuristic",
-      "    }"
     ]
 
 useStmt :: Pool -> Statement a () -> a -> IO ()
