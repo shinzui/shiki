@@ -173,15 +173,24 @@ This section must always reflect the actual current state of the work.
       new test, `shiki-cli/test/Shiki/Cli/RunSpec.hs`, over fake `Kube` and `RunStore`
       interpreters. (2026-09-15)
 
-### M5 — Config and analyzer effects, and the remaining exits
+### M5 — Config and analyzer effects, and the remaining exits — done 2026-09-15
 
-- [ ] Create `Shiki.Effect.ConfigLoader` (IO interpreter) and `Shiki.Effect.Analyzer`
-      (interpreter over baikai-effectful's `Baikai` effect).
-- [ ] Move `agent assist`'s API one-shot onto `Baikai.Effectful.complete`.
-- [ ] Convert `service show`, `runs analyze`, `config show`, `config init`, `help`, and
-      `agent assist`; replace the remaining `exitFailure` calls with `CliError` values.
-- [ ] Run the audit grep; every remaining hit is on the allow-list in Milestone 5.
-- [ ] Build warning-free, tests green, acceptance rows 15–21; commit.
+- [x] Create `Shiki.Effect.ConfigLoader` (IO interpreter) and `Shiki.Effect.Analyzer`
+      (interpreter over baikai-effectful's `Baikai` effect). (2026-09-15)
+- [x] Move `agent assist`'s API one-shot onto `Baikai.Effectful.complete`. (2026-09-15)
+- [x] Convert `service show`, `shiki run`'s config load, `runs analyze`, `config show`,
+      `config init`, `help`, and `agent assist`; replace the remaining `exitFailure` calls
+      with `CliError` values. (2026-09-15)
+- [x] Run the audit grep; every remaining hit is on the allow-list below, and each site now
+      carries a one-line comment saying why. (2026-09-15)
+- [x] Build warning-free, tests green (68 + 122), acceptance rows 15–19 and 22–23 checked
+      against the built binary, plus spot checks of plan 10's matrix; `nix build` green;
+      commit. Row 20 (`agent assist` exits with its child's status) needs an interactive
+      agent session and was not exercised here; row 21's picker rows need a TTY.
+      (2026-09-15)
+- [x] Fix three places where a nested `runErrorNoCallStack` never saw the failure it was
+      meant to catch, and add a regression test for each — see the Decision Log.
+      (2026-09-15)
 
 ### M6 — Documentation, ADRs, and retrospective
 
@@ -360,6 +369,61 @@ Findings from implementation:
   The case asserts the two things that matter and that a live cluster would otherwise be
   needed to see: the interrupt escapes `runShikiMain`, and the fake store recorded no
   completion, so the row is left `running` rather than `failed`.
+
+- Milestone 5, 2026-09-15: **a nested `runErrorNoCallStack` does not catch what an outer
+  interpreter throws.** Each `runErrorNoCallStack` allocates a fresh, unique handler id, and
+  an interpreter's `throwError` targets the `Error` handler that was in scope where the
+  /interpreter/ was installed. So this, which the plan's wording invites, silently never
+  catches anything:
+
+  ```haskell
+  -- WRONG when the RunStore interpreter lives further out
+  outcome <- runErrorNoCallStack @ShikiError (databaseNow >>= …)
+  ```
+
+  ```haskell
+  -- RIGHT: catchError uses the ambient handler, the one the interpreter targets
+  outcome <- (Right <$> (databaseNow >>= …)) `catchError` \_ e -> pure (Left e)
+  ```
+
+  Three sites were written the wrong way and two were observably broken before the fix:
+
+  ```text
+  $ shiki --db "$DB" runs analyze 3f2c1a9d     # no services/ingest.dhall on disk
+  shiki: no service config at services/ingest.dhall
+  exit=1                                        # should fall back to the heuristic
+  $ shiki --db "$DB" runs sync                  # one run, cluster unreachable
+  shiki: Kubernetes request failed during read job status: …
+                                                # should be "run <id>: sync failed: …"
+  ```
+
+  After the fix:
+
+  ```text
+  $ shiki --db "$DB" runs analyze 3f2c1a9d
+  analyzed run 3f2c1a9d with heuristic: RuntimeError: boom
+  $ shiki --db "$DB" runs sync
+  run 3f2c1a9d: sync failed: Kubernetes request failed during read job status: …
+  ```
+
+  The third site, `Shiki.Cli.Agent.Context.loadRecentRuns`, had no observable symptom only
+  because its test used a working database. All three now use `catchError`, and each has a
+  regression test. This belongs in ADR 5.
+
+- Milestone 5, 2026-09-15: the intermittent `LaunchSpec` failure recorded under Milestone 1
+  is fixed, and flushing was not enough. `captureStdout` swapped the process's stdout
+  descriptor, and tasty's console reporter writes to stdout from its own thread, so the
+  capture file collected tasty's output as well:
+
+  ```text
+      captured stdout
+      expected: "PROMPT"
+       but got: "PROMPT    debug path writes the prompt and exits success:                          "
+  ```
+
+  `runAssistSession` now takes the handle its own output goes to — `stdout` in production, a
+  temporary file in the test — the way `runShikiMain` already did. The capture is gone and
+  eight consecutive runs pass.
 
 
 ## Decision Log
@@ -608,6 +672,51 @@ Record every decision made while working on the plan.
   reachable cluster and a person at a terminal, and this machine has neither. Faking both
   effects turns the plan's headline behaviour change into an assertion that runs on every
   build: the interrupt escapes `runShikiMain`, and no completion was recorded.
+  Date: 2026-09-15.
+
+- Decision: Catch a typed `ShikiError` raised by an outer interpreter with `catchError`, never
+  with a nested `runErrorNoCallStack`. Applied in `Shiki.Cli.Runs.effectiveBackend`,
+  `Shiki.Cli.Runs.Sync.trySyncOne`, and `Shiki.Cli.Agent.Context.loadRecentRuns`, each with a
+  regression test.
+  Rationale: `runErrorNoCallStack` installs a *new* handler, and effectful routes an
+  interpreter's `throwError` to the handler that was in scope where the interpreter was
+  installed — further out, in every one of these cases. Two of the three were observably
+  broken (see Surprises). ADR 5 records the rule.
+  Date: 2026-09-15.
+
+- Decision: `runAssistSession` takes the 'Handle' its output goes to, rather than writing to
+  `stdout` directly.
+  Rationale: It removes the last use of `captureStdout`, which swapped the process's stdout
+  descriptor and raced tasty's reporter thread — the pre-existing flake recorded under
+  Milestone 1. It is also the shape `runShikiMain` already uses, so the two places that write
+  the command's output are now consistent. Production passes `stdout`; only the test differs.
+  Date: 2026-09-15.
+
+- Decision: An unknown analyzer id renders as `shiki: unknown analyzer override:
+  baikai:<id>`, echoing the operator's `--analyzer` argument, rather than today's
+  `shiki: baikai backend failed: unknown baikai model: <id>`.
+  Rationale: The plan asks the interpreter to throw `AnalyzerUnknown` for an unknown id, and
+  `AnalyzerUnknown`'s existing wording is "unknown analyzer override: …". Keeping the old
+  payload as well produced `unknown analyzer override: unknown baikai model: not_a_model`.
+  Echoing the argument says the same thing once, in the operator's own words.
+  Date: 2026-09-15.
+
+- Decision: `Shiki.K8s.Runner.summarizeOnFailure` calls the pure `summarizeFailure` directly
+  instead of going through an analyzer, and `Shiki.Analysis.Backend.runAnalyzer` is deleted
+  along with the IO `Shiki.Analysis.Baikai.runBaikai`.
+  Rationale: The inline path only ever asked for `Heuristic`, which is a pure function, and
+  routing it through an effect would have forced the `Kube` interpreter to carry `Analyzer`
+  for no gain. `Shiki.Analysis.Backend` is now the analyzer's vocabulary and nothing else,
+  which is what lets `Shiki.Service.Config` depend on it. `Shiki.Analysis.BackendSpec` is
+  replaced by `Shiki.Effect.AnalyzerSpec`, which covers the same cases plus the cap and the
+  "does not call a model" guarantees.
+  Date: 2026-09-15.
+
+- Decision: `CliError` also carries `AgentPromptInvalid`, used for a prompt that cannot be
+  rendered and for an interactive launch that throws.
+  Rationale: The plan folded both into `AgentRequestFailed`, whose wording is
+  `shiki: agent api call failed: …`. Neither is an API call, and today both print
+  `shiki: <message>`; a separate constructor keeps the wording unchanged.
   Date: 2026-09-15.
 
 
@@ -1433,6 +1542,21 @@ passthrough in `Shiki.Cli.Agent`; the invalid-embedded-plan `error` in
 `Shiki.K8s.ExecCredential` (pure parsing, becomes a Yaml decode error); and `try @SomeException`
 in `Shiki.K8s.Runner` and `Shiki.Analysis.Baikai` only if they re-throw asynchronous
 exceptions (otherwise switch them to `trySync`). Record the final list in Outcomes.
+
+As run on 2026-09-15, the grep returns exactly four code sites plus two doc-comment
+mentions:
+
+```text
+shiki-core/src/Shiki/K8s/Runner.hs:216:          try @SomeException readStatus >>= \case
+shiki-core/src/Shiki/K8s/ExecCredential.hs:212:  other -> fail ("unknown interactiveMode: " <> T.unpack other)
+shiki-core/src/Shiki/Persistence/Migration.hs:94:      error ("invalid embedded Shiki migration plan: " <> show err)
+shiki-cli/src/Shiki/Cli/Agent.hs:158:      liftIO (exitWith code)
+```
+
+`Shiki.Analysis.Baikai`'s `try @SomeException` is gone with the IO `runBaikai`;
+`Shiki.Cli.Agent.Context`'s became `trySync`; and `shiki-cli/app/Main.hs`'s `exitWith`
+is the handler's own code, which the grep no longer reaches because the module now
+imports it by name only.
 
 Acceptance: build warning-free, tests green, rows 15–21, audit list recorded.
 

@@ -51,6 +51,8 @@ data ConfigError
   | ServiceConfigNotFound !FilePath
   | -- | path, the loader's message
     ServiceConfigInvalid !FilePath !Text
+  | -- | path, the reason the write failed
+    ConfigWriteFailed !FilePath !Text
   deriving stock (Generic, Eq, Show)
 
 -- | Failures from the PostgreSQL side: reaching the server, applying
@@ -106,6 +108,7 @@ renderConfigError = \case
   ProjectConfigInvalid path message -> "cannot load " <> Text.pack path <> ": " <> message
   ServiceConfigNotFound path -> "no service config at " <> Text.pack path
   ServiceConfigInvalid path message -> "cannot load " <> Text.pack path <> ": " <> message
+  ConfigWriteFailed path message -> "cannot write " <> Text.pack path <> ": " <> message
 
 renderStoreError :: StoreError -> Text
 renderStoreError = \case

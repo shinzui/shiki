@@ -22,9 +22,9 @@ import Shiki.Cli.VersionSpec qualified as VersionSpec
 import Test.Tasty (defaultMain, localOption, testGroup)
 import Test.Tasty.Runners (NumThreads (..))
 
--- | Run tests sequentially. 'Shiki.Cli.Agent.LaunchSpec' redirects the
---   OS-level @stdout@ to capture output, which is fundamentally racy
---   against any concurrent tasty test that prints. NumThreads 1 keeps
+-- | Run tests sequentially. Several cases change process-global state that
+--   another test would see: the working directory, and the environment
+--   variables @Shiki.Cli.EnvRoutingSpec@ sets and unsets. NumThreads 1 keeps
 --   the suite deterministic without forcing the whole test binary into
 --   single-core mode.
 main :: IO ()

@@ -12,12 +12,11 @@ module Shiki.Cli.Agent.Context
   )
 where
 
-import Control.Exception (SomeException, try)
 import Data.Generics.Labels ()
 import Data.List (sort)
 import Data.Text qualified as Text
 import Effectful (Eff, IOE, type (:>))
-import Effectful.Error.Static (runErrorNoCallStack)
+import Effectful.Error.Static (Error, catchError)
 import Effectful.Exception qualified as Exc
 import Shiki.Effect.RunStore (RunStore, databaseNow, listRecentRuns)
 import Shiki.Error (ShikiError, shikiErrorMessage)
@@ -29,7 +28,7 @@ import Shiki.Service.Config
     ServiceConfig,
     ServiceName (..),
   )
-import Shiki.Service.Config.Dhall (loadServiceConfig)
+import Shiki.Service.Config.Dhall qualified as ServiceDhall
 import System.Directory
   ( doesDirectoryExist,
     getCurrentDirectory,
@@ -73,13 +72,13 @@ analyzerBackendToText = \case
 --   shiki Postgres pool, and the resolved 'Schema'. Best-effort: failures
 --   land on the record rather than as exceptions.
 gatherAgentContext ::
-  (RunStore :> es, IOE :> es) =>
+  (RunStore :> es, IOE :> es, Error ShikiError :> es) =>
   Schema ->
   Eff es AgentContext
 gatherAgentContext schema = do
   cwdStr <- liftIO getCurrentDirectory
   let servicesPath = "services"
-  (services, serviceErrs) <- liftIO (loadServicesDir servicesPath)
+  (services, serviceErrs) <- loadServicesDir servicesPath
   (mObservedAt, runs, dbErrs) <- loadRecentRuns
   pure
     AgentContext
@@ -96,20 +95,24 @@ gatherAgentContext schema = do
 -- | Enumerate @services/*.dhall@, parsing each one through
 --   'loadServiceConfig'. Files that fail to parse are returned in the
 --   second list. A missing services directory is not an error.
-loadServicesDir :: FilePath -> IO ([ServiceSummary], [FilePath])
+loadServicesDir ::
+  (IOE :> es) =>
+  FilePath ->
+  Eff es ([ServiceSummary], [FilePath])
 loadServicesDir dir = do
-  exists <- doesDirectoryExist dir
+  exists <- liftIO (doesDirectoryExist dir)
   if not exists
     then pure ([], [])
     else do
-      entries <- listDirectory dir
+      entries <- liftIO (listDirectory dir)
       let dhallFiles = sort [dir </> e | e <- entries, takeExtension e == ".dhall"]
       foldr step (pure ([], [])) dhallFiles
   where
+    -- 'trySync', not 'try': a file that does not parse belongs in the error
+    -- list, but a Ctrl-C part way through the scan must still end the command.
     step path acc = do
       (svcs, errs) <- acc
-      mCfg <- try @SomeException (loadServiceConfig path)
-      case mCfg of
+      Exc.trySync (liftIO (ServiceDhall.loadServiceConfig path)) >>= \case
         Right cfg -> pure (toSummary cfg : svcs, errs)
         Left _ -> pure (svcs, path : errs)
 
@@ -124,16 +127,21 @@ toSummary cfg =
 -- | Read the most recent twenty rows. Database failures collapse to an
 --   empty list plus one @"db: ..."@ entry in the error log: this context is
 --   best-effort, so a broken store must not stop the agent session. Both a
---   typed 'ShikiError' from the interpreter and a stray exception are caught,
---   which is why the 'RunStore' reads run under their own handler here.
+--   typed 'ShikiError' from the interpreter and a stray exception are caught.
+--
+--   'catchError', not a nested @runErrorNoCallStack@: the 'RunStore'
+--   interpreter was installed further out and throws to the handler in scope
+--   /there/, so a fresh inner handler would never see a store failure and the
+--   best-effort promise would not hold.
 loadRecentRuns ::
-  (RunStore :> es) =>
+  (RunStore :> es, Error ShikiError :> es) =>
   Eff es (Maybe UTCTime, [RunRecord], [FilePath])
 loadRecentRuns = do
   outcome <-
-    Exc.trySync . runErrorNoCallStack @ShikiError $
-      (,) <$> databaseNow <*> listRecentRuns Nothing 20
+    Exc.trySync $
+      (Right <$> ((,) <$> databaseNow <*> listRecentRuns Nothing 20))
+        `catchError` \_ e -> pure (Left (shikiErrorMessage e))
   pure $ case outcome of
     Right (Right (observedAtDb, rs)) -> (Just observedAtDb, rs, [])
-    Right (Left shikiError) -> (Nothing, [], ["db: " <> Text.unpack (shikiErrorMessage shikiError)])
+    Right (Left message) -> (Nothing, [], ["db: " <> Text.unpack message])
     Left e -> (Nothing, [], ["db: " <> Exc.displayException e])

@@ -1,7 +1,7 @@
 module Main (main) where
 
-import Shiki.Analysis.BackendSpec qualified as BackendSpec
 import Shiki.Analysis.HeuristicSpec qualified as HeuristicSpec
+import Shiki.Effect.AnalyzerSpec qualified as AnalyzerSpec
 import Shiki.Effect.RunStoreSpec qualified as RunStoreSpec
 import Shiki.EffectfulContractSpec qualified as EffectfulContractSpec
 import Shiki.K8s.ClassifyJobSpec qualified as ClassifyJobSpec
@@ -39,8 +39,8 @@ main =
         MigrationSpec.tests,
         RestrictedRoleSpec.tests,
         HeuristicSpec.tests,
-        BackendSpec.tests,
         ErrorSummaryColumnSpec.tests,
         LastWatchedAtSpec.tests,
-        RunStoreSpec.tests
+        RunStoreSpec.tests,
+        AnalyzerSpec.tests
       ]

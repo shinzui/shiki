@@ -18,12 +18,13 @@ module Shiki.Cli.Runs.Sync
 where
 
 import Data.Aeson qualified as Aeson
+import Data.Bifunctor (first)
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Time.Clock (NominalDiffTime, diffUTCTime)
 import Effectful (Eff, IOE, type (:>))
-import Effectful.Error.Static (Error, runErrorNoCallStack, throwError)
+import Effectful.Error.Static (Error, catchError, runErrorNoCallStack, throwError)
 import Effectful.Exception qualified as Exc
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Run (completionForOutcome, elapsedMs)
@@ -115,7 +116,7 @@ lostJobMessage r =
 -- | Reconcile every unfinished run. One run's error is reported and the
 --   rest still sync; the command exits non-zero if any run errored.
 syncRuns ::
-  (RunStore :> es, Kube :> es, IOE :> es, Error CliError :> es) =>
+  (RunStore :> es, Kube :> es, IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
   Eff es ()
 syncRuns = do
   observedAt <- databaseNow
@@ -128,7 +129,7 @@ syncRuns = do
 
 -- | Reconcile one run, exiting non-zero if it errored.
 syncRun ::
-  (RunStore :> es, Kube :> es, IOE :> es, Error CliError :> es) =>
+  (RunStore :> es, Kube :> es, IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
   UTCTime ->
   RunRecord ->
   Eff es ()
@@ -141,21 +142,25 @@ syncRun observedAt r =
 --   'SyncFailure' from this module, and an exception from the Kubernetes
 --   client. Asynchronous exceptions (Ctrl-C) still propagate, because
 --   'Exc.trySync' does not catch them.
+--
+--   The 'ShikiError' arm uses 'catchError' rather than a nested
+--   @runErrorNoCallStack@. The 'RunStore' and 'Kube' interpreters were
+--   installed further out and throw to the handler that was in scope /there/,
+--   so a fresh inner handler would never see their failures and one bad run
+--   would end the whole command.
 trySyncOne ::
-  (RunStore :> es, Kube :> es, IOE :> es) =>
+  (RunStore :> es, Kube :> es, IOE :> es, Error ShikiError :> es) =>
   UTCTime ->
   RunRecord ->
   Eff es Bool
 trySyncOne observedAt r = do
   outcome <-
-    Exc.trySync
-      . runErrorNoCallStack @ShikiError
-      . runErrorNoCallStack @SyncFailure
-      $ syncOne observedAt r
+    Exc.trySync $
+      (first renderSyncFailure <$> runErrorNoCallStack @SyncFailure (syncOne observedAt r))
+        `catchError` \_ e -> pure (Left (shikiErrorMessage e))
   case outcome of
-    Right (Right (Right ())) -> pure False
-    Right (Right (Left syncFailure)) -> reportFailure (renderSyncFailure syncFailure)
-    Right (Left shikiError) -> reportFailure (shikiErrorMessage shikiError)
+    Right (Right ()) -> pure False
+    Right (Left message) -> reportFailure message
     Left e -> reportFailure (Text.pack (Exc.displayException e))
   where
     reportFailure message = do

@@ -10,14 +10,13 @@ module Shiki.Cli.Runs
   )
 where
 
-import Control.Exception (IOException, try)
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Effectful (Eff, IOE, type (:>))
-import Effectful.Error.Static (Error, throwError)
+import Effectful.Error.Static (Error, catchError, throwError)
 import Options.Applicative
   ( Parser,
     argument,
@@ -41,7 +40,6 @@ import Shiki.Analysis.Backend
   ( AnalyzerKind (..),
     AnalyzerResult (..),
     analyzerBackendToKind,
-    runAnalyzer,
   )
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Fzf (FzfOpts)
@@ -53,6 +51,8 @@ import Shiki.Cli.Fzf.Selector.Run
   )
 import Shiki.Cli.Runs.Format (isUnwatched, renderTable)
 import Shiki.Cli.Runs.Sync (syncRun, syncRuns)
+import Shiki.Effect.Analyzer (Analyzer, analyze)
+import Shiki.Effect.ConfigLoader (ConfigLoader, loadServiceConfig)
 import Shiki.Effect.Kube (Kube)
 import Shiki.Effect.RunStore
   ( RunStore,
@@ -60,10 +60,9 @@ import Shiki.Effect.RunStore
     listRecentRuns,
     updateErrorSummary,
   )
-import Shiki.Error (ShikiError (..))
+import Shiki.Error (ConfigError (..), ShikiError (..))
 import Shiki.Persistence.Run (RunId (..), RunRecord)
 import Shiki.Prelude hiding (argument)
-import Shiki.Service.Config.Dhall (loadServiceConfig)
 import System.IO (stderr)
 
 data RunsCommand
@@ -182,6 +181,12 @@ type WithStore es = Eff (RunStore : es) () -> Eff es ()
 --   only @sync@ ever reads the operator's kubeconfig.
 type WithKube es = Eff (Kube : RunStore : es) () -> Eff (RunStore : es) ()
 
+-- | How @analyze@ reaches the analyzer and the service's Dhall file. Only
+--   @analyze@ asks for either, so no other @runs@ subcommand can talk to a
+--   language model or read a config file.
+type WithAnalyzer es =
+  Eff (Analyzer : ConfigLoader : RunStore : es) () -> Eff (RunStore : es) ()
+
 -- | Dispatch a parsed 'RunsCommand' to the right handler. Only @sync@ asks for
 --   a Kubernetes client, so a broken kubeconfig no longer breaks a pure
 --   database read.
@@ -192,15 +197,16 @@ runRuns ::
   ) =>
   WithStore es ->
   WithKube es ->
+  WithAnalyzer es ->
   RunsCommand ->
   Eff es ()
-runRuns withStore withKube = \case
+runRuns withStore withKube withAnalyzer = \case
   RunsList mService limit -> withStore (doList mService limit)
   RunsShow mId -> withRun withStore readRunOpts mId (\observedAt r -> doShow observedAt r)
   RunsLogs mId -> withRun withStore readRunOpts mId (\_ r -> doLogs r)
   RunsError mId -> withRun withStore readRunOpts mId (\_ r -> doError r)
   RunsAnalyze mId override ->
-    withRun withStore analyzeRunOpts mId (\_ r -> doAnalyze r override)
+    withRun withStore analyzeRunOpts mId (\_ r -> withAnalyzer (doAnalyze r override))
   RunsSync Nothing -> withStore (withKube syncRuns)
   RunsSync (Just rid) ->
     withRun withStore readRunOpts (Just rid) $ \observedAt r ->
@@ -266,32 +272,42 @@ doError r = liftIO $ case r ^. #errorSummary of
   Nothing -> TIO.putStrLn "(no summary)"
 
 doAnalyze ::
-  (RunStore :> es, IOE :> es, Error ShikiError :> es) =>
+  (Analyzer :> es, ConfigLoader :> es, RunStore :> es, IOE :> es, Error ShikiError :> es) =>
   RunRecord ->
   Maybe AnalyzerKind ->
   Eff es ()
 doAnalyze r override = do
-  kind <- liftIO (effectiveBackend r override)
+  kind <- effectiveBackend r override
   case r ^. #logTail of
     Nothing -> liftIO (TIO.putStrLn "(no logs captured; cannot analyze)")
-    Just t ->
-      liftIO (runAnalyzer kind t) >>= \case
-        Left err -> throwError (ShikiAnalyzerError err)
-        Right res -> do
-          updateErrorSummary (r ^. #runId) (res ^. #summary) (res ^. #source)
-          liftIO (TIO.putStrLn (renderAnalyzeOutcome (r ^. #runId) res))
+    Just t -> do
+      res <- analyze kind t
+      updateErrorSummary (r ^. #runId) (res ^. #summary) (res ^. #source)
+      liftIO (TIO.putStrLn (renderAnalyzeOutcome (r ^. #runId) res))
 
 -- | Resolve the analyzer backend to use for one @runs analyze@ call:
 --   CLI override wins; otherwise the service's Dhall default is used;
 --   otherwise 'Heuristic' (the same default the inline path picks).
-effectiveBackend :: RunRecord -> Maybe AnalyzerKind -> IO AnalyzerKind
+--
+--   A service with no config file still analyzes heuristically — a run can
+--   outlive the file that produced it — but a file that is /there/ and does
+--   not parse is now reported rather than silently treated as absent.
+effectiveBackend ::
+  (ConfigLoader :> es, Error ShikiError :> es) =>
+  RunRecord ->
+  Maybe AnalyzerKind ->
+  Eff es AnalyzerKind
+--   'catchError', not a nested @runErrorNoCallStack@: the 'ConfigLoader'
+--   interpreter was installed further out and throws to the handler that was
+--   in scope /there/, so a fresh inner handler would never see the failure.
 effectiveBackend _ (Just k) = pure k
-effectiveBackend r Nothing = do
-  let path = "services/" <> Text.unpack (r ^. #serviceName) <> ".dhall"
-  mCfg <- try @IOException (loadServiceConfig path)
-  case mCfg of
-    Left _ -> pure Heuristic
-    Right cfg -> pure (analyzerBackendToKind (cfg ^. #analyzer))
+effectiveBackend r Nothing =
+  (analyzerBackendToKind . view #analyzer <$> loadServiceConfig path)
+    `catchError` \_ e -> case e of
+      ShikiConfigError (ServiceConfigNotFound _) -> pure Heuristic
+      other -> throwError other
+  where
+    path = "services/" <> Text.unpack (r ^. #serviceName) <> ".dhall"
 
 renderAnalyzeOutcome :: RunId -> AnalyzerResult -> Text
 renderAnalyzeOutcome rid res =

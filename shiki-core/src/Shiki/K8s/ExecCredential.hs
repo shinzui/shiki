@@ -207,6 +207,8 @@ parseInteractiveMode t = case t of
   "Never" -> pure Never
   "IfAvailable" -> pure IfAvailable
   "Always" -> pure Always
+  -- 'fail' in an aeson 'Parser' is pure: it becomes a decode error the
+  -- caller turns into a typed failure, not an exception or an exit.
   other -> fail ("unknown interactiveMode: " <> T.unpack other)
 
 -- | Resolve a context (explicit name, else @current-context@) to its cluster

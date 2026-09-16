@@ -6,6 +6,7 @@ where
 import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
 import Data.Generics.Labels ()
+import Data.List qualified as List
 import Data.Maybe (isJust)
 import Data.Text qualified as Text
 import Data.Time (getCurrentTime)
@@ -19,6 +20,7 @@ import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)
 import Shiki.Cli.Agent.Context (AgentContext, gatherAgentContext)
+import Shiki.Cli.Effect.FakeRunStore (newFakeStore, runFakeRunStore)
 import Shiki.Cli.Fixtures (minimalServiceDhall)
 import Shiki.Effect.RunStore.Postgres (runRunStorePostgres)
 import Shiki.Error (ShikiError)
@@ -118,7 +120,28 @@ tests =
                 gatherContext pool defaultSchema
             assertEqual "no services" [] (ctx ^. #services)
             assertEqual "no errors" [] (ctx ^. #serviceLoadErrors)
-            assertBool "database observation time is present" (isJust (ctx ^. #observedAt))
+            assertBool "database observation time is present" (isJust (ctx ^. #observedAt)),
+      -- The context is best-effort: a broken store must land on the record,
+      -- not end the session. Regression: the store's interpreter throws to the
+      -- handler that was in scope where it was installed, so the nested
+      -- handler this used to rely on never saw the failure.
+      testCase "a broken store lands in the error log, not as a failure" $
+        withSystemTempDirectory "shiki-context-broken-db" $ \tmp -> do
+          store <- newFakeStore []
+          outcome <-
+            withCurrentDirectory tmp
+              . runEff
+              . runErrorNoCallStack @ShikiError
+              . runFakeRunStore store (const True)
+              $ gatherAgentContext defaultSchema
+          case outcome of
+            Left err -> assertBool ("expected a context, got " <> show err) False
+            Right ctx -> do
+              assertEqual "no runs" [] (ctx ^. #recentRuns)
+              assertEqual "no observation time" Nothing (ctx ^. #observedAt)
+              assertBool
+                ("the store failure is logged: " <> show (ctx ^. #serviceLoadErrors))
+                (any (List.isPrefixOf "db: ") (ctx ^. #serviceLoadErrors))
     ]
 
 useStmt :: Pool -> Statement a () -> a -> IO ()

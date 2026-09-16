@@ -9,6 +9,7 @@ module Shiki.Cli.Agent
   )
 where
 
+import Baikai.Effectful (Baikai)
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Effectful (Eff, IOE, type (:>))
@@ -24,9 +25,11 @@ import Shiki.Cli.Agent.Launch
 import Shiki.Cli.Agent.Prompt (renderAssistPrompt)
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Effect.RunStore (RunStore)
+import Shiki.Error (ShikiError)
 import Shiki.Persistence.Schema (Schema)
 import Shiki.Prelude
 import System.Exit (exitWith)
+import System.IO (stdout)
 
 data AgentCommand
   = AgentAssist !AssistOptions
@@ -111,7 +114,12 @@ assistOptionsParser =
 -- | Dispatch a parsed 'AgentCommand'. Today this is exactly one verb
 --   ('AgentAssist'); the case-of leaves room for siblings later.
 runAgent ::
-  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  ( RunStore :> es,
+    Baikai :> es,
+    IOE :> es,
+    Error ShikiError :> es,
+    Error CliError :> es
+  ) =>
   Schema ->
   AgentCommand ->
   Eff es ()
@@ -119,7 +127,12 @@ runAgent schema = \case
   AgentAssist opts -> runAssist schema opts
 
 runAssist ::
-  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  ( RunStore :> es,
+    Baikai :> es,
+    IOE :> es,
+    Error ShikiError :> es,
+    Error CliError :> es
+  ) =>
   Schema ->
   AssistOptions ->
   Eff es ()
@@ -132,14 +145,16 @@ runAssist schema opts = do
       let hints = combineHints opts
           sys = renderAssistPrompt ctx hints
       code <-
-        liftIO $
-          runAssistSession
-            cfg
-            AssistDispatch
-              { systemPrompt = sys,
-                userPrompt = opts ^. #prompt,
-                debug = opts ^. #debug
-              }
+        runAssistSession
+          stdout
+          cfg
+          AssistDispatch
+            { systemPrompt = sys,
+              userPrompt = opts ^. #prompt,
+              debug = opts ^. #debug
+            }
+      -- The child's own status is the command's status; 'runShikiMain' passes
+      -- an 'ExitCode' through untouched.
       liftIO (exitWith code)
 
 -- | Build the operator's "hints" block that lands inside the system

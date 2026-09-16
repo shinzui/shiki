@@ -1,18 +1,20 @@
 module Shiki.Cli.ConfigInitSpec (tests) where
 
-import Control.Exception (try)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
+import Effectful (runEff)
+import Effectful.Error.Static (runErrorNoCallStack)
 import Shiki.Cli.ConfigInit
   ( ConfigInitOptions (..),
     renderProjectConfig,
     runConfigInit,
   )
+import Shiki.Cli.Error (CliError (..))
+import Shiki.Error (ConfigError (..), ShikiError (..))
 import Shiki.Project.Config (Environment (..), ProjectConfig (..))
 import Shiki.Project.Config.Dhall (loadProjectConfig)
 import System.Directory (canonicalizePath, createDirectory)
-import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)
@@ -47,19 +49,39 @@ tests =
         withSystemTempDirectory "shiki-config-init" $ \dir -> do
           let path = dir </> "shiki.dhall"
               opts = fixtureOptions {outputPath = path}
-          runConfigInit opts
+          first <- runInit opts
+          assertEqual "the first write succeeds" (Right (Right ())) first
           written <- TIO.readFile path
           written @?= expectedRendered
 
-          result <- try (runConfigInit opts)
-          case result of
-            Left ExitFailure {} -> pure ()
-            Left ExitSuccess -> assertBool "expected overwrite refusal to fail" False
-            Right () -> assertBool "expected overwrite refusal to fail" False
+          refusal <- runInit opts
+          assertEqual
+            "the second write is refused as a typed error"
+            (Right (Left (ConfigFileExists path)))
+            refusal
 
           afterRefusal <- TIO.readFile path
-          assertEqual "existing file unchanged" written afterRefusal
+          assertEqual "existing file unchanged" written afterRefusal,
+      testCase "a directory that does not exist is a typed write failure" $
+        withSystemTempDirectory "shiki-config-init-missing" $ \dir -> do
+          let path = dir </> "nope" </> "shiki.dhall"
+          outcome <- runInit fixtureOptions {outputPath = path}
+          case outcome of
+            Left (ShikiConfigError (ConfigWriteFailed failedPath _)) ->
+              assertEqual "the failing path is named" path failedPath
+            other -> assertBool ("expected ConfigWriteFailed, got " <> show other) False
     ]
+
+-- | Run @config init@ through both error handlers, the way
+--   'Shiki.Cli.Main.runShikiMain' does.
+runInit ::
+  ConfigInitOptions ->
+  IO (Either ShikiError (Either CliError ()))
+runInit opts =
+  runEff
+    . runErrorNoCallStack @ShikiError
+    . runErrorNoCallStack @CliError
+    $ runConfigInit opts
 
 fixtureOptions :: ConfigInitOptions
 fixtureOptions =

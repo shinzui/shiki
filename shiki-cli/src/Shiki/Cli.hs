@@ -26,14 +26,16 @@ module Shiki.Cli
   )
 where
 
+import Baikai.Effectful (Baikai, runBaikai)
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
-import Effectful (Eff)
-import Effectful.Error.Static (throwError)
+import Effectful (Eff, IOE, inject, type (:>))
+import Effectful.Error.Static (Error, throwError)
 import Options.Applicative (Parser, ParserInfo, (<**>))
 import Options.Applicative qualified as Opt
+import Shiki.Analysis.Baikai (registerAnalyzerProviders)
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Completions (CompletionsShell, completionsParser, runCompletions)
 import Shiki.Cli.Config (resolveConnectionString)
@@ -55,13 +57,15 @@ import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
 import Shiki.Cli.Version (appVersionWithGit)
+import Shiki.Effect.Analyzer (Analyzer, runAnalyzerBaikai)
+import Shiki.Effect.ConfigLoader (ConfigLoader, loadServiceConfig, runConfigLoaderIO)
 import Shiki.Effect.Kube.Client (runKubeDefault)
 import Shiki.Effect.RunStore (RunStore)
 import Shiki.Effect.RunStore.Postgres (withRunStore)
+import Shiki.Error (ShikiError)
 import Shiki.Persistence.Schema (Schema)
 import Shiki.Prelude hiding (Options, argument)
 import Shiki.Service.Config (ServiceConfig)
-import Shiki.Service.Config.Dhall (loadServiceConfig)
 import System.Exit (ExitCode)
 import System.IO (stderr)
 
@@ -110,19 +114,41 @@ runCli = do
 dispatch :: Options -> Eff CliEff ()
 dispatch opts = case opts ^. #command of
   ServiceShow nm -> serviceShowHandler nm
-  Help helpOpts -> liftIO (runHelp helpOpts)
+  Help helpOpts -> runHelp helpOpts
   Completions shell -> liftIO (runCompletions shell)
   Config ConfigShow ->
     runConfigShow (opts ^. #envName)
   Config (ConfigInit initOpts) ->
-    liftIO (runConfigInit initOpts)
+    runConfigInit initOpts
   Run runOpts ->
     withStore opts $ \_schema ->
-      runKubeDefault (runRun runOpts)
+      runConfigLoaderIO (runKubeDefault (runRun runOpts))
   Runs runsOpts ->
-    runRuns (\action -> withStore opts (const action)) runKubeDefault runsOpts
+    runRuns
+      (\action -> withStore opts (const action))
+      runKubeDefault
+      withAnalyzer
+      runsOpts
   Agent agentOpts ->
-    withStore opts (\schema -> runAgent schema agentOpts)
+    withStore opts $ \schema ->
+      withBaikai (runAgent schema agentOpts)
+
+-- | Register the API providers and interpret the analyzer. Only
+--   @runs analyze@ and @agent assist@ ask for this, so no other command can
+--   reach a language model.
+withBaikai :: (IOE :> es) => Eff (Baikai : es) a -> Eff es a
+withBaikai action = do
+  liftIO registerAnalyzerProviders
+  runBaikai action
+
+-- | @runs analyze@ needs the analyzer and the service's Dhall file; the
+--   analyzer's interpreter reaches baikai through the library's own effect.
+withAnalyzer ::
+  (IOE :> es, Error ShikiError :> es) =>
+  Eff (Analyzer : ConfigLoader : RunStore : es) () ->
+  Eff (RunStore : es) ()
+withAnalyzer action =
+  runConfigLoaderIO (withBaikai (runAnalyzerBaikai (inject action)))
 
 -- | Resolve where the runs live, open a pool for it, apply migrations, and
 --   run the action with 'RunStore' interpreted. Nothing here touches the
@@ -146,12 +172,15 @@ serviceShowHandler mName =
     Right target ->
       liftIO (resolveService target) >>= \case
         Left failure -> throwError (CliServiceLookup failure)
-        Right nm -> liftIO (serviceShowOne nm)
+        Right nm -> runConfigLoaderIO (serviceShowOne nm)
 
-serviceShowOne :: Text -> IO ()
+serviceShowOne ::
+  (ConfigLoader :> es, IOE :> es) =>
+  Text ->
+  Eff es ()
 serviceShowOne nm = do
   cfg <- loadServiceConfig (serviceConfigPath nm)
-  printConfig cfg
+  liftIO (printConfig cfg)
 
 printConfig :: ServiceConfig -> IO ()
 printConfig = BL8.putStrLn . AesonPretty.encodePretty

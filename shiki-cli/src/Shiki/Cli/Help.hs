@@ -35,6 +35,8 @@ import Data.Generics.Labels ()
 import Data.List (find)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
 import Options.Applicative
   ( Parser,
     argument,
@@ -47,10 +49,10 @@ import Options.Applicative
     short,
     str,
   )
+import Shiki.Cli.Error (CliError (..))
 import Shiki.Prelude hiding (argument)
 import System.Console.Terminal.Size qualified as TermSize
-import System.Exit (exitFailure)
-import System.IO (hIsTerminalDevice, hPutStrLn, stderr, stdout)
+import System.IO (hIsTerminalDevice, stdout)
 
 data HelpTopic = HelpTopic
   { name :: !Text,
@@ -127,9 +129,12 @@ widthOption =
         )
     )
 
-runHelp :: HelpCommand -> IO ()
+runHelp ::
+  (IOE :> es, Error CliError :> es) =>
+  HelpCommand ->
+  Eff es ()
 runHelp = \case
-  ListTopics -> listTopics
+  ListTopics -> liftIO listTopics
   ShowTopic topic mWidth -> showTopic topic mWidth
 
 listTopics :: IO ()
@@ -150,26 +155,25 @@ listTopics = do
             <> t ^. #description
         )
 
-showTopic :: Text -> Maybe Int -> IO ()
+showTopic ::
+  (IOE :> es, Error CliError :> es) =>
+  Text ->
+  Maybe Int ->
+  Eff es ()
 showTopic raw mWidth =
   let key = Text.toLower (Text.strip raw)
    in case find (\t -> (t ^. #name) == key) helpTopics of
-        Just t -> do
+        Just t -> liftIO $ do
           effective <- resolveWidth mWidth
           case effective of
             -- The embedded content already ends in a newline.
             Nothing -> TIO.putStr (t ^. #content)
             -- 'rewrap' drops the trailing newline.
             Just w -> TIO.putStrLn (renderTopic (Just w) (t ^. #content))
-        Nothing -> do
-          hPutStrLn stderr ("Unknown topic: " <> Text.unpack raw)
-          hPutStrLn
-            stderr
-            ( "Available: "
-                <> Text.unpack
-                  (Text.intercalate ", " (fmap (^. #name) helpTopics))
-            )
-          exitFailure
+        -- The topic list travels with the error rather than being looked up
+        -- by the renderer, so "Shiki.Cli.Error" need not import this module
+        -- while this module throws its errors.
+        Nothing -> throwError (UnknownHelpTopic raw (fmap (^. #name) helpTopics))
 
 -- | Cap for auto-detected widths. An explicit @--width@ bypasses it.
 maxAutoWidth :: Int

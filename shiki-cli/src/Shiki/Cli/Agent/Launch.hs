@@ -1,12 +1,13 @@
 -- | Dispatch a rendered system prompt to the right backend. Four
 --   branches:
 --
---     * @--debug@ short-circuits to stdout and exits 0;
+--     * @--debug@ short-circuits to the output handle and exits 0;
 --     * 'ClaudeCli' and 'CodexCli' spawn the local interactive CLI
 --       subprocess via 'launchClaudeInteractive' /
 --       'launchCodexInteractive' from the @baikai-*@ vendor packages;
---     * 'Anthropic' and 'OpenAI' issue one non-interactive
---       'Baikai.completeRequest' and print the assistant text.
+--     * 'Anthropic' and 'OpenAI' issue one non-interactive completion
+--       through @baikai-effectful@'s @Baikai@ effect and print the
+--       assistant text.
 --
 --   The allowed-tool list is hard-coded here (see the EP-8 Decision
 --   Log entry) so each session ships with the same defense-in-depth.
@@ -22,7 +23,6 @@ import Baikai
     BaikaiError,
     Model,
     Response,
-    completeRequest,
     emptyContext,
     emptyModel,
     emptyOptions,
@@ -32,6 +32,7 @@ import Baikai
 import Baikai.Agent (AgentRenderError, renderAgentRenderError)
 import Baikai.Content (AssistantContent (..), TextContent (..))
 import Baikai.Context qualified as Context
+import Baikai.Effectful (Baikai, complete)
 import Baikai.Interactive
   ( CodexApprovalPolicy (CodexApprovalOnRequest),
     CodexSandboxMode (CodexWorkspaceWrite),
@@ -52,19 +53,22 @@ import Baikai.Provider.OpenAI.Interactive
   ( defaultCodexInteractiveConfig,
     launchCodexInteractive,
   )
-import Control.Exception (SomeException, try)
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
+import Effectful.Exception qualified as Exc
 import Shiki.Cli.Agent.Provider
   ( AgentModelConfig (..),
     AgentProvider (..),
   )
+import Shiki.Cli.Error (CliError (..))
 import Shiki.Prelude
 import System.Directory (findExecutable, getCurrentDirectory)
-import System.Exit (ExitCode (..), exitFailure)
-import System.IO (hPutStrLn, stderr)
+import System.Exit (ExitCode (..))
+import System.IO (Handle)
 
 -- | Inputs to one assist-session dispatch.
 data AssistDispatch = AssistDispatch
@@ -92,10 +96,22 @@ assistAllowedTools =
 
 -- | Run one assist-session dispatch and return its exit code (or
 --   'ExitSuccess' for the debug and API paths).
-runAssistSession :: AgentModelConfig -> AssistDispatch -> IO ExitCode
-runAssistSession cfg dispatch
+--
+--   The handle is where this session's own output goes — the rendered prompt
+--   under @--debug@, the assistant's reply on the API paths. Production passes
+--   'System.IO.stdout'; a test passes a file, which is what lets it assert on
+--   the output without swapping the process's file descriptors out from under
+--   the test runner. An interactive CLI launch inherits the process's stdout
+--   either way, because it is a child process.
+runAssistSession ::
+  (Baikai :> es, IOE :> es, Error CliError :> es) =>
+  Handle ->
+  AgentModelConfig ->
+  AssistDispatch ->
+  Eff es ExitCode
+runAssistSession out cfg dispatch
   | dispatch ^. #debug = do
-      TIO.putStr (dispatch ^. #systemPrompt)
+      liftIO (TIO.hPutStr out (dispatch ^. #systemPrompt))
       pure ExitSuccess
   | otherwise = case cfg ^. #provider of
       ClaudeCli ->
@@ -110,12 +126,14 @@ runAssistSession cfg dispatch
           (dispatch ^. #userPrompt)
       Anthropic ->
         runOneShotApi
+          out
           ClaudeApi.register
           (anthropicModel cfg)
           (dispatch ^. #systemPrompt)
           (dispatch ^. #userPrompt)
       OpenAI ->
         runOneShotApi
+          out
           OpenAIApi.register
           (openAiModel cfg)
           (dispatch ^. #systemPrompt)
@@ -123,84 +141,117 @@ runAssistSession cfg dispatch
 
 -- ── Interactive CLI launches ───────────────────────────────────────
 
-launchClaude :: Maybe Text -> Text -> Maybe Text -> IO ExitCode
+launchClaude ::
+  (IOE :> es, Error CliError :> es) =>
+  Maybe Text ->
+  Text ->
+  Maybe Text ->
+  Eff es ExitCode
 launchClaude mModel sys mPrompt = do
-  mExe <- findExecutable "claude"
+  mExe <- liftIO (findExecutable "claude")
   case mExe of
-    Nothing -> do
-      hPutStrLn
-        stderr
-        "shiki: 'claude' CLI not found on PATH (install: https://docs.anthropic.com/en/docs/claude-code)"
-      exitFailure
+    Nothing ->
+      throwError
+        ( AgentBinaryMissing
+            "claude"
+            "install: https://docs.anthropic.com/en/docs/claude-code"
+        )
     Just _ -> do
-      cwd <- getCurrentDirectory
+      cwd <- liftIO getCurrentDirectory
       launchExitCode
-        =<< launchClaudeInteractive
-          defaultClaudeInteractiveConfig
-          (interactiveLaunchRequest (fromMaybe "" mPrompt))
-            { Interactive.systemPrompt = Just sys,
-              Interactive.modelId = mModel,
-              Interactive.workingDir = Just cwd,
-              Interactive.safety = ClaudeAllowedTools assistAllowedTools
-            }
+        =<< spawn
+          ( launchClaudeInteractive
+              defaultClaudeInteractiveConfig
+              (interactiveLaunchRequest (fromMaybe "" mPrompt))
+                { Interactive.systemPrompt = Just sys,
+                  Interactive.modelId = mModel,
+                  Interactive.workingDir = Just cwd,
+                  Interactive.safety = ClaudeAllowedTools assistAllowedTools
+                }
+          )
 
-launchCodex :: Maybe Text -> Text -> Maybe Text -> IO ExitCode
+launchCodex ::
+  (IOE :> es, Error CliError :> es) =>
+  Maybe Text ->
+  Text ->
+  Maybe Text ->
+  Eff es ExitCode
 launchCodex mModel sys mPrompt = do
-  mExe <- findExecutable "codex"
+  mExe <- liftIO (findExecutable "codex")
   case mExe of
-    Nothing -> do
-      hPutStrLn
-        stderr
-        "shiki: 'codex' CLI not found on PATH (install and authenticate Codex CLI, then retry)"
-      exitFailure
+    Nothing ->
+      throwError
+        ( AgentBinaryMissing
+            "codex"
+            "install and authenticate Codex CLI, then retry"
+        )
     Just _ -> do
-      cwd <- getCurrentDirectory
+      cwd <- liftIO getCurrentDirectory
       launchExitCode
-        =<< launchCodexInteractive
-          defaultCodexInteractiveConfig
-          (interactiveLaunchRequest (fromMaybe "" mPrompt))
-            { Interactive.systemPrompt = Just sys,
-              Interactive.modelId = mModel,
-              Interactive.workingDir = Just cwd,
-              Interactive.safety = CodexSandbox CodexWorkspaceWrite CodexApprovalOnRequest
-            }
+        =<< spawn
+          ( launchCodexInteractive
+              defaultCodexInteractiveConfig
+              (interactiveLaunchRequest (fromMaybe "" mPrompt))
+                { Interactive.systemPrompt = Just sys,
+                  Interactive.modelId = mModel,
+                  Interactive.workingDir = Just cwd,
+                  Interactive.safety = CodexSandbox CodexWorkspaceWrite CodexApprovalOnRequest
+                }
+          )
+
+-- | Spawning the child is a subprocess call, not a 'Baikai' one, so an
+--   exception from it is caught here and named rather than left to the
+--   top-level handler's \"unexpected error\" fallback.
+spawn ::
+  (IOE :> es, Error CliError :> es) =>
+  IO (Either AgentRenderError InteractiveLaunchResult) ->
+  Eff es (Either AgentRenderError InteractiveLaunchResult)
+spawn act =
+  Exc.trySync (liftIO act) >>= \case
+    Right outcome -> pure outcome
+    Left e -> throwError (AgentPromptInvalid (Text.pack (Exc.displayException e)))
 
 -- | The launchers refuse, without spawning anything, a request whose
 --   safety policy the CLI cannot express.
-launchExitCode :: Either AgentRenderError InteractiveLaunchResult -> IO ExitCode
+launchExitCode ::
+  (Error CliError :> es) =>
+  Either AgentRenderError InteractiveLaunchResult ->
+  Eff es ExitCode
 launchExitCode = \case
-  Left err -> do
-    hPutStrLn stderr ("shiki: " <> Text.unpack (renderAgentRenderError err))
-    exitFailure
+  Left err -> throwError (AgentPromptInvalid (renderAgentRenderError err))
   Right InteractiveLaunchResult {exitCode} -> pure exitCode
 
 -- ── API one-shot calls ─────────────────────────────────────────────
 
-runOneShotApi :: IO () -> Model -> Text -> Maybe Text -> IO ExitCode
-runOneShotApi registerProvider model sys mPrompt = do
-  registerProvider
+runOneShotApi ::
+  (Baikai :> es, IOE :> es, Error CliError :> es) =>
+  Handle ->
+  IO () ->
+  Model ->
+  Text ->
+  Maybe Text ->
+  Eff es ExitCode
+runOneShotApi out registerProvider model sys mPrompt = do
+  liftIO registerProvider
   let ctx =
         emptyContext
           { Context.systemPrompt = Just sys,
             Context.messages = maybe V.empty (V.singleton . user) mPrompt
           }
-  result <- try @SomeException (completeRequest model ctx emptyOptions)
-  case result of
-    Left e -> do
-      hPutStrLn stderr ("shiki: agent api call failed: " <> show e)
-      exitFailure
+  -- 'complete' reports provider failures in-band, but a transport that dies
+  -- mid-request still throws; both read the same to an operator.
+  Exc.trySync (complete model ctx emptyOptions) >>= \case
+    Left e -> throwError (AgentRequestFailed (Text.pack (Exc.displayException e)))
     Right resp -> case responseError resp of
-      Just err -> do
-        hPutStrLn stderr ("shiki: agent api call failed: " <> renderError err)
-        exitFailure
+      Just err -> throwError (AgentRequestFailed (renderError err))
       Nothing -> do
-        TIO.putStrLn (extractAssistantText resp)
+        liftIO (TIO.hPutStrLn out (extractAssistantText resp))
         pure ExitSuccess
 
 -- | baikai reports provider, transport, and unregistered-API failures
 --   in-band as an error-shaped 'Response' rather than by throwing.
-renderError :: BaikaiError -> String
-renderError err = show (err ^. #category) <> ": " <> Text.unpack (err ^. #message)
+renderError :: BaikaiError -> Text
+renderError err = Text.pack (show (err ^. #category)) <> ": " <> (err ^. #message)
 
 extractAssistantText :: Response -> Text
 extractAssistantText resp =

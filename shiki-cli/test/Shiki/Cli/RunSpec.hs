@@ -15,6 +15,7 @@ import Shiki.Cli.Effect.FakeRunStore
 import Shiki.Cli.Fixtures (minimalServiceDhall)
 import Shiki.Cli.Main (runShikiMain)
 import Shiki.Cli.Run (RunOptions (..), runRun)
+import Shiki.Effect.ConfigLoader (runConfigLoaderIO)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory, withSystemTempFile)
@@ -40,8 +41,9 @@ tests =
               withSystemTempFile "shiki-run-spec-err" $ \_ h ->
                 runShikiMain h $
                   runFakeRunStore store healthy $
-                    runFakeKube (liftIO (E.throwIO E.UserInterrupt)) $
-                      runRun (runOptions svcDir)
+                    runConfigLoaderIO $
+                      runFakeKube (liftIO (E.throwIO E.UserInterrupt)) $
+                        runRun (runOptions svcDir)
           case outcome of
             Left E.UserInterrupt -> pure ()
             Left other -> assertFailure ("unexpected async exception: " <> show other)

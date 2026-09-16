@@ -36,8 +36,7 @@ import Kubernetes.OpenAPI.API.BatchV1 qualified as BatchV1
 import Kubernetes.OpenAPI.ModelLens qualified as K8sLens
 import Network.HTTP.Client (responseStatus)
 import Network.HTTP.Types.Status (statusCode)
-import Shiki.Analysis.Backend (AnalyzerKind (..), runAnalyzer)
-import Shiki.Analysis.Backend qualified as Analyzer
+import Shiki.Analysis.Heuristic (summarizeFailure)
 import Shiki.K8s.Client (ClientEnv (..), dispatchK8s)
 import Shiki.K8s.Introspection (DeploymentSnapshot, Namespace (..))
 import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
@@ -152,11 +151,16 @@ collectOutcome env ns jobNm startedAt endedAt phase = do
         errorSummarySource = errSource
       }
 
--- | Run the inline 'Heuristic' analyzer over the wider analysis buffer
---   when (and only when) the Job ended in failure. On success the column
---   contract is \"NULL unless the run died\", so the summary stays
---   'Nothing'. The default source is @\"heuristic\"@ regardless so the
---   downstream NOT-NULL column always has a value.
+-- | Run the inline heuristic over the wider analysis buffer when (and only
+--   when) the Job ended in failure. On success the column contract is
+--   \"NULL unless the run died\", so the summary stays 'Nothing'. The source
+--   is @\"heuristic\"@ regardless so the downstream NOT-NULL column always
+--   has a value.
+--
+--   The inline path deliberately never reaches a language model: it runs
+--   while an operator is waiting at the terminal, so it calls the pure
+--   'summarizeFailure' rather than going through 'Shiki.Effect.Analyzer'.
+--   @shiki runs analyze@ is where a model-backed summary is asked for.
 summarizeOnFailure ::
   JobPhase ->
   Either e FetchedLogs ->
@@ -165,11 +169,7 @@ summarizeOnFailure phase logsE = case phase of
   JobSucceeded -> pure (Nothing, "heuristic")
   _ -> case logsE of
     Left _ -> pure (Nothing, "heuristic")
-    Right fl -> do
-      r <- runAnalyzer Heuristic (fl ^. #analysisBuffer)
-      case r of
-        Right res -> pure (Analyzer.summary res, Analyzer.source res)
-        Left _ -> pure (Nothing, "heuristic")
+    Right fl -> pure (summarizeFailure (fl ^. #analysisBuffer), "heuristic")
 
 exitCodeForPhase :: JobPhase -> Maybe Int
 exitCodeForPhase = \case
@@ -209,6 +209,10 @@ waitForCompletionWith readStatus startedAt pollSec timeoutSec = go 0
       if realToFrac (diffUTCTime now startedAt) > (fromIntegral timeoutSec :: Double)
         then pure JobTimedOut
         else
+          -- 'try @SomeException' rather than 'trySync' because this runs in
+          -- plain IO, and the first guard below is what 'trySync' would do:
+          -- an asynchronous exception is re-thrown untouched, so Ctrl-C still
+          -- ends the wait. Only a synchronous read failure is retried.
           try @SomeException readStatus >>= \case
             Left err
               | Just asyncErr <- fromException @SomeAsyncException err -> throwIO asyncErr

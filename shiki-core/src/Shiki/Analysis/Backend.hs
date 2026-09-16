@@ -1,20 +1,18 @@
--- | The pluggable analyzer surface: an 'AnalyzerKind' selects which
---   backend produces the failure summary, and 'runAnalyzer' dispatches
---   to the matching implementation. The deterministic in-process
---   'Heuristic' branch is the default; the 'Baikai' branch is wired up
---   in M7 (it returns a placeholder 'AnalyzerBaikaiError' until then).
+-- | The vocabulary of shiki's analyzer: which backend produces a failure
+--   summary, what a summary looks like, and how analysis can fail.
+--
+--   Dispatch itself lives in "Shiki.Effect.Analyzer", so this module stays
+--   free of IO and of baikai; the two are separate because
+--   "Shiki.Service.Config" needs the vocabulary and nothing else.
 module Shiki.Analysis.Backend
   ( AnalyzerKind (..),
     AnalyzerResult (..),
     AnalyzerError (..),
     summaryByteCap,
-    runAnalyzer,
     analyzerBackendToKind,
   )
 where
 
-import Shiki.Analysis.Baikai (runBaikai)
-import Shiki.Analysis.Heuristic (summarizeFailure)
 import Shiki.Prelude
 import Shiki.Service.Config qualified as Cfg
 
@@ -52,34 +50,6 @@ data AnalyzerError
 --   returning.
 summaryByteCap :: Int
 summaryByteCap = 512
-
--- | Dispatch a chunk of analysis-buffer text through the chosen backend.
---   The 'Baikai' branch is stubbed in M2 and gets a real implementation
---   in M7.
-runAnalyzer :: AnalyzerKind -> Text -> IO (Either AnalyzerError AnalyzerResult)
-runAnalyzer kind input = case kind of
-  Heuristic ->
-    pure
-      ( Right
-          AnalyzerResult
-            { summary = summarizeFailure input,
-              source = "heuristic"
-            }
-      )
-  Baikai modelId -> do
-    r <- runBaikai modelId input
-    case r of
-      Left err -> pure (Left (AnalyzerBaikaiError err))
-      Right t ->
-        pure
-          ( Right
-              AnalyzerResult
-                { summary = Just t,
-                  source = "baikai:" <> modelId
-                }
-          )
-  None ->
-    pure (Left AnalyzerBackendDisabled)
 
 -- | Bridge the Dhall-facing 'Shiki.Service.Config.AnalyzerBackend' type
 --   to the dispatch-facing 'AnalyzerKind'. The two types are kept

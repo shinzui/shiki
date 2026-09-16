@@ -11,11 +11,15 @@ where
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
+import Effectful.Exception qualified as Exc
+import Shiki.Cli.Error (CliError (..))
+import Shiki.Error (ConfigError (..), ShikiError (..), collapseWhitespace)
 import Shiki.Prelude
 import System.Directory (doesFileExist, renameFile)
-import System.Exit (exitFailure)
 import System.FilePath (takeDirectory)
-import System.IO (hClose, openTempFile, stderr)
+import System.IO (hClose, openTempFile)
 
 data ConfigInitOptions = ConfigInitOptions
   { schemaRef :: !Text,
@@ -54,18 +58,34 @@ renderProjectConfig opts =
       "    : Schema.ProjectConfig"
     ]
 
-runConfigInit :: ConfigInitOptions -> IO ()
+-- | Write the file, refusing to clobber one that is already there.
+--
+--   The write goes to a temporary file in the target directory and is then
+--   renamed into place, so a failure half way through cannot leave a
+--   truncated @shiki.dhall@ behind. A missing directory or a read-only one
+--   fails as 'ConfigWriteFailed' rather than as an uncaught @openTempFile@.
+runConfigInit ::
+  (IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
+  ConfigInitOptions ->
+  Eff es ()
 runConfigInit opts = do
   let path = opts ^. #outputPath
-  exists <- doesFileExist path
-  when exists $ do
-    TIO.hPutStrLn stderr ("shiki: " <> Text.pack path <> " already exists; refusing to overwrite")
-    exitFailure
+  exists <- liftIO (doesFileExist path)
+  when exists (throwError (ConfigFileExists path))
   let dir = takeDirectory path
-  (tmp, h) <- openTempFile dir ".shiki.dhall.tmp"
-  TIO.hPutStr h (renderProjectConfig opts)
-  hClose h
-  renameFile tmp path
+  outcome <-
+    Exc.trySync . liftIO $ do
+      (tmp, h) <- openTempFile dir ".shiki.dhall.tmp"
+      TIO.hPutStr h (renderProjectConfig opts)
+      hClose h
+      renameFile tmp path
+  case outcome of
+    Right () -> pure ()
+    Left e ->
+      throwError
+        ( ShikiConfigError
+            (ConfigWriteFailed path (collapseWhitespace (Text.pack (Exc.displayException e))))
+        )
 
 schemaPackageUrl :: Text -> Text
 schemaPackageUrl ref =

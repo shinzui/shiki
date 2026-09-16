@@ -87,6 +87,9 @@ shikiMigrationPlan =
         Left planError -> invalidEmbeddedPlan planError
         Right plan -> plan
   where
+    -- 'error' rather than a typed failure: the plan is embedded at compile
+    -- time, so this can only fire if the build embedded a broken manifest,
+    -- which is a programming error 'Shiki.Persistence.MigrationSpec' catches.
     invalidEmbeddedPlan err =
       error ("invalid embedded Shiki migration plan: " <> show err)
 

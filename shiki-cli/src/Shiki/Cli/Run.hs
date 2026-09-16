@@ -40,6 +40,7 @@ import Options.Applicative
   )
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Heartbeat (withHeartbeat)
+import Shiki.Effect.ConfigLoader (ConfigLoader, loadServiceConfig)
 import Shiki.Effect.Kube (Kube, awaitJob, inspectDeployment, submitJob)
 import Shiki.Effect.RunStore
   ( RunStore,
@@ -65,7 +66,6 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Prelude hiding (Strict, argument)
 import Shiki.Service.Config (ServiceConfig, ServiceName (..))
-import Shiki.Service.Config.Dhall (loadServiceConfig)
 import System.IO (stderr)
 
 data RunOptions = RunOptions
@@ -117,6 +117,7 @@ runOptionsParser =
 runRun ::
   ( RunStore :> es,
     Kube :> es,
+    ConfigLoader :> es,
     Concurrent :> es,
     IOE :> es,
     Error ShikiError :> es,
@@ -126,9 +127,8 @@ runRun ::
   Eff es ()
 runRun opts = do
   cfg <-
-    liftIO $
-      loadServiceConfig
-        (opts ^. #configDir <> "/" <> Text.unpack (opts ^. #service) <> ".dhall")
+    loadServiceConfig
+      (opts ^. #configDir <> "/" <> Text.unpack (opts ^. #service) <> ".dhall")
 
   let ns =
         Namespace

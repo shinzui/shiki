@@ -1,23 +1,34 @@
--- | LLM-backed analyzer: hands the captured log tail to a baikai model
---   and returns the model's one-sentence root-cause summary. Used by
---   the @shiki runs analyze --analyzer=baikai:\<id\>@ post-hoc path; never
---   reached by the inline @shiki run@ path.
+-- | The pieces of shiki's LLM-backed analyzer that are not IO: which models
+--   it will talk to, the prompt and request options it sends, and how it
+--   reads a reply back.
+--
+--   The call itself lives in "Shiki.Effect.Analyzer", which issues it through
+--   @baikai-effectful@'s @Baikai@ effect. Everything here is a value or a
+--   pure function, so a test can assert on the prompt and the caps without a
+--   network.
 module Shiki.Analysis.Baikai
-  ( runBaikai,
-    supportedModels,
+  ( supportedModels,
+    lookupModel,
+    registerAnalyzerProviders,
+    analyzerContext,
+    analyzerOptions,
+    extractText,
+    capChars,
+    renderError,
+    summaryCharCap,
   )
 where
 
 import Baikai
   ( BaikaiError,
+    Context,
+    Options,
     Response,
-    completeRequest,
     emptyContext,
     emptyOptions,
     flattenAssistantBlocks,
     maxTokens,
     messages,
-    responseError,
     systemPrompt,
     temperature,
   )
@@ -27,11 +38,10 @@ import Baikai.Model (Model)
 import Baikai.Models.Generated qualified as Models
 import Baikai.Provider.Claude.Api qualified as ClaudeApi
 import Baikai.Provider.OpenAI.Api qualified as OpenAIApi
-import Control.Exception (SomeException, try)
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Vector qualified as V
-import Shiki.Prelude
+import Shiki.Prelude hiding (Context, Options)
 
 -- | Hand-curated list of baikai catalog ids this build of shiki knows
 --   how to dispatch. Extend by adding a case to 'lookupModel' below;
@@ -45,6 +55,22 @@ supportedModels =
     "openai_gpt_4o_mini"
   ]
 
+-- | The model behind a catalog id, or 'Nothing' if shiki does not know it.
+lookupModel :: Text -> Maybe Model
+lookupModel = \case
+  "anthropic_claude_haiku_4_5" -> Just Models.anthropic_claude_haiku_4_5
+  "anthropic_claude_sonnet_4_6" -> Just Models.anthropic_claude_sonnet_4_6
+  "openai_gpt_4o_mini" -> Just Models.openai_gpt_4o_mini
+  _ -> Nothing
+
+-- | Register the API providers behind 'supportedModels' in baikai's
+--   process-global registry. Idempotent, and cheap enough to call once per
+--   command that might analyze.
+registerAnalyzerProviders :: IO ()
+registerAnalyzerProviders = do
+  ClaudeApi.register
+  OpenAIApi.register
+
 systemPromptText :: Text
 systemPromptText =
   "You are a release-engineering assistant. Given the tail of a failed \
@@ -54,38 +80,22 @@ systemPromptText =
 summaryCharCap :: Int
 summaryCharCap = 512
 
--- | Dispatch a one-shot summarization request through the named baikai
---   model. The first argument is a baikai catalog id (one of
---   'supportedModels'); the second is the captured log tail. The
---   matching provider is registered lazily and idempotently per call.
-runBaikai :: Text -> Text -> IO (Either Text Text)
-runBaikai modelId logTail = case lookupModel modelId of
-  Nothing -> pure (Left ("unknown baikai model: " <> modelId))
-  Just (model, registerProvider) -> do
-    registerProvider
-    let ctx =
-          emptyContext
-            { systemPrompt = Just systemPromptText,
-              messages = V.singleton (user logTail)
-            }
-        opts =
-          emptyOptions
-            { maxTokens = Just 256,
-              temperature = Just 0.0
-            }
-    result <- try @SomeException (completeRequest model ctx opts)
-    case result of
-      Left e -> pure (Left (Text.pack (show e)))
-      Right resp -> case responseError resp of
-        Just err -> pure (Left (renderError err))
-        Nothing -> pure (Right (capChars (extractText resp)))
+-- | The one-turn request: shiki's system prompt, and the log tail as the
+--   user's only message.
+analyzerContext :: Text -> Context
+analyzerContext logTail =
+  emptyContext
+    { systemPrompt = Just systemPromptText,
+      messages = V.singleton (user logTail)
+    }
 
-lookupModel :: Text -> Maybe (Model, IO ())
-lookupModel = \case
-  "anthropic_claude_haiku_4_5" -> Just (Models.anthropic_claude_haiku_4_5, ClaudeApi.register)
-  "anthropic_claude_sonnet_4_6" -> Just (Models.anthropic_claude_sonnet_4_6, ClaudeApi.register)
-  "openai_gpt_4o_mini" -> Just (Models.openai_gpt_4o_mini, OpenAIApi.register)
-  _ -> Nothing
+-- | A short, deterministic reply: this is a summary, not a conversation.
+analyzerOptions :: Options
+analyzerOptions =
+  emptyOptions
+    { maxTokens = Just 256,
+      temperature = Just 0.0
+    }
 
 extractText :: Response -> Text
 extractText resp =
@@ -96,7 +106,8 @@ extractText resp =
       ]
 
 -- | baikai reports provider, transport, and unregistered-API failures
---   in-band as an error-shaped 'Response' rather than by throwing.
+--   in-band as an error-shaped 'Response' rather than by throwing; this is
+--   how that error reads.
 renderError :: BaikaiError -> Text
 renderError err = Text.pack (show (err ^. #category)) <> ": " <> err ^. #message
 

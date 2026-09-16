@@ -3,18 +3,18 @@ module Shiki.Cli.Agent.LaunchSpec
   )
 where
 
-import GHC.IO.Handle (hDuplicate, hDuplicateTo)
+import Baikai.Effectful (Baikai)
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TIO
+import Effectful (Eff, runEff)
+import Effectful.Dispatch.Dynamic (interpret_)
+import Effectful.Error.Static (runErrorNoCallStack)
 import Shiki.Cli.Agent.Launch (AssistDispatch (..), runAssistSession)
 import Shiki.Cli.Agent.Provider (defaultAgentModelConfig)
+import Shiki.Cli.Error (CliError)
 import System.Exit (ExitCode (..))
-import System.IO
-  ( IOMode (ReadMode, WriteMode),
-    hClose,
-    hGetContents,
-    openFile,
-    stdout,
-    withFile,
-  )
+import System.IO (Handle, IOMode (ReadMode), hClose, withFile)
 import System.IO.Temp (withSystemTempFile)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
@@ -23,37 +23,36 @@ tests :: TestTree
 tests =
   testGroup
     "Shiki.Cli.Agent.Launch"
-    [ testCase "debug path writes the prompt and exits success" $ do
-        (captured, code) <-
-          captureStdout $
-            runAssistSession
-              defaultAgentModelConfig
-              AssistDispatch
-                { systemPrompt = "PROMPT",
-                  userPrompt = Nothing,
-                  debug = True
-                }
-        assertEqual "exit code" ExitSuccess code
-        assertEqual "captured stdout" "PROMPT" captured
+    [ testCase "debug path writes the prompt and exits success" $
+        -- The session writes to the handle it is given, so this asserts on a
+        -- temporary file rather than swapping the process's stdout. The old
+        -- capture raced tasty's own reporter, which writes to stdout from
+        -- another thread, and failed roughly one run in six.
+        withSystemTempFile "shiki-assist-debug" $ \path h -> do
+          code <-
+            runEff
+              . runErrorNoCallStack @CliError
+              . runUnreachableBaikai
+              $ runAssistSession
+                h
+                defaultAgentModelConfig
+                AssistDispatch
+                  { systemPrompt = "PROMPT",
+                    userPrompt = Nothing,
+                    debug = True
+                  }
+          hClose h
+          written <- withFile path ReadMode readAll
+          assertEqual "exit code" (Right ExitSuccess) code
+          assertEqual "written output" "PROMPT" written
     ]
 
--- | Redirect stdout to a temp file for the duration of the action.
---   Returns the captured contents alongside the action's result. Built
---   from primitive Handle operations so the test suite does not need
---   the 'silently' package.
-captureStdout :: IO a -> IO (String, a)
-captureStdout body =
-  withSystemTempFile "shiki-launch-capture" $ \path h -> do
-    hClose h
-    saved <- hDuplicate stdout
-    out <- openFile path WriteMode
-    hDuplicateTo out stdout
-    hClose out
-    result <- body
-    -- Restore stdout to its original handle before reading the file.
-    hDuplicateTo saved stdout
-    hClose saved
-    contents <- withFile path ReadMode $ \r -> do
-      s <- hGetContents r
-      length s `seq` pure s
-    pure (contents, result)
+readAll :: Handle -> IO Text
+readAll r = do
+  t <- TIO.hGetContents r
+  Text.length t `seq` pure t
+
+-- | The debug path must not reach a provider.
+runUnreachableBaikai :: Eff (Baikai : es) a -> Eff es a
+runUnreachableBaikai = interpret_ $ \case
+  _ -> error "Shiki.Cli.Agent.LaunchSpec: the debug path must not call a model"
