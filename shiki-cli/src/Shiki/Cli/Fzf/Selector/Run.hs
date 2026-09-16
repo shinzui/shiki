@@ -25,13 +25,8 @@ module Shiki.Cli.Fzf.Selector.Run
   )
 where
 
-import Data.Bifunctor (first)
 import Data.Generics.Labels ()
-import Data.Text qualified as Text
-import Hasql.Pool qualified as Pool
-import Hasql.Session qualified as Session
-import Hasql.Statement (Statement)
-import Shiki.Cli.Env (CliEnv (..))
+import Effectful (Eff, IOE, type (:>))
 import Shiki.Cli.Fzf
   ( Candidate (..),
     FzfConfig,
@@ -48,11 +43,8 @@ import Shiki.Cli.Fzf
     withSelectOne,
   )
 import Shiki.Cli.Runs.Format (computeWidths, formatRow, runColumns, runTableHeader)
-import Shiki.Persistence.Run
-  ( RunRecord,
-    findRunByPrefixStatement,
-    listRecentRunsStatement,
-  )
+import Shiki.Effect.RunStore (RunStore, findRunsByPrefix, listRecentRuns)
+import Shiki.Persistence.Run (RunRecord)
 import Shiki.Prelude
 
 -- | What the operator asked for, decided before any database work.
@@ -69,7 +61,6 @@ data RunLookupFailure
   | RunPickerCancelled
   | RunFzfUnavailable
   | RunPickerFailed !Text
-  | RunLookupPersistenceError !Text
   deriving stock (Eq, Show)
 
 -- | How many rows to surface in the picker. 50 is bigger than the 20
@@ -117,22 +108,22 @@ pickerRunTarget opts cfg
 
 -- | Resolve a target to a run. The prefix path is the only one that queries
 --   by id; the picker path returns the record fzf handed back.
-lookupRun :: CliEnv -> UTCTime -> RunTarget -> IO (Either RunLookupFailure RunRecord)
-lookupRun env observedAt = \case
-  RunByPrefix t ->
-    query findRunByPrefixStatement t <&> (>>= fromPrefixMatches t)
+--   A failed statement is no longer a 'RunLookupFailure': the 'RunStore'
+--   interpreter reports it as @shiki: database error during \<operation\>: …@
+--   like every other statement in the program.
+lookupRun ::
+  (RunStore :> es, IOE :> es) =>
+  UTCTime ->
+  RunTarget ->
+  Eff es (Either RunLookupFailure RunRecord)
+lookupRun observedAt = \case
+  RunByPrefix t -> fromPrefixMatches t <$> findRunsByPrefix t
   RunByPicker cfg opts ->
-    query listRecentRunsStatement selectorRowLimit >>= \case
-      Left e -> pure (Left e)
-      Right [] -> pure (Left NoRunsRecorded)
-      Right rows -> do
+    listRecentRuns Nothing selectorRowLimit >>= \case
+      [] -> pure (Left NoRunsRecorded)
+      rows -> do
         let (titles, candidates) = formatRunCandidates observedAt rows
-        fromRunFzfResult <$> runFzf cfg (opts <> withHeaderRow titles) candidates
-  where
-    query :: Statement a b -> a -> IO (Either RunLookupFailure b)
-    query stmt input =
-      first (RunLookupPersistenceError . Text.pack . show)
-        <$> Pool.use (env ^. #pool) (Session.statement input stmt)
+        liftIO (fromRunFzfResult <$> runFzf cfg (opts <> withHeaderRow titles) candidates)
 
 -- | 'findRunByPrefixStatement' returns at most two rows: enough to tell a
 --   unique prefix from an ambiguous one.
@@ -160,4 +151,3 @@ renderRunLookupFailure = \case
   RunPickerCancelled -> Nothing
   RunFzfUnavailable -> Just "shiki: no run id given and fzf is not available"
   RunPickerFailed e -> Just ("shiki: fzf: " <> e)
-  RunLookupPersistenceError e -> Just ("shiki: persistence error: " <> e)

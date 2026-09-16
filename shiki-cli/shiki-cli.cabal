@@ -134,6 +134,7 @@ test-suite shiki-cli-test
     Shiki.Cli.Agent.PromptSpec
     Shiki.Cli.Agent.ProviderSpec
     Shiki.Cli.ConfigInitSpec
+    Shiki.Cli.Effect.FakeRunStore
     Shiki.Cli.EnvRoutingSpec
     Shiki.Cli.Fixtures
     Shiki.Cli.Fzf.Selector.RunSpec
@@ -146,6 +147,7 @@ test-suite shiki-cli-test
     Shiki.Cli.ProjectSpec
     Shiki.Cli.Runs.FormatSpec
     Shiki.Cli.Runs.SyncSpec
+    Shiki.Cli.RunsSpec
     Shiki.Cli.VersionSpec
 
   build-depends:

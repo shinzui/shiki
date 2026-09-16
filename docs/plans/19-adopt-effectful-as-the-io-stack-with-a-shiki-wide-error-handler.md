@@ -137,25 +137,36 @@ This section must always reflect the actual current state of the work.
 - [x] Build warning-free, tests green (63 + 115), acceptance rows 1–6 checked against the
       built binary; commit. (2026-09-15)
 
-### M3 — The `RunStore` effect
+### M3 — The `RunStore` effect — done 2026-09-15
 
-- [ ] Create `Shiki.Effect.RunStore` and `Shiki.Effect.RunStore.Postgres` in shiki-core.
-- [ ] Convert `Shiki.Cli.Runs`, `Shiki.Cli.Runs.Sync` (store part), the run selector,
-      `Shiki.Cli.Agent.Context`, and `Shiki.Cli.Run` (store part); delete `runRead`,
-      `runWrite`, `runStmt`, `runSessionUnit`, and the selector's private `query`.
-- [ ] Keep "decide the target before connecting" for the run pickers.
-- [ ] Add a store spec against a throwaway database and a failure-injection test.
-- [ ] Build warning-free, tests green, acceptance rows 7–9; commit.
+- [x] Create `Shiki.Effect.RunStore` and `Shiki.Effect.RunStore.Postgres` in shiki-core.
+      (2026-09-15)
+- [x] Convert `Shiki.Cli.Runs`, `Shiki.Cli.Runs.Sync` (store part), the run selector,
+      `Shiki.Cli.Agent.Context`, `Shiki.Cli.Agent`, and `Shiki.Cli.Run` (store part); delete
+      `runRead`, `runWrite`, `runStmt`, `runSessionUnit`, and the selector's private
+      `query`. `grep -rn "Pool.use" shiki-cli/src` returns nothing. (2026-09-15)
+- [x] Keep "decide the target before connecting" for the run pickers: `withRun` calls
+      `runTarget` first and only then opens the store. (2026-09-15)
+- [x] Add `shiki-core/test/Shiki/Effect/RunStoreSpec.hs` against a throwaway database and
+      `shiki-cli/test/Shiki/Cli/Effect/FakeRunStore.hs` plus
+      `shiki-cli/test/Shiki/Cli/RunsSpec.hs` for failure injection. (2026-09-15)
+- [x] Build warning-free, tests green (65 + 118), acceptance rows 7–9 checked against the
+      built binary; `nix build` green; commit. (2026-09-15)
+- [x] Moved forward from M4: `Shiki.Cli.Heartbeat.withHeartbeat` now runs in `Eff` over
+      `Concurrent`, and `Shiki.Cli.Env.withCliEnv` is `withKubeClient`. Acceptance row 10
+      (`KUBECONFIG=/nonexistent shiki runs list`) therefore already holds. (2026-09-15)
 
 ### M4 — The `Kube` effect, `shiki run`, and Ctrl-C
 
 - [ ] Create `Shiki.Effect.Kube` and `Shiki.Effect.Kube.Client` in shiki-core; load the client
       only for commands whose stack includes `Kube`.
-- [ ] Convert `Shiki.Cli.Run` and `Shiki.Cli.Runs.Sync` fully; move the heartbeat onto
-      `Effectful.Concurrent.Async`; delete `Shiki.Cli.Env`.
-- [ ] Replace `try @SomeException` in the run path with `trySync`; print a `runs sync` hint on
-      Ctrl-C and let the interrupt propagate.
-- [ ] Update `HeartbeatSpec`; build warning-free, tests green, acceptance rows 10–14; commit.
+- [ ] Convert `Shiki.Cli.Run` and `Shiki.Cli.Runs.Sync` fully; delete `Shiki.Cli.Env`.
+- [x] Move the heartbeat onto `Effectful.Concurrent.Async` and update `HeartbeatSpec`
+      (done early, in M3 — see the Decision Log). (2026-09-15)
+- [x] Replace `try @SomeException` in the run path with `trySync` (done in M3 as part of
+      converting `Shiki.Cli.Run`). (2026-09-15)
+- [ ] Print a `runs sync` hint on Ctrl-C and let the interrupt propagate.
+- [ ] Build warning-free, tests green, acceptance rows 11–14; commit.
 
 ### M5 — Config and analyzer effects, and the remaining exits
 
@@ -310,6 +321,17 @@ Findings from implementation:
 
   into one line that keeps the hint. Dhall's diagnostic is kept as it is (see the Decision
   Log), so acceptance rows 4 and 16 read "one message", not "one line".
+
+- Milestone 3, 2026-09-15: `shiki-core/test/Shiki/K8s/ClassifyJobSpec.hs` carried a
+  pre-existing `-Wunused-imports` warning for `Shiki.Prelude` that only shows on a full
+  rebuild, so incremental `cabal build all` runs had been reporting a clean tree that was not
+  one. Removed with the rest of this milestone's warnings. Checking "warning-free" now means
+  `cabal clean && cabal build all`, not an incremental build.
+
+- Milestone 3, 2026-09-15: `nix build` fails on a new module until the file is `git add`ed.
+  The flake's source is the git tree, so an untracked `Shiki/Effect/RunStore.hs` produced
+  `Error: [Cabal-7554] can't find source for Shiki/Effect/RunStore in src`. Staging the new
+  files fixes it; `cabal build` never notices because it reads the working tree.
 
 
 ## Decision Log
@@ -505,6 +527,41 @@ Record every decision made while working on the plan.
   Rationale: They are the pieces that turn a hasql failure into the `Text` a `StoreError`
   carries, and every interpreter that touches the database needs them. Putting them beside
   the type they feed keeps the mapping in one file and lets `MainSpec` assert the wording.
+  Date: 2026-09-15.
+
+- Decision: Move `withHeartbeat` onto `Effectful.Concurrent.Async` in Milestone 3 rather than
+  Milestone 4, and rename `withCliEnv` to `withKubeClient` in the same milestone.
+  Rationale: Milestone 3 forces both. The heartbeat's beat is a `RunStore` write, so once the
+  store is an effect the beat is an `Eff` computation and the old `IO ()` signature cannot
+  take it without an unlift; and `CliEnv` loses its pool in Milestone 3, so the only thing
+  `withCliEnv` still did was load the Kubernetes client. A welcome side effect is that
+  acceptance row 10 (`KUBECONFIG=/nonexistent shiki runs list` prints the table) already
+  holds at the end of Milestone 3: only `runs sync` and `shiki run` ask for a client now.
+  Date: 2026-09-15.
+
+- Decision: `Shiki.Cli.Runs.Sync` gets its own small error type, `SyncFailure`, discharged
+  per run with a nested `runErrorNoCallStack`, in place of the two `throwIO (userError …)`
+  calls in `confirmSameCluster`.
+  Rationale: The plan asks for "a small local error value rendered the same way". Each run in
+  `runs sync` is reported independently, so all three failure shapes — a `ShikiError` from the
+  store or the cluster, a `SyncFailure` from this module, and an exception from the Kubernetes
+  client — are caught in `trySyncOne` and printed as `run <id>: sync failed: <message>`, with
+  the wording of the two messages unchanged.
+  Date: 2026-09-15.
+
+- Decision: A failed statement renders PostgreSQL's own message and SQLSTATE
+  (`relation "runs" does not exist (SQLSTATE 42P01)`), not hasql's `toDetailedText`.
+  Rationale: `toDetailedText` repeats the whole SQL template and every parameter, which
+  produced a 300-character line for acceptance row 8 and buried the one sentence the operator
+  needs. The SQL is recoverable from the operation name, which the message already carries.
+  Date: 2026-09-15.
+
+- Decision: `Shiki.Cli.Fzf.Selector.Run.lookupRun` takes no environment argument at all, and
+  `RunLookupFailure` loses `RunLookupPersistenceError`.
+  Rationale: With `RunStore` in scope the lookup needs nothing but the effect, and a failed
+  statement is now the interpreter's `StatementFailed`, rendered like every other database
+  failure. Keeping a second spelling of the same failure would have meant two messages for
+  one condition. `RunSpec`'s `renderRunLookupFailure` table drops that row.
   Date: 2026-09-15.
 
 

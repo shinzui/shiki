@@ -16,14 +16,12 @@ import Control.Exception (SomeException, try)
 import Data.Generics.Labels ()
 import Data.List (sort)
 import Data.Text qualified as Text
-import Hasql.Pool (Pool)
-import Hasql.Pool qualified as Pool
-import Hasql.Session qualified as Session
-import Shiki.Persistence.Run
-  ( RunRecord,
-    databaseNowStatement,
-    listRecentRunsStatement,
-  )
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (runErrorNoCallStack)
+import Effectful.Exception qualified as Exc
+import Shiki.Effect.RunStore (RunStore, databaseNow, listRecentRuns)
+import Shiki.Error (ShikiError, shikiErrorMessage)
+import Shiki.Persistence.Run (RunRecord)
 import Shiki.Persistence.Schema (Schema, schemaText)
 import Shiki.Prelude
 import Shiki.Service.Config
@@ -74,12 +72,15 @@ analyzerBackendToText = \case
 -- | Build an 'AgentContext' from the current working directory, the
 --   shiki Postgres pool, and the resolved 'Schema'. Best-effort: failures
 --   land on the record rather than as exceptions.
-gatherAgentContext :: Pool -> Schema -> IO AgentContext
-gatherAgentContext pool schema = do
-  cwdStr <- getCurrentDirectory
+gatherAgentContext ::
+  (RunStore :> es, IOE :> es) =>
+  Schema ->
+  Eff es AgentContext
+gatherAgentContext schema = do
+  cwdStr <- liftIO getCurrentDirectory
   let servicesPath = "services"
-  (services, serviceErrs) <- loadServicesDir servicesPath
-  (mObservedAt, runs, dbErrs) <- loadRecentRuns pool
+  (services, serviceErrs) <- liftIO (loadServicesDir servicesPath)
+  (mObservedAt, runs, dbErrs) <- loadRecentRuns
   pure
     AgentContext
       { cwd = Text.pack cwdStr,
@@ -121,15 +122,18 @@ toSummary cfg =
     }
 
 -- | Read the most recent twenty rows. Database failures collapse to an
---   empty list plus one @"db: ..."@ entry in the error log.
-loadRecentRuns :: Pool -> IO (Maybe UTCTime, [RunRecord], [FilePath])
-loadRecentRuns pool = do
-  result <- Pool.use pool session
-  pure $ case result of
-    Right (observedAtDb, rs) -> (Just observedAtDb, rs, [])
-    Left err -> (Nothing, [], ["db: " <> show err])
-  where
-    session =
-      (,)
-        <$> Session.statement () databaseNowStatement
-        <*> Session.statement 20 listRecentRunsStatement
+--   empty list plus one @"db: ..."@ entry in the error log: this context is
+--   best-effort, so a broken store must not stop the agent session. Both a
+--   typed 'ShikiError' from the interpreter and a stray exception are caught,
+--   which is why the 'RunStore' reads run under their own handler here.
+loadRecentRuns ::
+  (RunStore :> es) =>
+  Eff es (Maybe UTCTime, [RunRecord], [FilePath])
+loadRecentRuns = do
+  outcome <-
+    Exc.trySync . runErrorNoCallStack @ShikiError $
+      (,) <$> databaseNow <*> listRecentRuns Nothing 20
+  pure $ case outcome of
+    Right (Right (observedAtDb, rs)) -> (Just observedAtDb, rs, [])
+    Right (Left shikiError) -> (Nothing, [], ["db: " <> Text.unpack (shikiErrorMessage shikiError)])
+    Left e -> (Nothing, [], ["db: " <> Exc.displayException e])

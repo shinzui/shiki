@@ -11,6 +11,8 @@ where
 
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
 import Options.Applicative (Parser, hsubparser, info)
 import Options.Applicative qualified as Opt
 import Shiki.Cli.Agent.Config (resolveAgentModelConfig)
@@ -20,11 +22,11 @@ import Shiki.Cli.Agent.Launch
     runAssistSession,
   )
 import Shiki.Cli.Agent.Prompt (renderAssistPrompt)
-import Shiki.Cli.Env (CliEnv (..))
+import Shiki.Cli.Error (CliError (..))
+import Shiki.Effect.RunStore (RunStore)
 import Shiki.Persistence.Schema (Schema)
 import Shiki.Prelude
-import System.Exit (exitFailure, exitWith)
-import System.IO (hPutStrLn, stderr)
+import System.Exit (exitWith)
 
 data AgentCommand
   = AgentAssist !AssistOptions
@@ -108,30 +110,37 @@ assistOptionsParser =
 
 -- | Dispatch a parsed 'AgentCommand'. Today this is exactly one verb
 --   ('AgentAssist'); the case-of leaves room for siblings later.
-runAgent :: CliEnv -> Schema -> AgentCommand -> IO ()
-runAgent env schema = \case
-  AgentAssist opts -> runAssist env schema opts
+runAgent ::
+  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  Schema ->
+  AgentCommand ->
+  Eff es ()
+runAgent schema = \case
+  AgentAssist opts -> runAssist schema opts
 
-runAssist :: CliEnv -> Schema -> AssistOptions -> IO ()
-runAssist env schema opts = do
-  cfgE <- resolveAgentModelConfig (opts ^. #provider) (opts ^. #model)
+runAssist ::
+  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  Schema ->
+  AssistOptions ->
+  Eff es ()
+runAssist schema opts = do
+  cfgE <- liftIO (resolveAgentModelConfig (opts ^. #provider) (opts ^. #model))
   case cfgE of
-    Left err -> do
-      hPutStrLn stderr ("shiki: " <> Text.unpack err)
-      exitFailure
+    Left err -> throwError (AgentProviderInvalid err)
     Right cfg -> do
-      ctx <- gatherAgentContext (env ^. #pool) schema
+      ctx <- gatherAgentContext schema
       let hints = combineHints opts
           sys = renderAssistPrompt ctx hints
       code <-
-        runAssistSession
-          cfg
-          AssistDispatch
-            { systemPrompt = sys,
-              userPrompt = opts ^. #prompt,
-              debug = opts ^. #debug
-            }
-      exitWith code
+        liftIO $
+          runAssistSession
+            cfg
+            AssistDispatch
+              { systemPrompt = sys,
+                userPrompt = opts ^. #prompt,
+                debug = opts ^. #debug
+              }
+      liftIO (exitWith code)
 
 -- | Build the operator's "hints" block that lands inside the system
 --   prompt. The three sources (@--service@, @--run@, @--prompt@) are

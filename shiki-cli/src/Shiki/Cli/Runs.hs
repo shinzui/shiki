@@ -16,11 +16,8 @@ import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
-import Effectful (Eff)
-import Effectful.Error.Static (throwError)
-import Hasql.Pool qualified as Pool
-import Hasql.Session qualified as Session
-import Hasql.Statement (Statement)
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, throwError)
 import Options.Applicative
   ( Parser,
     argument,
@@ -46,32 +43,27 @@ import Shiki.Analysis.Backend
     analyzerBackendToKind,
     runAnalyzer,
   )
-import Shiki.Cli.Env (CliEnv (..))
+import Shiki.Cli.Env (withKubeClient)
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Fzf (FzfOpts)
 import Shiki.Cli.Fzf.Selector.Run
-  ( RunLookupFailure,
-    analyzeRunOpts,
+  ( analyzeRunOpts,
     lookupRun,
     readRunOpts,
-    renderRunLookupFailure,
     runTarget,
   )
-import Shiki.Cli.Main (CliEff)
 import Shiki.Cli.Runs.Format (isUnwatched, renderTable)
 import Shiki.Cli.Runs.Sync (syncRun, syncRuns)
-import Shiki.Error (renderAnalyzerError)
-import Shiki.Persistence.Run
-  ( RunId (..),
-    RunRecord,
-    databaseNowStatement,
-    listRecentRunsByServiceStatement,
-    listRecentRunsStatement,
-    updateErrorSummaryStatement,
+import Shiki.Effect.RunStore
+  ( RunStore,
+    databaseNow,
+    listRecentRuns,
+    updateErrorSummary,
   )
+import Shiki.Error (ShikiError (..))
+import Shiki.Persistence.Run (RunId (..), RunRecord)
 import Shiki.Prelude hiding (argument)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import System.Exit (exitFailure)
 import System.IO (stderr)
 
 data RunsCommand
@@ -178,65 +170,75 @@ analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
               else Right (Baikai mid)
   _ -> Left "expected 'heuristic', 'none', or 'baikai:<model-id>'"
 
--- | Dispatch a parsed 'RunsCommand' to the right handler. @withEnv@
---   acquires the database environment ("Shiki.Cli.Env.withCliEnv"); taking
---   it as an argument lets the single-run commands decide their target
---   first, so a missing positional with no usable fzf fails before any
---   connection is made (see "Shiki.Cli.Fzf.Selector.Run").
-runRuns :: ((CliEnv -> IO ()) -> Eff CliEff ()) -> RunsCommand -> Eff CliEff ()
-runRuns withEnv = \case
-  RunsList mService limit -> withEnv (\env -> doList env mService limit)
-  RunsShow mId -> withRun withEnv readRunOpts mId (const doShow)
-  RunsLogs mId -> withRun withEnv readRunOpts mId (\_ _ -> doLogs)
-  RunsError mId -> withRun withEnv readRunOpts mId (\_ _ -> doError)
-  RunsAnalyze mId override ->
-    withRun withEnv analyzeRunOpts mId (\env _ r -> doAnalyze env r override)
-  RunsSync Nothing -> withEnv syncRuns
-  RunsSync (Just rid) -> withRun withEnv readRunOpts (Just rid) syncRun
+-- | How a @runs@ subcommand reaches the store: it hands an action the
+--   'RunStore' effect. It is taken as an argument, not called up front,
+--   because resolving the connection string and opening the pool must happen
+--   /after/ the single-run commands decide their target: a missing positional
+--   with no usable fzf has to fail before any connection is made (ADR 2, and
+--   see "Shiki.Cli.Fzf.Selector.Run").
+type WithStore es = Eff (RunStore : es) () -> Eff es ()
 
--- | Decide the target before acquiring the environment (so a missing fzf never
---   costs a database connection), then look the run up and run the handler.
+-- | Dispatch a parsed 'RunsCommand' to the right handler. Only @sync@ asks for
+--   a Kubernetes client, so a broken kubeconfig no longer breaks a pure
+--   database read.
+runRuns ::
+  ( IOE :> es,
+    Error ShikiError :> es,
+    Error CliError :> es
+  ) =>
+  WithStore es ->
+  RunsCommand ->
+  Eff es ()
+runRuns withStore = \case
+  RunsList mService limit -> withStore (doList mService limit)
+  RunsShow mId -> withRun withStore readRunOpts mId (\observedAt r -> doShow observedAt r)
+  RunsLogs mId -> withRun withStore readRunOpts mId (\_ r -> doLogs r)
+  RunsError mId -> withRun withStore readRunOpts mId (\_ r -> doError r)
+  RunsAnalyze mId override ->
+    withRun withStore analyzeRunOpts mId (\_ r -> doAnalyze r override)
+  RunsSync Nothing -> withStore (withKubeClient syncRuns)
+  RunsSync (Just rid) ->
+    withRun withStore readRunOpts (Just rid) $ \observedAt r ->
+      withKubeClient (\env -> syncRun env observedAt r)
+
+-- | Decide the target before opening the store, then look the run up and run
+--   the handler.
 withRun ::
-  ((CliEnv -> IO ()) -> Eff CliEff ()) ->
+  (IOE :> es, Error CliError :> es) =>
+  WithStore es ->
   FzfOpts ->
   Maybe Text ->
-  (CliEnv -> UTCTime -> RunRecord -> IO ()) ->
-  Eff CliEff ()
-withRun withEnv opts mId body =
+  (UTCTime -> RunRecord -> Eff (RunStore : es) ()) ->
+  Eff es ()
+withRun withStore opts mId body =
   liftIO (runTarget opts mId) >>= \case
     Left failure -> throwError (CliRunLookup failure)
-    Right target ->
-      withEnv $ \env -> do
-        observedAt <- runRead env databaseNowStatement ()
-        lookupRun env observedAt target >>= either failLookup (body env observedAt)
+    Right target -> withStore $ do
+      observedAt <- databaseNow
+      lookupRun observedAt target >>= \case
+        Left failure -> throwError (CliRunLookup failure)
+        Right r -> body observedAt r
 
--- | Print the failure's message (if any) on stderr and exit 1. Still an 'IO'
---   exit because the lookup itself runs inside the 'IO' continuation
---   @withEnv@ hands out; Milestone 3 moves the lookup into 'Eff' and replaces
---   this with @throwError (CliRunLookup failure)@. 'runShikiMain' passes the
---   'ExitCode' through unchanged, so the behaviour is the same either way.
-failLookup :: RunLookupFailure -> IO a
-failLookup failure = do
-  mapM_ (TIO.hPutStrLn stderr) (renderRunLookupFailure failure)
-  exitFailure
+doList ::
+  (RunStore :> es, IOE :> es) =>
+  Maybe Text ->
+  Int ->
+  Eff es ()
+doList mService limit = do
+  observedAt <- databaseNow
+  rows <- listRecentRuns mService limit
+  liftIO $
+    if null rows
+      then TIO.putStrLn "(no runs recorded yet)"
+      else do
+        TIO.putStr (renderTable observedAt rows)
+        when (any (isUnwatched observedAt) rows) $
+          TIO.hPutStrLn
+            stderr
+            "unwatched: no shiki process has recently reported watching these runs; their status may not update until 'shiki runs sync' is run"
 
-doList :: CliEnv -> Maybe Text -> Int -> IO ()
-doList env mService limit = do
-  observedAt <- runRead env databaseNowStatement ()
-  rows <- case mService of
-    Nothing -> runRead env listRecentRunsStatement limit
-    Just svc -> runRead env listRecentRunsByServiceStatement (svc, limit)
-  if null rows
-    then TIO.putStrLn "(no runs recorded yet)"
-    else do
-      TIO.putStr (renderTable observedAt rows)
-      when (any (isUnwatched observedAt) rows) $
-        TIO.hPutStrLn
-          stderr
-          "unwatched: no shiki process has recently reported watching these runs; their status may not update until 'shiki runs sync' is run"
-
-doShow :: UTCTime -> RunRecord -> IO ()
-doShow observedAt r = do
+doShow :: (IOE :> es) => UTCTime -> RunRecord -> Eff es ()
+doShow observedAt r = liftIO $ do
   BL8.putStrLn (AesonPretty.encodePretty r)
   when (isUnwatched observedAt r) $
     TIO.hPutStrLn
@@ -248,33 +250,31 @@ doShow observedAt r = do
           <> "' is run"
       )
 
-doLogs :: RunRecord -> IO ()
-doLogs r = case r ^. #logTail of
+doLogs :: (IOE :> es) => RunRecord -> Eff es ()
+doLogs r = liftIO $ case r ^. #logTail of
   Just t -> TIO.putStr t
   Nothing -> TIO.putStrLn "(no log captured)"
 
-doError :: RunRecord -> IO ()
-doError r = case r ^. #errorSummary of
+doError :: (IOE :> es) => RunRecord -> Eff es ()
+doError r = liftIO $ case r ^. #errorSummary of
   Just t -> TIO.putStrLn t
   Nothing -> TIO.putStrLn "(no summary)"
 
-doAnalyze :: CliEnv -> RunRecord -> Maybe AnalyzerKind -> IO ()
-doAnalyze env r override = do
-  kind <- effectiveBackend r override
+doAnalyze ::
+  (RunStore :> es, IOE :> es, Error ShikiError :> es) =>
+  RunRecord ->
+  Maybe AnalyzerKind ->
+  Eff es ()
+doAnalyze r override = do
+  kind <- liftIO (effectiveBackend r override)
   case r ^. #logTail of
-    Nothing -> TIO.putStrLn "(no logs captured; cannot analyze)"
-    Just t -> do
-      result <- runAnalyzer kind t
-      case result of
-        Left err -> do
-          TIO.hPutStrLn stderr ("shiki: " <> renderAnalyzerError err)
-          exitFailure
+    Nothing -> liftIO (TIO.putStrLn "(no logs captured; cannot analyze)")
+    Just t ->
+      liftIO (runAnalyzer kind t) >>= \case
+        Left err -> throwError (ShikiAnalyzerError err)
         Right res -> do
-          runWrite
-            env
-            updateErrorSummaryStatement
-            (r ^. #runId, res ^. #summary, res ^. #source)
-          TIO.putStrLn (renderAnalyzeOutcome (r ^. #runId) res)
+          updateErrorSummary (r ^. #runId) (res ^. #summary) (res ^. #source)
+          liftIO (TIO.putStrLn (renderAnalyzeOutcome (r ^. #runId) res))
 
 -- | Resolve the analyzer backend to use for one @runs analyze@ call:
 --   CLI override wins; otherwise the service's Dhall default is used;
@@ -299,11 +299,3 @@ renderAnalyzeOutcome rid res =
 
 shortRunId :: RunRecord -> Text
 shortRunId r = Text.take 8 (Text.pack (show (unRunId (r ^. #runId))))
-
-runRead :: CliEnv -> Statement a b -> a -> IO b
-runRead env stmt input =
-  Pool.use (env ^. #pool) (Session.statement input stmt)
-    >>= either (error . ("shiki: persistence error: " <>) . show) pure
-
-runWrite :: CliEnv -> Statement a () -> a -> IO ()
-runWrite = runRead

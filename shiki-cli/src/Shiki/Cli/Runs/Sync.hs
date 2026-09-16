@@ -7,26 +7,35 @@
 --   the outcome the cluster reports, so run history matches what happened.
 module Shiki.Cli.Runs.Sync
   ( SyncAction (..),
+    SyncFailure (..),
     decideSync,
     lostJobMessage,
+    renderSyncFailure,
     renderStillRunning,
     syncRuns,
     syncRun,
   )
 where
 
-import Control.Exception (SomeAsyncException, SomeException, fromException, throwIO, try)
 import Data.Aeson qualified as Aeson
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Time.Clock (NominalDiffTime, diffUTCTime)
-import Hasql.Pool qualified as Pool
-import Hasql.Session qualified as Session
-import Hasql.Statement (Statement)
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Error.Static (Error, runErrorNoCallStack, throwError)
+import Effectful.Exception qualified as Exc
 import Shiki.Cli.Env (CliEnv (..))
+import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Run (completionForOutcome, elapsedMs)
 import Shiki.Cli.Runs.Format (isUnwatched)
+import Shiki.Effect.RunStore
+  ( RunStore,
+    completeUnfinishedRun,
+    databaseNow,
+    listUnfinishedRuns,
+  )
+import Shiki.Error (ShikiError, shikiErrorMessage)
 import Shiki.K8s.Introspection (DeploymentName (..), Namespace (..), deploymentExists)
 import Shiki.K8s.Runner
   ( JobObservation (..),
@@ -38,14 +47,10 @@ import Shiki.Persistence.Run
   ( RunCompletion (..),
     RunId (..),
     RunRecord,
-    completeUnfinishedRunStatement,
-    databaseNowStatement,
-    listUnfinishedRunsStatement,
   )
 import Shiki.Persistence.RunStatus (RunStatus (..), runStatusToText)
 import Shiki.Prelude
 import Shiki.Service.Config (ServiceConfig)
-import System.Exit (exitFailure)
 import System.IO (stderr)
 
 -- | What to do with one run, given the Job the cluster reports for it.
@@ -82,6 +87,27 @@ decideSync now r obs
   where
     status = r ^. #status
 
+-- | Why one run could not be reconciled, beyond the store and cluster
+--   failures 'ShikiError' already covers. Reported per run, so one bad run
+--   does not stop the rest.
+data SyncFailure
+  = -- | aeson's message for an unreadable @serviceConfig@ snapshot
+    ServiceConfigSnapshotUnreadable !Text
+  | -- | deployment name, namespace: the Job is gone and so is the Deployment
+    DeploymentMissingToo !Text !Text
+  deriving stock (Generic, Eq, Show)
+
+renderSyncFailure :: SyncFailure -> Text
+renderSyncFailure = \case
+  ServiceConfigSnapshotUnreadable message ->
+    "cannot read the run's service config snapshot: " <> message
+  DeploymentMissingToo deployment namespace ->
+    "job not found, and neither is deployment "
+      <> deployment
+      <> " in namespace "
+      <> namespace
+      <> "; is the kube context pointed at the cluster this run used? left unchanged"
+
 -- | The @error@ recorded on a run whose Job no longer exists.
 lostJobMessage :: RunRecord -> Text
 lostJobMessage r =
@@ -93,46 +119,78 @@ lostJobMessage r =
 
 -- | Reconcile every unfinished run. One run's error is reported and the
 --   rest still sync; the command exits non-zero if any run errored.
-syncRuns :: CliEnv -> IO ()
+syncRuns ::
+  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  CliEnv ->
+  Eff es ()
 syncRuns env = do
-  observedAt <- runStmt env databaseNowStatement ()
-  rows <- runStmt env listUnfinishedRunsStatement ()
+  observedAt <- databaseNow
+  rows <- listUnfinishedRuns
   if null rows
-    then TIO.putStrLn "(no unfinished runs)"
+    then liftIO (TIO.putStrLn "(no unfinished runs)")
     else do
-      results <- traverse (trySync env observedAt) rows
-      when (or results) exitFailure
+      results <- traverse (trySyncOne env observedAt) rows
+      when (or results) (throwError CommandFailed)
 
 -- | Reconcile one run, exiting non-zero if it errored.
-syncRun :: CliEnv -> UTCTime -> RunRecord -> IO ()
-syncRun env observedAt r = trySync env observedAt r >>= \errored -> when errored exitFailure
+syncRun ::
+  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  CliEnv ->
+  UTCTime ->
+  RunRecord ->
+  Eff es ()
+syncRun env observedAt r =
+  trySyncOne env observedAt r >>= \errored -> when errored (throwError CommandFailed)
 
--- | Sync one run; report an exception on stderr and return whether one
---   happened. Asynchronous exceptions (Ctrl-C) still propagate.
-trySync :: CliEnv -> UTCTime -> RunRecord -> IO Bool
-trySync env observedAt r =
-  try @SomeException (syncOne env observedAt r) >>= \case
-    Right () -> pure False
-    Left e
-      | Just asyncErr <- fromException @SomeAsyncException e -> throwIO asyncErr
-      | otherwise -> do
-          TIO.hPutStrLn stderr ("run " <> shortId r <> ": sync failed: " <> Text.pack (show e))
-          pure True
+-- | Sync one run; report any failure on stderr and return whether one
+--   happened. Three shapes are caught, and all three read the same to an
+--   operator: a typed 'ShikiError' from the store or the cluster, a typed
+--   'SyncFailure' from this module, and an exception from the Kubernetes
+--   client. Asynchronous exceptions (Ctrl-C) still propagate, because
+--   'Exc.trySync' does not catch them.
+trySyncOne ::
+  (RunStore :> es, IOE :> es) =>
+  CliEnv ->
+  UTCTime ->
+  RunRecord ->
+  Eff es Bool
+trySyncOne env observedAt r = do
+  outcome <-
+    Exc.trySync
+      . runErrorNoCallStack @ShikiError
+      . runErrorNoCallStack @SyncFailure
+      $ syncOne env observedAt r
+  case outcome of
+    Right (Right (Right ())) -> pure False
+    Right (Right (Left syncFailure)) -> reportFailure (renderSyncFailure syncFailure)
+    Right (Left shikiError) -> reportFailure (shikiErrorMessage shikiError)
+    Left e -> reportFailure (Text.pack (Exc.displayException e))
+  where
+    reportFailure message = do
+      liftIO . TIO.hPutStrLn stderr $
+        "run " <> shortId r <> ": sync failed: " <> message
+      pure True
 
-syncOne :: CliEnv -> UTCTime -> RunRecord -> IO ()
+syncOne ::
+  (RunStore :> es, IOE :> es, Error SyncFailure :> es) =>
+  CliEnv ->
+  UTCTime ->
+  RunRecord ->
+  Eff es ()
 syncOne env observedAt r
   | r ^. #status `notElem` [Pending, Running] =
       report ("already " <> runStatusToText (r ^. #status))
   | otherwise = do
-      obs <- observeJob (env ^. #client) ns (r ^. #jobName)
-      now <- getCurrentTime
+      obs <- liftIO (observeJob (env ^. #client) ns (r ^. #jobName))
+      now <- liftIO getCurrentTime
       case decideSync now r obs of
         SkipFinished st -> report ("already " <> runStatusToText st)
         LeaveRunning -> report (renderStillRunning observedAt r)
         SkipRecentlySubmitted -> report "no job yet; submitted too recently to reconcile"
         FinalizeFinished phase endedAt -> do
           outcome <-
-            collectOutcome (env ^. #client) ns (r ^. #jobName) (r ^. #startedAt) endedAt phase
+            liftIO $
+              collectOutcome (env ^. #client) ns (r ^. #jobName) (r ^. #startedAt) endedAt phase
           write (completionForOutcome (r ^. #runId) (r ^. #startedAt) outcome)
         MarkLost -> do
           confirmSameCluster
@@ -151,10 +209,10 @@ syncOne env observedAt r
   where
     ns = Namespace (r ^. #namespace)
 
-    report msg = TIO.putStrLn ("run " <> shortId r <> ": " <> msg)
+    report msg = liftIO (TIO.putStrLn ("run " <> shortId r <> ": " <> msg))
 
     write completion = do
-      updated <- runStmt env completeUnfinishedRunStatement completion
+      updated <- completeUnfinishedRun completion
       report $
         if updated
           then
@@ -169,21 +227,11 @@ syncOne env observedAt r
       cfg <- case Aeson.fromJSON @ServiceConfig (r ^. #serviceConfig) of
         Aeson.Success c -> pure c
         Aeson.Error e ->
-          throwIO (userError ("cannot read the run's service config snapshot: " <> e))
+          throwError (ServiceConfigSnapshotUnreadable (Text.pack e))
       let dep = cfg ^. #detectFromDeployment
-      present <- deploymentExists (env ^. #client) ns (DeploymentName dep)
+      present <- liftIO (deploymentExists (env ^. #client) ns (DeploymentName dep))
       unless present $
-        throwIO
-          ( userError
-              ( Text.unpack
-                  ( "job not found, and neither is deployment "
-                      <> dep
-                      <> " in namespace "
-                      <> r ^. #namespace
-                      <> "; is the kube context pointed at the cluster this run used? left unchanged"
-                  )
-              )
-          )
+        throwError (DeploymentMissingToo dep (r ^. #namespace))
 
 -- | Explain an active Job whose row has no recent watcher heartbeat.
 renderStillRunning :: UTCTime -> RunRecord -> Text
@@ -196,8 +244,3 @@ renderStillRunning observedAt r
 
 shortId :: RunRecord -> Text
 shortId r = Text.take 8 (Text.pack (show (unRunId (r ^. #runId))))
-
-runStmt :: CliEnv -> Statement a b -> a -> IO b
-runStmt env stmt input =
-  Pool.use (env ^. #pool) (Session.statement input stmt)
-    >>= either (error . ("shiki: persistence error: " <>) . show) pure

@@ -43,7 +43,7 @@ import Shiki.Cli.ConfigInit
     runConfigInit,
   )
 import Shiki.Cli.ConfigShow (runConfigShow)
-import Shiki.Cli.Env (CliEnv, withCliEnv)
+import Shiki.Cli.Env (withKubeClient)
 import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Fzf.Selector.Service
   ( resolveService,
@@ -56,7 +56,9 @@ import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
 import Shiki.Cli.Version (appVersionWithGit)
-import Shiki.Persistence.Schema qualified
+import Shiki.Effect.RunStore (RunStore)
+import Shiki.Effect.RunStore.Postgres (withRunStore)
+import Shiki.Persistence.Schema (Schema)
 import Shiki.Prelude hiding (Options, argument)
 import Shiki.Service.Config (ServiceConfig)
 import Shiki.Service.Config.Dhall (loadServiceConfig)
@@ -115,22 +117,26 @@ dispatch opts = case opts ^. #command of
   Config (ConfigInit initOpts) ->
     liftIO (runConfigInit initOpts)
   Run runOpts ->
-    withDbEnv opts $ \_ env ->
-      runRun env runOpts
+    withStore opts $ \_schema ->
+      withKubeClient (\env -> runRun env runOpts)
   Runs runsOpts ->
-    runRuns (\k -> withDbEnv opts (\_ env -> k env)) runsOpts
+    runRuns (\action -> withStore opts (const action)) runsOpts
   Agent agentOpts ->
-    withDbEnv opts $ \schema env ->
-      runAgent env schema agentOpts
+    withStore opts (\schema -> runAgent schema agentOpts)
 
-withDbEnv ::
+-- | Resolve where the runs live, open a pool for it, apply migrations, and
+--   run the action with 'RunStore' interpreted. Nothing here touches the
+--   cluster: a command only loads the kubeconfig if it asks 'withKubeClient'
+--   for a client, which is why @runs list@ works with @KUBECONFIG@ pointed at
+--   nothing.
+withStore ::
   Options ->
-  (Shiki.Persistence.Schema.Schema -> CliEnv -> IO a) ->
+  (Schema -> Eff (RunStore : CliEff) a) ->
   Eff CliEff a
-withDbEnv opts k = do
+withStore opts k = do
   cs <- resolveConnectionString (opts ^. #dbConnStr) (opts ^. #envName)
   schema <- resolveSchema (opts ^. #dbSchema)
-  withCliEnv cs schema (k schema)
+  withRunStore cs schema (k schema)
 
 -- | Show the named config, or pick one with fzf when no name is given.
 serviceShowHandler :: Maybe Text -> Eff CliEff ()

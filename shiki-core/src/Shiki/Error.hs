@@ -15,6 +15,7 @@ module Shiki.Error
     StoreError (..),
     KubeError (..),
     renderShikiError,
+    shikiErrorMessage,
     renderAnalyzerError,
     collapseWhitespace,
     renderConnectionError,
@@ -76,13 +77,17 @@ data KubeError
 
 -- | The one line an operator sees on stderr, @shiki: @ prefix included.
 renderShikiError :: ShikiError -> Text
-renderShikiError = ("shiki: " <>) . body
-  where
-    body = \case
-      ShikiConfigError e -> renderConfigError e
-      ShikiStoreError e -> renderStoreError e
-      ShikiKubeError e -> renderKubeError e
-      ShikiAnalyzerError e -> renderAnalyzerError e
+renderShikiError = ("shiki: " <>) . shikiErrorMessage
+
+-- | The same description without the @shiki: @ prefix, for the few places
+--   that embed a failure inside a sentence of their own (the heartbeat's
+--   @could not record run heartbeat: …@ warning).
+shikiErrorMessage :: ShikiError -> Text
+shikiErrorMessage = \case
+  ShikiConfigError e -> renderConfigError e
+  ShikiStoreError e -> renderStoreError e
+  ShikiKubeError e -> renderKubeError e
+  ShikiAnalyzerError e -> renderAnalyzerError e
 
 renderConfigError :: ConfigError -> Text
 renderConfigError = \case
@@ -144,10 +149,32 @@ renderConnectionError = collapseWhitespace . reason
       Errors.CompatibilityConnectionError t -> t
       Errors.OtherConnectionError t -> t
 
--- | A failed session, rendered with hasql's own detail formatting, collapsed
---   onto one line for the same reason as 'renderConnectionError'.
+-- | A failed session, rendered for an operator rather than for a log.
+--
+--   hasql's own 'Errors.toDetailedText' repeats the whole SQL template and
+--   every parameter, which buries the one sentence that matters. When the
+--   failure came from the server, this shows PostgreSQL's own message and its
+--   SQLSTATE — @relation \"runs\" does not exist (SQLSTATE 42P01)@ — and
+--   falls back to hasql's text for the shapes that carry no server error.
 renderSessionError :: Errors.SessionError -> Text
-renderSessionError = collapseWhitespace . Errors.toDetailedText
+renderSessionError = \case
+  Errors.StatementSessionError _ _ _ _ _ statementError ->
+    renderStatementError statementError
+  Errors.ScriptSessionError _ serverError -> renderServerError serverError
+  other -> collapseWhitespace (Errors.toDetailedText other)
+
+renderStatementError :: Errors.StatementError -> Text
+renderStatementError = \case
+  Errors.ServerStatementError serverError -> renderServerError serverError
+  other -> collapseWhitespace (Errors.toDetailedText other)
+
+renderServerError :: Errors.ServerError -> Text
+renderServerError (Errors.ServerError code message detail _hint _position) =
+  collapseWhitespace message
+    <> foldMap (\d -> ": " <> collapseWhitespace d) detail
+    <> " (SQLSTATE "
+    <> code
+    <> ")"
 
 -- | Collapse every run of whitespace, newlines included, into one space.
 --   Library messages that are laid out for a terminal (libpq's connection

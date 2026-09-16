@@ -6,7 +6,6 @@ module Shiki.K8s.ClassifyJobSpec (tests) where
 import Data.Time qualified as Time
 import Kubernetes.OpenAPI qualified as K8s
 import Shiki.K8s.Runner (JobObservation (..), JobPhase (..), classifyJob)
-import Shiki.Prelude
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
 

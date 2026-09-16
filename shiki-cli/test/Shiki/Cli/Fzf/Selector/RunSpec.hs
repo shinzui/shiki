@@ -87,8 +87,7 @@ tests =
             Just "shiki: no run matches the picker query",
             Nothing,
             Just "shiki: no run id given and fzf is not available",
-            Just "shiki: fzf: boom",
-            Just "shiki: persistence error: down"
+            Just "shiki: fzf: boom"
           ]
           ( map
               renderRunLookupFailure
@@ -98,8 +97,7 @@ tests =
                 RunPickerNoMatch,
                 RunPickerCancelled,
                 RunFzfUnavailable,
-                RunPickerFailed "boom",
-                RunLookupPersistenceError "down"
+                RunPickerFailed "boom"
               ]
           ),
       testCase "pickerRunTarget needs a usable fzf" $ do

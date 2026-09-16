@@ -11,18 +11,22 @@ import Data.Text qualified as Text
 import Data.Time (getCurrentTime)
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUIDv4
+import Effectful (runEff)
+import Effectful.Error.Static (runErrorNoCallStack)
 import EphemeralPg qualified as EpPg
 import Hasql.Pool (Pool)
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement (Statement)
-import Shiki.Cli.Agent.Context (gatherAgentContext)
+import Shiki.Cli.Agent.Context (AgentContext, gatherAgentContext)
+import Shiki.Effect.RunStore.Postgres (runRunStorePostgres)
+import Shiki.Error (ShikiError)
 import Shiki.Persistence.Connection
   ( ConnectionString (..),
     acquirePool,
     releasePool,
   )
-import Shiki.Persistence.Migration (runMigrations)
+import Shiki.Persistence.Migration (renderMigrationFailure, runMigrations)
 import Shiki.Persistence.Run
   ( NewRun (..),
     RunCompletion (..),
@@ -87,7 +91,7 @@ tests =
 
             ctx <-
               withCurrentDirectory tmp $
-                gatherAgentContext pool defaultSchema
+                gatherContext pool defaultSchema
 
             case ctx ^. #services of
               [svc] -> do
@@ -110,7 +114,7 @@ tests =
           withSystemTempDirectory "shiki-context-empty" $ \tmp -> do
             ctx <-
               withCurrentDirectory tmp $
-                gatherAgentContext pool defaultSchema
+                gatherContext pool defaultSchema
             assertEqual "no services" [] (ctx ^. #services)
             assertEqual "no errors" [] (ctx ^. #serviceLoadErrors)
             assertBool "database observation time is present" (isJust (ctx ^. #observedAt))
@@ -193,8 +197,24 @@ withSchemaPool action = do
     bracket
       (acquirePool (ConnectionString (EpPg.connectionString db)) schema)
       releasePool
-      (\pool -> runMigrations (ConnectionString (EpPg.connectionString db)) schema *> action pool)
+      ( \pool ->
+          migrateOrFail (ConnectionString (EpPg.connectionString db)) schema *> action pool
+      )
   case result of
     Right () -> pure ()
     Left err ->
       fail ("ephemeral-pg failed to start: " <> show (EpPg.renderStartError err))
+
+-- | 'gatherAgentContext' through the PostgreSQL 'RunStore' interpreter. The
+--   context is best-effort, so a store failure lands on the record rather
+--   than as a 'Left'; a 'Left' here would be a bug in that promise.
+gatherContext :: Pool -> Schema -> IO AgentContext
+gatherContext pool schema =
+  runEff (runErrorNoCallStack @ShikiError (runRunStorePostgres pool (gatherAgentContext schema)))
+    >>= either (fail . show) pure
+
+-- | 'runMigrations' where the test expects success.
+migrateOrFail :: ConnectionString -> Schema -> IO ()
+migrateOrFail cs schema =
+  runMigrations cs schema
+    >>= either (fail . Text.unpack . renderMigrationFailure) pure

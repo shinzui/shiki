@@ -14,14 +14,14 @@ module Shiki.Cli.Run
   )
 where
 
-import Control.Exception (SomeException, try)
 import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Data.Time.Clock (diffUTCTime)
-import Hasql.Pool qualified as Pool
-import Hasql.Session qualified as Session
-import Hasql.Statement (Statement)
+import Effectful (Eff, IOE, type (:>))
+import Effectful.Concurrent (Concurrent)
+import Effectful.Error.Static (Error, throwError)
+import Effectful.Exception qualified as Exc
 import Options.Applicative
   ( Parser,
     argument,
@@ -38,7 +38,16 @@ import Options.Applicative
     value,
   )
 import Shiki.Cli.Env (CliEnv (..))
+import Shiki.Cli.Error (CliError (..))
 import Shiki.Cli.Heartbeat (withHeartbeat)
+import Shiki.Effect.RunStore
+  ( RunStore,
+    completeRun,
+    insertRun,
+    markRunRunning,
+    touchRunWatched,
+  )
+import Shiki.Error (ShikiError)
 import Shiki.K8s.Introspection
   ( DeploymentName (..),
     DeploymentSnapshot,
@@ -56,17 +65,12 @@ import Shiki.Persistence.Run
   ( NewRun (..),
     RunCompletion (..),
     RunId (..),
-    completeRunStatement,
-    insertRunStatement,
-    markRunRunningStatement,
     newRunId,
-    touchRunWatchedStatement,
   )
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Prelude hiding (Strict, argument)
 import Shiki.Service.Config (ServiceConfig, ServiceName (..))
 import Shiki.Service.Config.Dhall (loadServiceConfig)
-import System.Exit (exitFailure)
 
 data RunOptions = RunOptions
   { service :: !Text,
@@ -111,26 +115,39 @@ runOptionsParser =
 --   @running@, submit the Job, then either exit (no-wait) or wait and
 --   finalize. Any exception is captured into a @failed@ row before
 --   re-exiting non-zero.
-runRun :: CliEnv -> RunOptions -> IO ()
+--   Every store write goes through the 'RunStore' effect; the cluster is
+--   still reached through the 'CliEnv' client until Milestone 4.
+runRun ::
+  ( RunStore :> es,
+    Concurrent :> es,
+    IOE :> es,
+    Error ShikiError :> es,
+    Error CliError :> es
+  ) =>
+  CliEnv ->
+  RunOptions ->
+  Eff es ()
 runRun env opts = do
   cfg <-
-    loadServiceConfig
-      (opts ^. #configDir <> "/" <> Text.unpack (opts ^. #service) <> ".dhall")
+    liftIO $
+      loadServiceConfig
+        (opts ^. #configDir <> "/" <> Text.unpack (opts ^. #service) <> ".dhall")
 
   let ns =
         Namespace
           (fromMaybe (cfg ^. #defaultNamespace) (opts ^. #overrideNs))
 
   snap <-
-    inspectDeployment
-      (env ^. #client)
-      ns
-      (DeploymentName (cfg ^. #detectFromDeployment))
-      (cfg ^. #containerName)
+    liftIO $
+      inspectDeployment
+        (env ^. #client)
+        ns
+        (DeploymentName (cfg ^. #detectFromDeployment))
+        (cfg ^. #containerName)
 
-  rid <- newRunId
-  startedAt <- getCurrentTime
-  jobNm <- generateJobName (cfg ^. #name) startedAt
+  rid <- liftIO newRunId
+  startedAt <- liftIO getCurrentTime
+  jobNm <- liftIO (generateJobName (cfg ^. #name) startedAt)
 
   let inputs =
         JobInputs
@@ -150,53 +167,57 @@ runRun env opts = do
             serviceConfig = toJSON cfg
           }
 
-  runSessionUnit env insertRunStatement newRow
-  runSessionUnit env markRunRunningStatement rid
+  insertRun newRow
+  markRunRunning rid
 
   if opts ^. #noWait
     then noWaitPath env rid startedAt cfg snap inputs
     else waitPath env rid startedAt cfg snap inputs
 
 noWaitPath ::
+  (RunStore :> es, IOE :> es, Error CliError :> es) =>
   CliEnv ->
   RunId ->
   UTCTime ->
   ServiceConfig ->
   DeploymentSnapshot ->
   JobInputs ->
-  IO ()
-noWaitPath env rid startedAt cfg snap inputs = do
-  result <- try (submitJob (env ^. #client) cfg snap inputs)
-  case result of
-    Left (e :: SomeException) -> finalizeFailed env rid startedAt e
+  Eff es ()
+noWaitPath env rid startedAt cfg snap inputs =
+  Exc.trySync (liftIO (submitJob (env ^. #client) cfg snap inputs)) >>= \case
+    Left e -> finalizeFailed rid startedAt (Text.pack (Exc.displayException e))
     Right () ->
-      TIO.putStrLn
-        ( "submitted job "
-            <> (inputs ^. #jobName)
-            <> " (run "
-            <> showRunId rid
-            <> ")"
-        )
+      liftIO . TIO.putStrLn $
+        "submitted job "
+          <> (inputs ^. #jobName)
+          <> " (run "
+          <> showRunId rid
+          <> ")"
 
 waitPath ::
+  ( RunStore :> es,
+    Concurrent :> es,
+    IOE :> es,
+    Error ShikiError :> es,
+    Error CliError :> es
+  ) =>
   CliEnv ->
   RunId ->
   UTCTime ->
   ServiceConfig ->
   DeploymentSnapshot ->
   JobInputs ->
-  IO ()
-waitPath env rid startedAt cfg snap inputs = do
-  result <-
-    try
-      ( withHeartbeat
-          heartbeatInterval
-          (runSessionUnit env touchRunWatchedStatement rid)
-          (runJob (env ^. #client) cfg snap inputs 5 345600)
-      )
-  case result of
-    Left (e :: SomeException) -> finalizeFailed env rid startedAt e
-    Right outcome -> finalizeOutcome env rid startedAt outcome
+  Eff es ()
+waitPath env rid startedAt cfg snap inputs =
+  Exc.trySync
+    ( withHeartbeat
+        heartbeatInterval
+        (touchRunWatched rid)
+        (liftIO (runJob (env ^. #client) cfg snap inputs 5 345600))
+    )
+    >>= \case
+      Left e -> finalizeFailed rid startedAt (Text.pack (Exc.displayException e))
+      Right outcome -> finalizeOutcome rid startedAt outcome
 
 -- One write a minute keeps watcher liveness visible without coupling it to
 -- the five-second Kubernetes polling interval. The display allows five
@@ -204,13 +225,19 @@ waitPath env rid startedAt cfg snap inputs = do
 heartbeatInterval :: Int
 heartbeatInterval = 60_000_000
 
-finalizeFailed :: CliEnv -> RunId -> UTCTime -> SomeException -> IO ()
-finalizeFailed env rid startedAt e = do
-  endedAt <- getCurrentTime
+-- | Record the run as failed, say so on stdout as before, and end the command
+--   with 'CommandFailed' — the message is already printed, so the top-level
+--   handler prints nothing more and exits 1.
+finalizeFailed ::
+  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  RunId ->
+  UTCTime ->
+  Text ->
+  Eff es ()
+finalizeFailed rid startedAt message = do
+  endedAt <- liftIO getCurrentTime
   let durationMs = elapsedMs startedAt endedAt
-  runSessionUnit
-    env
-    completeRunStatement
+  completeRun
     RunCompletion
       { runId = rid,
         status = Failed,
@@ -218,30 +245,33 @@ finalizeFailed env rid startedAt e = do
         endedAt = endedAt,
         durationMs = durationMs,
         logTail = Nothing,
-        errorMessage = Just (Text.pack (show e)),
+        errorMessage = Just message,
         errorSummary = Nothing,
         errorSummarySource = "heuristic"
       }
-  TIO.putStrLn
-    ("FAILED run " <> showRunId rid <> ": " <> Text.pack (show e))
-  exitFailure
+  liftIO (TIO.putStrLn ("FAILED run " <> showRunId rid <> ": " <> message))
+  throwError CommandFailed
 
-finalizeOutcome :: CliEnv -> RunId -> UTCTime -> JobOutcome -> IO ()
-finalizeOutcome env rid startedAt outcome = do
+finalizeOutcome ::
+  (RunStore :> es, IOE :> es, Error CliError :> es) =>
+  RunId ->
+  UTCTime ->
+  JobOutcome ->
+  Eff es ()
+finalizeOutcome rid startedAt outcome = do
   let completion = completionForOutcome rid startedAt outcome
       finalStatus = completion ^. #status
-  runSessionUnit env completeRunStatement completion
-  TIO.putStrLn
-    ( "run "
-        <> showRunId rid
-        <> " "
-        <> Text.pack (show finalStatus)
-        <> " job="
-        <> outcome ^. #jobName
-    )
+  completeRun completion
+  liftIO . TIO.putStrLn $
+    "run "
+      <> showRunId rid
+      <> " "
+      <> Text.pack (show finalStatus)
+      <> " job="
+      <> outcome ^. #jobName
   case finalStatus of
     Succeeded -> pure ()
-    _ -> exitFailure
+    _ -> throwError CommandFailed
 
 -- | The row update for a Job that reached a terminal phase. Shared with
 --   @shiki runs sync@ so a reconciled run is recorded exactly as a followed
@@ -269,11 +299,6 @@ completionForOutcome rid startedAt outcome =
 elapsedMs :: UTCTime -> UTCTime -> Int
 elapsedMs startedAt endedAt =
   round ((realToFrac (diffUTCTime endedAt startedAt) :: Double) * 1000)
-
-runSessionUnit :: CliEnv -> Statement a () -> a -> IO ()
-runSessionUnit env stmt input =
-  Pool.use (env ^. #pool) (Session.statement input stmt)
-    >>= either (error . ("shiki: persistence error: " <>) . show) pure
 
 showRunId :: RunId -> Text
 showRunId (RunId u) = Text.pack (show u)

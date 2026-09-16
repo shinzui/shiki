@@ -54,6 +54,8 @@ library
     Shiki.Analysis.Backend
     Shiki.Analysis.Baikai
     Shiki.Analysis.Heuristic
+    Shiki.Effect.RunStore
+    Shiki.Effect.RunStore.Postgres
     Shiki.Error
     Shiki.K8s.Client
     Shiki.K8s.ExecCredential
@@ -133,6 +135,7 @@ test-suite shiki-core-test
   other-modules:
     Shiki.Analysis.BackendSpec
     Shiki.Analysis.HeuristicSpec
+    Shiki.Effect.RunStoreSpec
     Shiki.EffectfulContractSpec
     Shiki.K8s.ClassifyJobSpec
     Shiki.K8s.CredentialExpirySpec
