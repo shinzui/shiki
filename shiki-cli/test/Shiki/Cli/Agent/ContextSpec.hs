@@ -8,6 +8,7 @@ import Data.Aeson qualified as Aeson
 import Data.Generics.Labels ()
 import Data.List qualified as List
 import Data.Maybe (isJust)
+import Data.Monoid qualified as EphemeralMonoid
 import Data.Text qualified as Text
 import Data.Time (getCurrentTime)
 import Data.UUID qualified as UUID
@@ -44,8 +45,10 @@ import System.Directory
   ( createDirectory,
     withCurrentDirectory,
   )
+import System.Directory qualified as EphemeralDirectory
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
+import System.Posix.User qualified as EphemeralUser
 import Test.Tasty (DependencyType (..), TestTree, dependentTestGroup)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
@@ -161,7 +164,7 @@ freshSchema = do
 withSchemaPool :: (Pool -> IO ()) -> IO ()
 withSchemaPool action = do
   schema <- freshSchema
-  result <- EpPg.with $ \db ->
+  result <- withEphemeralPg $ \db ->
     bracket
       (acquirePool (ConnectionString (EpPg.connectionString db)) schema)
       releasePool
@@ -186,3 +189,13 @@ migrateOrFail :: ConnectionString -> Schema -> IO ()
 migrateOrFail cs schema =
   runMigrations cs schema
     >>= either (fail . Text.unpack . renderMigrationFailure) pure
+
+-- | Stable per-user root lets the next invocation reap abandoned clusters.
+-- See mori://shinzui/ephemeral-pg/docs/guides (temporary-roots-and-stale-cleanup.md; artifact URI pending).
+withEphemeralPg :: (EpPg.Database -> IO a) -> IO (Either EpPg.StartError a)
+withEphemeralPg action = do
+  uid <- EphemeralUser.getEffectiveUserID
+  let root = "/tmp/ephpg-shiki-" <> show uid
+  EphemeralDirectory.createDirectoryIfMissing True root
+  let config = EpPg.defaultConfig {EpPg.temporaryRoot = EphemeralMonoid.Last (Just root)}
+  EpPg.withConfig config action

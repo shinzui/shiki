@@ -5,6 +5,7 @@ import Data.Aeson qualified as Aeson
 import Data.Functor.Contravariant ((>$<))
 import Data.Generics.Labels ()
 import Data.Int (Int32)
+import Data.Monoid qualified as EphemeralMonoid
 import EphemeralPg qualified as EpPg
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
@@ -32,6 +33,8 @@ import Shiki.Persistence.RunStatus (RunStatus (Succeeded))
 import Shiki.Persistence.Schema (schemaText)
 import Shiki.Persistence.TestPg (freshSchema, migrateOrFail, withSchemaPool)
 import Shiki.Prelude
+import System.Directory qualified as EphemeralDirectory
+import System.Posix.User qualified as EphemeralUser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
@@ -41,7 +44,7 @@ tests =
     "Shiki.Persistence (last_watched_at)"
     [ testCase "migration creates last_watched_at in the configured schema" $ do
         schema <- freshSchema
-        result <- EpPg.with $ \db -> do
+        result <- withEphemeralPg $ \db -> do
           let cs = ConnectionString (EpPg.connectionString db)
           bracket (acquirePool cs schema) releasePool $ \pool -> do
             migrateOrFail cs schema
@@ -129,3 +132,13 @@ insertOneRun pool = do
 runStatement :: Pool.Pool -> Statement a b -> a -> IO b
 runStatement pool statement input =
   Pool.use pool (Session.statement input statement) >>= either (fail . show) pure
+
+-- | Stable per-user root lets the next invocation reap abandoned clusters.
+-- See mori://shinzui/ephemeral-pg/docs/guides (temporary-roots-and-stale-cleanup.md; artifact URI pending).
+withEphemeralPg :: (EpPg.Database -> IO a) -> IO (Either EpPg.StartError a)
+withEphemeralPg action = do
+  uid <- EphemeralUser.getEffectiveUserID
+  let root = "/tmp/ephpg-shiki-" <> show uid
+  EphemeralDirectory.createDirectoryIfMissing True root
+  let config = EpPg.defaultConfig {EpPg.temporaryRoot = EphemeralMonoid.Last (Just root)}
+  EpPg.withConfig config action

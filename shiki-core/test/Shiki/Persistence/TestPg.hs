@@ -10,6 +10,7 @@ module Shiki.Persistence.TestPg
 where
 
 import Control.Exception (bracket)
+import Data.Monoid qualified as EphemeralMonoid
 import Data.Text qualified as Text
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUIDv4
@@ -22,6 +23,8 @@ import Shiki.Persistence.Connection
   )
 import Shiki.Persistence.Migration (renderMigrationFailure, runMigrations)
 import Shiki.Persistence.Schema (Schema, mkSchema)
+import System.Directory qualified as EphemeralDirectory
+import System.Posix.User qualified as EphemeralUser
 
 -- | A fresh, randomly-named schema each call. Useful for test isolation.
 --   The name is always prefixed with @shiki_test_@ so a leftover schema
@@ -40,7 +43,7 @@ freshSchema = do
 withSchemaPool :: (Pool.Pool -> IO ()) -> IO ()
 withSchemaPool action = do
   schema <- freshSchema
-  result <- EpPg.with $ \db ->
+  result <- withEphemeralPg $ \db ->
     bracket
       (acquirePool (ConnectionString (EpPg.connectionString db)) schema)
       releasePool
@@ -56,3 +59,13 @@ migrateOrFail :: ConnectionString -> Schema -> IO ()
 migrateOrFail cs schema =
   runMigrations cs schema
     >>= either (fail . Text.unpack . renderMigrationFailure) pure
+
+-- | Stable per-user root lets the next invocation reap abandoned clusters.
+-- See mori://shinzui/ephemeral-pg/docs/guides (temporary-roots-and-stale-cleanup.md; artifact URI pending).
+withEphemeralPg :: (EpPg.Database -> IO a) -> IO (Either EpPg.StartError a)
+withEphemeralPg action = do
+  uid <- EphemeralUser.getEffectiveUserID
+  let root = "/tmp/ephpg-shiki-" <> show uid
+  EphemeralDirectory.createDirectoryIfMissing True root
+  let config = EpPg.defaultConfig {EpPg.temporaryRoot = EphemeralMonoid.Last (Just root)}
+  EpPg.withConfig config action

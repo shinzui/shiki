@@ -3,6 +3,7 @@ module Shiki.Persistence.SchemaIsolationSpec (tests) where
 import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
 import Data.Int (Int32)
+import Data.Monoid qualified as EphemeralMonoid
 import EphemeralPg qualified as EpPg
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
@@ -22,6 +23,8 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.Schema (Schema, mkSchema, schemaText)
 import Shiki.Persistence.TestPg (migrateOrFail)
 import Shiki.Prelude
+import System.Directory qualified as EphemeralDirectory
+import System.Posix.User qualified as EphemeralUser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
 
@@ -32,7 +35,7 @@ tests =
     [ testCase "two schemas in one database stay separate" $ do
         Right alpha <- pure (mkSchema "alpha")
         Right beta <- pure (mkSchema "beta")
-        result <- EpPg.with $ \db -> do
+        result <- withEphemeralPg $ \db -> do
           let cs = ConnectionString (EpPg.connectionString db)
           runOnePool cs alpha
           runOnePool cs beta
@@ -124,3 +127,13 @@ existsRunsInPublic =
     \WHERE table_schema = 'public' AND table_name = 'runs'"
     Encoders.noParams
     (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int4)))
+
+-- | Stable per-user root lets the next invocation reap abandoned clusters.
+-- See mori://shinzui/ephemeral-pg/docs/guides (temporary-roots-and-stale-cleanup.md; artifact URI pending).
+withEphemeralPg :: (EpPg.Database -> IO a) -> IO (Either EpPg.StartError a)
+withEphemeralPg action = do
+  uid <- EphemeralUser.getEffectiveUserID
+  let root = "/tmp/ephpg-shiki-" <> show uid
+  EphemeralDirectory.createDirectoryIfMissing True root
+  let config = EpPg.defaultConfig {EpPg.temporaryRoot = EphemeralMonoid.Last (Just root)}
+  EpPg.withConfig config action

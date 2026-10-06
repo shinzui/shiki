@@ -3,6 +3,7 @@ module Shiki.Persistence.MigrationSpec (tests) where
 import Control.Exception (bracket)
 import Data.Functor.Contravariant ((>$<))
 import Data.Int (Int32, Int64)
+import Data.Monoid qualified as EphemeralMonoid
 import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
@@ -35,7 +36,9 @@ import Shiki.Persistence.Migration
   )
 import Shiki.Persistence.Schema (Schema, mkSchema, quoteSchema, schemaText)
 import Shiki.Prelude
+import System.Directory qualified as EphemeralDirectory
 import System.FilePath (dropExtension, (</>))
+import System.Posix.User qualified as EphemeralUser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit
   ( assertBool,
@@ -218,7 +221,7 @@ targetMigrationCount pool = do
 
 withEphemeralDatabase :: (ConnectionString -> IO ()) -> IO ()
 withEphemeralDatabase action = do
-  result <- EpPg.with (action . ConnectionString . EpPg.connectionString)
+  result <- withEphemeralPg (action . ConnectionString . EpPg.connectionString)
   case result of
     Right () -> pure ()
     Left startError ->
@@ -332,3 +335,13 @@ targetMigrationCountStatement =
     "SELECT COUNT(*)::bigint FROM migrations WHERE component = 'shiki'"
     Encoders.noParams
     (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int8)))
+
+-- | Stable per-user root lets the next invocation reap abandoned clusters.
+-- See mori://shinzui/ephemeral-pg/docs/guides (temporary-roots-and-stale-cleanup.md; artifact URI pending).
+withEphemeralPg :: (EpPg.Database -> IO a) -> IO (Either EpPg.StartError a)
+withEphemeralPg action = do
+  uid <- EphemeralUser.getEffectiveUserID
+  let root = "/tmp/ephpg-shiki-" <> show uid
+  EphemeralDirectory.createDirectoryIfMissing True root
+  let config = EpPg.defaultConfig {EpPg.temporaryRoot = EphemeralMonoid.Last (Just root)}
+  EpPg.withConfig config action

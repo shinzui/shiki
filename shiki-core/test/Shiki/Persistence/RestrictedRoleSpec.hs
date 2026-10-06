@@ -2,6 +2,7 @@ module Shiki.Persistence.RestrictedRoleSpec (tests) where
 
 import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
+import Data.Monoid qualified as EphemeralMonoid
 import EphemeralPg qualified as EpPg
 import Hasql.Pool qualified as Pool
 import Hasql.Session qualified as Session
@@ -20,6 +21,8 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.Schema (Schema, quoteSchema)
 import Shiki.Persistence.TestPg (freshSchema, migrateOrFail)
 import Shiki.Prelude
+import System.Directory qualified as EphemeralDirectory
+import System.Posix.User qualified as EphemeralUser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase)
 
@@ -29,7 +32,7 @@ tests =
     "Shiki.Persistence.Migration (restricted role)"
     [ testCase "a role with only DML grants can use a bootstrapped schema" $ do
         schema <- freshSchema
-        result <- EpPg.with $ \db -> do
+        result <- withEphemeralPg $ \db -> do
           let owner = ConnectionString (EpPg.connectionString db)
               -- libpq keeps the last occurrence of a keyword, so this
               -- overrides the ephemeral superuser.
@@ -95,3 +98,13 @@ insertOneRun pool = do
   Pool.use pool (Session.statement r insertRunStatement)
     >>= either (fail . show) pure
   pure rid
+
+-- | Stable per-user root lets the next invocation reap abandoned clusters.
+-- See mori://shinzui/ephemeral-pg/docs/guides (temporary-roots-and-stale-cleanup.md; artifact URI pending).
+withEphemeralPg :: (EpPg.Database -> IO a) -> IO (Either EpPg.StartError a)
+withEphemeralPg action = do
+  uid <- EphemeralUser.getEffectiveUserID
+  let root = "/tmp/ephpg-shiki-" <> show uid
+  EphemeralDirectory.createDirectoryIfMissing True root
+  let config = EpPg.defaultConfig {EpPg.temporaryRoot = EphemeralMonoid.Last (Just root)}
+  EpPg.withConfig config action

@@ -2,6 +2,7 @@ module Shiki.Cli.EnvRoutingSpec (tests) where
 
 import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
+import Data.Monoid qualified as EphemeralMonoid
 import Data.Text qualified as Text
 import Effectful (Eff, IOE, runEff)
 import Effectful.Error.Static (Error, runErrorNoCallStack)
@@ -27,8 +28,10 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.Schema (Schema, defaultSchema)
 import Shiki.Prelude
 import System.Directory (getCurrentDirectory, setCurrentDirectory)
+import System.Directory qualified as EphemeralDirectory
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.IO.Temp (withSystemTempDirectory)
+import System.Posix.User qualified as EphemeralUser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
 
@@ -110,8 +113,8 @@ resolveOrFail mDb mEnv =
 
 withTwoDatabases :: (ConnectionString -> ConnectionString -> IO ()) -> IO ()
 withTwoDatabases action = do
-  result <- EpPg.with $ \staging ->
-    EpPg.with $ \prod ->
+  result <- withEphemeralPg $ \staging ->
+    withEphemeralPg $ \prod ->
       action
         (ConnectionString (EpPg.connectionString staging))
         (ConnectionString (EpPg.connectionString prod))
@@ -188,3 +191,13 @@ migrateOrFail :: ConnectionString -> Schema -> IO ()
 migrateOrFail cs schema =
   runMigrations cs schema
     >>= either (fail . Text.unpack . renderMigrationFailure) pure
+
+-- | Stable per-user root lets the next invocation reap abandoned clusters.
+-- See mori://shinzui/ephemeral-pg/docs/guides (temporary-roots-and-stale-cleanup.md; artifact URI pending).
+withEphemeralPg :: (EpPg.Database -> IO a) -> IO (Either EpPg.StartError a)
+withEphemeralPg action = do
+  uid <- EphemeralUser.getEffectiveUserID
+  let root = "/tmp/ephpg-shiki-" <> show uid
+  EphemeralDirectory.createDirectoryIfMissing True root
+  let config = EpPg.defaultConfig {EpPg.temporaryRoot = EphemeralMonoid.Last (Just root)}
+  EpPg.withConfig config action
