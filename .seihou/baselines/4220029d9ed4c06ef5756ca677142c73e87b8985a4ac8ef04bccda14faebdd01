@@ -15,3 +15,4 @@ db/
 shiki.dhall
 .envrc.local
 .mina/
+.codex/
