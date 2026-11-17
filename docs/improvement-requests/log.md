@@ -1,5 +1,8 @@
 # Bundle Update Log
 
+## 2026-11-17
+* **Addition**: IR-2 requests binding each environment to its Kubernetes context and refusing a mismatched run.
+
 ## 2026-10-02
 
 * **Addition**: Created the improvement-request bundle, governed by okf-profiles v0.19.0
