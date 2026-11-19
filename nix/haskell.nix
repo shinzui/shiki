@@ -188,5 +188,7 @@
       };
       devShells.default = primaryShell;
       devShells."ghc9124" = primaryShell;
+      # A secondary compiler remains a bare shell unless separately retained.
+      devShells."ghc9141" = mkBareShell "ghc9141";
     };
 }
