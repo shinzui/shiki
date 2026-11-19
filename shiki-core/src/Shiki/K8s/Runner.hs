@@ -40,7 +40,7 @@ import Shiki.Analysis.Heuristic (summarizeFailure)
 import Shiki.K8s.Client (ClientEnv (..), dispatchK8s)
 import Shiki.K8s.Introspection (DeploymentSnapshot, Namespace (..))
 import Shiki.K8s.JobBuilder (JobInputs (..), buildJob)
-import Shiki.K8s.Logs (FetchedLogs, fetchJobPodLogs)
+import Shiki.K8s.Logs (FetchedLogs, fetchJobPodLogs, renderLogFetchError)
 import Shiki.Prelude
 import Shiki.Service.Config (ServiceConfig)
 
@@ -56,7 +56,9 @@ data JobPhase
 -- | Cluster-side observations the persistence layer needs to finalize
 --   a run row: which job ran, where, how it ended, when it ran, and a
 --   truncated log tail (200 lines, capped at 64 KiB) suitable for the
---   @runs.log_tail@ column defined in EP-2.
+--   @runs.log_tail@ column defined in EP-2. 'logFetchError' says why
+--   'logTail' is 'Nothing' when the log could not be read, so the caller can
+--   tell the operator instead of recording the run silently without it.
 data JobOutcome = JobOutcome
   { jobName :: !Text,
     namespace :: !Text,
@@ -65,6 +67,7 @@ data JobOutcome = JobOutcome
     startedAt :: !UTCTime,
     endedAt :: !UTCTime,
     logTail :: !(Maybe Text),
+    logFetchError :: !(Maybe Text),
     errorSummary :: !(Maybe Text),
     errorSummarySource :: !Text
   }
@@ -137,6 +140,7 @@ collectOutcome ::
 collectOutcome env ns jobNm startedAt endedAt phase = do
   logsE <- fetchJobPodLogs env ns jobNm
   let logTailNow = either (const Nothing) (Just . (^. #persistedTail)) logsE
+      logFetchErrorNow = either (Just . renderLogFetchError) (const Nothing) logsE
   (errSummary, errSource) <- summarizeOnFailure phase logsE
   pure
     JobOutcome
@@ -147,6 +151,7 @@ collectOutcome env ns jobNm startedAt endedAt phase = do
         startedAt = startedAt,
         endedAt = endedAt,
         logTail = logTailNow,
+        logFetchError = logFetchErrorNow,
         errorSummary = errSummary,
         errorSummarySource = errSource
       }

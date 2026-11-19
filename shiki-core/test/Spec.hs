@@ -8,6 +8,7 @@ import Shiki.K8s.ClassifyJobSpec qualified as ClassifyJobSpec
 import Shiki.K8s.CredentialExpirySpec qualified as CredentialExpirySpec
 import Shiki.K8s.ExecCredentialSpec qualified as ExecCredentialSpec
 import Shiki.K8s.JobBuilderSpec qualified as JobBuilderSpec
+import Shiki.K8s.LogsSpec qualified as LogsSpec
 import Shiki.Persistence.ErrorSummaryColumnSpec qualified as ErrorSummaryColumnSpec
 import Shiki.Persistence.LastWatchedAtSpec qualified as LastWatchedAtSpec
 import Shiki.Persistence.MigrationSpec qualified as MigrationSpec
@@ -31,6 +32,7 @@ main =
         RunSpec.tests,
         RunListSpec.tests,
         JobBuilderSpec.tests,
+        LogsSpec.tests,
         ExecCredentialSpec.tests,
         CredentialExpirySpec.tests,
         ClassifyJobSpec.tests,

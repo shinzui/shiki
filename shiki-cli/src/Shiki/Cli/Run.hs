@@ -10,6 +10,7 @@ module Shiki.Cli.Run
     runOptionsParser,
     runRun,
     completionForOutcome,
+    warnIfLogMissing,
     elapsedMs,
   )
 where
@@ -295,6 +296,7 @@ finalizeOutcome rid startedAt outcome = do
   let completion = completionForOutcome rid startedAt outcome
       finalStatus = completion ^. #status
   completeRun completion
+  warnIfLogMissing rid outcome
   liftIO . TIO.putStrLn $
     "run "
       <> showRunId rid
@@ -305,6 +307,19 @@ finalizeOutcome rid startedAt outcome = do
   case finalStatus of
     Succeeded -> pure ()
     _ -> throwError CommandFailed
+
+-- | Say on stderr that the run was recorded without its log, and why. Without
+--   this a log that could not be read left @log_tail@ and @error_summary@ NULL
+--   with nothing to show for it.
+warnIfLogMissing :: (IOE :> es) => RunId -> JobOutcome -> Eff es ()
+warnIfLogMissing rid outcome = case outcome ^. #logFetchError of
+  Nothing -> pure ()
+  Just reason ->
+    liftIO . TIO.hPutStrLn stderr $
+      "shiki: run "
+        <> Text.take 8 (showRunId rid)
+        <> " recorded without its log: "
+        <> reason
 
 -- | The row update for a Job that reached a terminal phase. Shared with
 --   @shiki runs sync@ so a reconciled run is recorded exactly as a followed

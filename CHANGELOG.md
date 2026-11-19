@@ -8,6 +8,21 @@ and `shiki-cli` share one version and are released together.
 
 ## [Unreleased]
 
+### Fixed
+
+- fix(shiki-core): runs record their log tail again on Kubernetes 1.35. The
+  `pods/log` request sent `Accept: text/plain`, which GKE's 1.35 API server
+  rejects with `406 Not Acceptable`, so every run was stored with `log_tail`
+  and `error_summary` NULL. The request now sends `Accept: */*`, as
+  `kubectl logs` does; the server still returns the log as plain text, which is
+  decoded leniently so invalid UTF-8 no longer drops the whole tail.
+- fix(shiki-cli): `shiki run` and `shiki runs sync` now print
+  `shiki: run <id> recorded without its log: <reason>` on stderr when the log
+  cannot be read, instead of recording the run silently without it.
+  `JobOutcome` gains `logFetchError`, and a `LogFetchError` carries the HTTP
+  status and the API server's message rather than a `show` of the whole
+  `MimeError`.
+
 ## [0.1.0.0] - 2026-09-15
 
 ### Changed

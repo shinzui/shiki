@@ -27,7 +27,7 @@ import Effectful (Eff, IOE, type (:>))
 import Effectful.Error.Static (Error, catchError, runErrorNoCallStack, throwError)
 import Effectful.Exception qualified as Exc
 import Shiki.Cli.Error (CliError (..))
-import Shiki.Cli.Run (completionForOutcome, elapsedMs)
+import Shiki.Cli.Run (completionForOutcome, elapsedMs, warnIfLogMissing)
 import Shiki.Cli.Runs.Format (isUnwatched)
 import Shiki.Effect.Kube (Kube, collectOutcome, deploymentExists, observeJob)
 import Shiki.Effect.RunStore
@@ -187,6 +187,7 @@ syncOne observedAt r
           outcome <-
             collectOutcome ns (r ^. #jobName) (r ^. #startedAt) endedAt phase
           write (completionForOutcome (r ^. #runId) (r ^. #startedAt) outcome)
+          warnIfLogMissing (r ^. #runId) outcome
         MarkLost -> do
           confirmSameCluster
           write
