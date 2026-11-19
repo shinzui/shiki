@@ -114,6 +114,8 @@
         pkgs.openssl.dev
         pkgs.jq
         pkgs.process-compose
+        # okf CLI for the project's OKF documentation bundles, pinned by the module.
+        inputs.okf.packages.${system}.okf-cli
       ];
 
       shellHook = ''
