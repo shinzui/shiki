@@ -10,6 +10,12 @@ provenance:
     model: "gpt-6.2-astra"
     harness: "codex-cli"
     at: 2026-11-19T23:46:45Z
+  revisions:
+    - model: "gpt-6.2-astra"
+      harness: "codex-cli"
+      at: 2026-11-19T23:57:21Z
+      mode: "implement"
+      note: "Implement and verify environment-bound Kubernetes submission and history."
 ---
 
 # Bind each environment to its Kubernetes context
@@ -26,7 +32,7 @@ An operator can run `shiki --env prod run worker --no-wait -- check` while their
 
 ## Progress
 
-- [ ] Existing and context-aware project files load and resolve the correct environment.
+- [x] 2026-11-19. Both project formats load and malformed bindings fail. Dhall reported all four package exports. All 74 core and 122 CLI tests passed.
 - [ ] A two-context kubeconfig routes authenticated requests to the selected server and rejects an absent binding.
 - [ ] The store round-trips run destinations and both history commands display them, including pre-upgrade rows.
 - [ ] The production command binds storage and submission together, announces the destination, and follows the same Job through completion or reconciliation.

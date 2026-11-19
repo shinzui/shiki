@@ -12,13 +12,16 @@
 let Schema =
       https://raw.githubusercontent.com/shinzui/shiki/master/schema/package.dhall
 
-let mkEnv = \(url : Text) -> { databaseUrl = url } : Schema.Environment
+let mkEnv =
+      \(url : Text) ->
+      \(context : Optional Text) ->
+        { databaseUrl = url, kubernetesContext = context } : Schema.EnvironmentWithContext
 
 in    { environments =
           toMap
-            { staging = mkEnv "postgresql://shiki:changeme@db.staging.internal:5432/shiki"
-            , prod = mkEnv "postgresql://shiki:changeme@db.prod.internal:5432/shiki"
+            { staging = mkEnv "postgresql://shiki:changeme@db.staging.internal:5432/shiki" (None Text)
+            , prod = mkEnv "postgresql://shiki:changeme@db.prod.internal:5432/shiki" (Some "sennari")
             }
       , defaultEnvironment = "staging"
       }
-    : Schema.ProjectConfig
+    : Schema.ProjectConfigWithContext

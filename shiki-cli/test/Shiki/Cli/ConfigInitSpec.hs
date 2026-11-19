@@ -120,8 +120,8 @@ expectedConfig =
   ProjectConfig
     { environments =
         Map.fromList
-          [ ("staging", Environment {databaseUrl = "postgresql://replace-me/staging"}),
-            ("prod", Environment {databaseUrl = "postgresql://replace-me/prod"})
+          [ ("staging", Environment {databaseUrl = "postgresql://replace-me/staging", kubernetesContext = Nothing}),
+            ("prod", Environment {databaseUrl = "postgresql://replace-me/prod", kubernetesContext = Nothing})
           ],
       defaultEnvironment = "staging"
     }

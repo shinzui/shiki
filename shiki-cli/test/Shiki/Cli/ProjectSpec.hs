@@ -48,9 +48,9 @@ fixtureConfig =
   ProjectConfig
     { environments =
         Map.fromList
-          [ ("staging", Environment {databaseUrl = "postgresql://s/staging"}),
-            ("prod", Environment {databaseUrl = "postgresql://s/prod"}),
-            ("qa", Environment {databaseUrl = "postgresql://s/qa"})
+          [ ("staging", Environment {databaseUrl = "postgresql://s/staging", kubernetesContext = Nothing}),
+            ("prod", Environment {databaseUrl = "postgresql://s/prod", kubernetesContext = Nothing}),
+            ("qa", Environment {databaseUrl = "postgresql://s/qa", kubernetesContext = Nothing})
           ],
       defaultEnvironment = "staging"
     }

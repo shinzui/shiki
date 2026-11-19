@@ -22,11 +22,10 @@ newtype EnvironmentName = EnvironmentName {unEnvironmentName :: Text}
   deriving stock (Generic, Eq, Ord, Show)
   deriving newtype (FromJSON, ToJSON)
 
--- | The settings that vary per environment. Currently just a libpq-style
---   PostgreSQL connection string. Add fields here as future features need
---   them, and mirror the addition in @schema\/Environment.dhall@.
+-- | Storage and optional Kubernetes context selected together by name.
 data Environment = Environment
-  { databaseUrl :: !Text
+  { databaseUrl :: !Text,
+    kubernetesContext :: !(Maybe Text)
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
