@@ -1,0 +1,23 @@
+.claude/
+.agents/
+.seihou/manifest.json.tmp
+dist
+dist-*
+cabal-dev
+.direnv
+cabal.project.local
+result
+result-*
+.pre-commit-config.yaml
+CLAUDE.local.md
+db/
+shiki.dhall
+.envrc.local
+.mina/
+.codex/
+# `nix build` links land at the root. Unanchored rules from earlier versions also
+# ignored source files such as src/result-table.tsx, so undo those before anchoring.
+!result
+!result-*
+/result
+/result-*
