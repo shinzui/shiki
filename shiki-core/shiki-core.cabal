@@ -79,10 +79,10 @@ library
   autogen-modules: Paths_shiki_core
   build-depends:
     aeson ^>=2.2,
-    baikai ^>=0.7,
-    baikai-claude ^>=0.7,
-    baikai-effectful ^>=0.4.0.2,
-    baikai-openai ^>=0.7,
+    baikai ^>=0.10.1.1,
+    baikai-claude ^>=0.7.3.0,
+    baikai-effectful ^>=0.5.0.0,
+    baikai-openai ^>=0.7.3.1,
     base >=4.21 && <5,
     bytestring ^>=0.12,
     containers ^>=0.7,
@@ -156,8 +156,8 @@ test-suite shiki-core-test
 
   build-depends:
     aeson ^>=2.2,
-    baikai ^>=0.7,
-    baikai-effectful ^>=0.4.0.2,
+    baikai ^>=0.10.1.1,
+    baikai-effectful ^>=0.5.0.0,
     base >=4.21 && <5,
     bytestring ^>=0.12,
     containers ^>=0.7,

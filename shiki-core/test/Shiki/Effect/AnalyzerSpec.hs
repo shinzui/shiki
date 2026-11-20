@@ -123,6 +123,7 @@ runCannedBaikai calls canned = interpret_ $ \case
     liftIO (readIORef calls >>= \n -> writeIORef calls (n + 1))
     pure canned
   StreamCollect {} -> pure []
+  StreamCollectTraced {} -> pure []
   StreamEach {} -> pure ()
 
 textResponse :: Text -> Response

@@ -37,10 +37,8 @@ let
 in
 final: prev:
 {
-  # effectful 2.7 is not in nixpkgs' GHC 9.12 set (it ships 2.6.1.0) and the
-  # `haskell-nix` input still pins baikai-effectful 0.4.0.1, which caps
-  # effectful-core at 2.6. Pull the Hackage releases cabal.project resolves to
-  # so `nix build` and `cabal build` compile the same libraries.
+  # mori://shinzui/baikai/packages/baikai-effectful requires effectful-core 2.7.
+  # The GHC 9.12 package set ships 2.6.1.0, so use the Hackage releases.
   # effectful-core 2.7 needs strict-mutable-base 2.x (the set has 1.1.0.0), so
   # that comes along too. `file-io` is not pinned: GHC 9.12.4 ships it as a boot
   # library behind `directory`, and overriding it makes Cabal abort with
@@ -72,15 +70,13 @@ final: prev:
       }
       { });
 
-  # The `haskell-nix` input's default baikai generation is 0.6.x, but
-  # baikai-effectful 0.4.0.2 needs baikai >= 0.7. Pin the family to the
-  # Hackage releases cabal.project resolves to.
+  # Match the Cabal bounds for mori://shinzui/baikai with Hackage pins.
   baikai =
     dontCheck (final.callHackageDirect
       {
         pkg = "baikai";
-        ver = "0.7.2.0";
-        sha256 = "sha256-YF6BEQvWqegthAJSjNa+yOSpexuENpSzFZehN/+2DjQ=";
+        ver = "0.10.1.1";
+        sha256 = "sha256-vPieQ7hrbF046FBI9E8Lo0n2i2P/pHk6Qn8Cv/7RQuc=";
       }
       { });
 
@@ -88,8 +84,8 @@ final: prev:
     dontCheck (final.callHackageDirect
       {
         pkg = "baikai-claude";
-        ver = "0.7.1.0";
-        sha256 = "sha256-HskzJuUC3ZTYcQQcTLbV/IJ030fvCm5oDEEddNdH46M=";
+        ver = "0.7.3.0";
+        sha256 = "sha256-O82VBJQAy9Jpwp+OgWO54WJ6vRUEPGLuh95ltCsv5r8=";
       }
       { });
 
@@ -97,8 +93,8 @@ final: prev:
     dontCheck (final.callHackageDirect
       {
         pkg = "baikai-openai";
-        ver = "0.7.1.0";
-        sha256 = "sha256-2d/u91NmFK+Na+/3T2JxfsgbYGTH5GZXa4oXDL4eslM=";
+        ver = "0.7.3.1";
+        sha256 = "sha256-45N4RapXHKL29VeIoTn3KkhU8UHGWjb9keto3Tu6RaM=";
       }
       { });
 
@@ -106,8 +102,8 @@ final: prev:
     dontCheck (final.callHackageDirect
       {
         pkg = "baikai-effectful";
-        ver = "0.4.0.2";
-        sha256 = "sha256-SgcvuYmfJt8bF4WU5MCKQzTCBkAPdsy5G5X3nwPVPd0=";
+        ver = "0.5.0.0";
+        sha256 = "sha256-idCK2IAjJHPTrkZe8/4D5aic/uKI9m0R+3Xgp2I1NCg=";
       }
       { });
 
