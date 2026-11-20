@@ -11,20 +11,24 @@
     in
     {
       haskellProject.ownPackages = [ "shiki-core" "shiki-cli" ];
-      haskellProject.applicationOverlays = [ (hself: _hsuper: {
-        "shiki-core" =
-          hself.callCabal2nix "shiki-core"
-            (builtins.path {
-              path = inputs.self + "/shiki-core";
-              name = "shiki-core-source";
-            }) { };
-        "shiki-cli" =
-          hself.callCabal2nix "shiki-cli"
-            (builtins.path {
-              path = inputs.self + "/shiki-cli";
-              name = "shiki-cli-source";
-            }) { };
-      }) ];
+      haskellProject.applicationOverlays = [
+        (hself: _hsuper: {
+          "shiki-core" =
+            hself.callCabal2nix "shiki-core"
+              (builtins.path {
+                path = inputs.self + "/shiki-core";
+                name = "shiki-core-source";
+              })
+              { };
+          "shiki-cli" =
+            hself.callCabal2nix "shiki-cli"
+              (builtins.path {
+                path = inputs.self + "/shiki-cli";
+                name = "shiki-cli-source";
+              })
+              { };
+        })
+      ];
       packages."shiki-core" = corePackage;
       packages."shiki-cli" = cliPackage;
       packages.default = cliPackage;
