@@ -72,6 +72,8 @@ tests =
               insertRunStatement
               NewRun
                 { runId = rid,
+                  environment = Nothing,
+                  kubernetesContext = Nothing,
                   serviceName = "foo",
                   command = ["echo", "hi"],
                   namespace = "default",

@@ -10,6 +10,7 @@ module Shiki.Effect.Kube.Client
   ( runKubeDefault,
     runKubeWith,
     loadKubeClient,
+    loadKubeClientForContext,
     jobPollIntervalSeconds,
     jobTimeoutSeconds,
   )
@@ -29,7 +30,7 @@ import Network.HTTP.Client
 import Network.HTTP.Client qualified as HttpClient
 import Shiki.Effect.Kube (Kube (..))
 import Shiki.Error (KubeError (..), ShikiError (..), collapseWhitespace)
-import Shiki.K8s.Client (ClientEnv, loadDefaultClientConfig)
+import Shiki.K8s.Client (ClientEnv, MissingContext (..), loadDefaultClientForContext)
 import Shiki.K8s.ExecCredential (ExecCredentialError)
 import Shiki.K8s.Introspection
   ( DeploymentName (..),
@@ -113,10 +114,19 @@ runKubeWith client = interpret_ $ \case
 loadKubeClient ::
   (IOE :> es, Error ShikiError :> es) =>
   Eff es ClientEnv
-loadKubeClient =
-  Exc.trySync (liftIO loadDefaultClientConfig) >>= \case
+loadKubeClient = snd <$> loadKubeClientForContext Nothing Nothing
+
+-- | The optional environment identifies the declaration in a preflight error.
+-- Reconciliation supplies just the context recorded at submission.
+loadKubeClientForContext ::
+  (IOE :> es, Error ShikiError :> es) =>
+  Maybe Text -> Maybe Text -> Eff es (Text, ClientEnv)
+loadKubeClientForContext env requested =
+  Exc.trySync (liftIO (loadDefaultClientForContext requested)) >>= \case
     Right client -> pure client
     Left e
+      | Just (MissingContext name) <- Exc.fromException e ->
+          throwError (ShikiKubeError (MissingKubernetesContext env name))
       | Just credentialError <- Exc.fromException @ExecCredentialError e ->
           throwError (ShikiKubeError (KubeCredentialFailed (message credentialError)))
       | otherwise ->

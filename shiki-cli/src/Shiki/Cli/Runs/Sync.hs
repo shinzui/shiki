@@ -12,6 +12,7 @@ module Shiki.Cli.Runs.Sync
     lostJobMessage,
     renderSyncFailure,
     renderStillRunning,
+    WithKube,
     syncRuns,
     syncRun,
   )
@@ -113,28 +114,36 @@ lostJobMessage r =
     <> (r ^. #namespace)
     <> "; no shiki process was following it when it ended, so its outcome is unknown"
 
+-- | Load the recorded context inside each row's error boundary.
+type WithKube es = forall a. Maybe Text -> Eff (Kube : es) a -> Eff es a
+
 -- | Reconcile every unfinished run. One run's error is reported and the
 --   rest still sync; the command exits non-zero if any run errored.
 syncRuns ::
-  (RunStore :> es, Kube :> es, IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
+  (RunStore :> es, IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
+  WithKube es ->
   Eff es ()
-syncRuns = do
+syncRuns withKube = do
   observedAt <- databaseNow
   rows <- listUnfinishedRuns
   if null rows
     then liftIO (TIO.putStrLn "(no unfinished runs)")
     else do
-      results <- traverse (trySyncOne observedAt) rows
+      results <- traverse (trySyncOne withKube observedAt) rows
       when (or results) (throwError CommandFailed)
 
 -- | Reconcile one run, exiting non-zero if it errored.
 syncRun ::
-  (RunStore :> es, Kube :> es, IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
+  (RunStore :> es, IOE :> es, Error ShikiError :> es, Error CliError :> es) =>
+  WithKube es ->
   UTCTime ->
   RunRecord ->
   Eff es ()
-syncRun observedAt r =
-  trySyncOne observedAt r >>= \errored -> when errored (throwError CommandFailed)
+syncRun withKube observedAt r
+  | r ^. #status `notElem` [Pending, Running] =
+      liftIO (TIO.putStrLn ("run " <> shortId r <> ": already " <> runStatusToText (r ^. #status)))
+  | otherwise =
+      trySyncOne withKube observedAt r >>= \errored -> when errored (throwError CommandFailed)
 
 -- | Sync one run; report any failure on stderr and return whether one
 --   happened. Three shapes are caught, and all three read the same to an
@@ -149,14 +158,15 @@ syncRun observedAt r =
 --   so a fresh inner handler would never see their failures and one bad run
 --   would end the whole command.
 trySyncOne ::
-  (RunStore :> es, Kube :> es, IOE :> es, Error ShikiError :> es) =>
+  (RunStore :> es, IOE :> es, Error ShikiError :> es) =>
+  WithKube es ->
   UTCTime ->
   RunRecord ->
   Eff es Bool
-trySyncOne observedAt r = do
+trySyncOne withKube observedAt r = do
   outcome <-
     Exc.trySync $
-      (first renderSyncFailure <$> runErrorNoCallStack @SyncFailure (syncOne observedAt r))
+      (first renderSyncFailure <$> withKube (r ^. #kubernetesContext) (runErrorNoCallStack @SyncFailure (syncOne observedAt r)))
         `catchError` \_ e -> pure (Left (shikiErrorMessage e))
   case outcome of
     Right (Right ()) -> pure False
@@ -173,35 +183,32 @@ syncOne ::
   UTCTime ->
   RunRecord ->
   Eff es ()
-syncOne observedAt r
-  | r ^. #status `notElem` [Pending, Running] =
-      report ("already " <> runStatusToText (r ^. #status))
-  | otherwise = do
-      obs <- observeJob ns (r ^. #jobName)
-      now <- liftIO getCurrentTime
-      case decideSync now r obs of
-        SkipFinished st -> report ("already " <> runStatusToText st)
-        LeaveRunning -> report (renderStillRunning observedAt r)
-        SkipRecentlySubmitted -> report "no job yet; submitted too recently to reconcile"
-        FinalizeFinished phase endedAt -> do
-          outcome <-
-            collectOutcome ns (r ^. #jobName) (r ^. #startedAt) endedAt phase
-          write (completionForOutcome (r ^. #runId) (r ^. #startedAt) outcome)
-          warnIfLogMissing (r ^. #runId) outcome
-        MarkLost -> do
-          confirmSameCluster
-          write
-            RunCompletion
-              { runId = r ^. #runId,
-                status = Failed,
-                exitCode = Nothing,
-                endedAt = now,
-                durationMs = elapsedMs (r ^. #startedAt) now,
-                logTail = Nothing,
-                errorMessage = Just (lostJobMessage r),
-                errorSummary = Nothing,
-                errorSummarySource = "heuristic"
-              }
+syncOne observedAt r = do
+  obs <- observeJob ns (r ^. #jobName)
+  now <- liftIO getCurrentTime
+  case decideSync now r obs of
+    SkipFinished st -> report ("already " <> runStatusToText st)
+    LeaveRunning -> report (renderStillRunning observedAt r)
+    SkipRecentlySubmitted -> report "no job yet; submitted too recently to reconcile"
+    FinalizeFinished phase endedAt -> do
+      outcome <-
+        collectOutcome ns (r ^. #jobName) (r ^. #startedAt) endedAt phase
+      write (completionForOutcome (r ^. #runId) (r ^. #startedAt) outcome)
+      warnIfLogMissing (r ^. #runId) outcome
+    MarkLost -> do
+      confirmSameCluster
+      write
+        RunCompletion
+          { runId = r ^. #runId,
+            status = Failed,
+            exitCode = Nothing,
+            endedAt = now,
+            durationMs = elapsedMs (r ^. #startedAt) now,
+            logTail = Nothing,
+            errorMessage = Just (lostJobMessage r),
+            errorSummary = Nothing,
+            errorSummarySource = "heuristic"
+          }
   where
     ns = Namespace (r ^. #namespace)
 

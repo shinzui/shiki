@@ -102,6 +102,10 @@ renderTable =
     ( ShikiKubeError (KubeConfigUnavailable "/nonexistent: does not exist"),
       "shiki: cannot load the Kubernetes config: /nonexistent: does not exist"
     ),
+    ( ShikiKubeError (MissingKubernetesContext (Just "prod") "sennari"),
+      "shiki: environment prod declares missing Kubernetes context sennari"
+    ),
+    (ShikiKubeError (MissingKubernetesContext Nothing "old"), "shiki: missing Kubernetes context old"),
     ( ShikiKubeError (KubeCredentialFailed "aws exited with 1"),
       "shiki: Kubernetes credential plugin failed: aws exited with 1"
     ),

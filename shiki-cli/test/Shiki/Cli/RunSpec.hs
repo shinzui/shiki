@@ -43,7 +43,7 @@ tests =
                   runFakeRunStore store healthy $
                     runConfigLoaderIO $
                       runFakeKube (liftIO (E.throwIO E.UserInterrupt)) $
-                        runRun (runOptions svcDir)
+                        runRun Nothing "local" (runOptions svcDir)
           case outcome of
             Left E.UserInterrupt -> pure ()
             Left other -> assertFailure ("unexpected async exception: " <> show other)

@@ -73,7 +73,9 @@ data RunRecord = RunRecord
     errorMessage :: !(Maybe Text),
     errorSummary :: !(Maybe Text),
     errorSummarySource :: !Text,
-    lastWatchedAt :: !(Maybe UTCTime)
+    lastWatchedAt :: !(Maybe UTCTime),
+    environment :: !(Maybe Text),
+    kubernetesContext :: !(Maybe Text)
   }
   deriving stock (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -90,7 +92,9 @@ data NewRun = NewRun
     jobName :: !Text,
     image :: !(Maybe Text),
     startedAt :: !UTCTime,
-    serviceConfig :: !Aeson.Value
+    serviceConfig :: !Aeson.Value,
+    environment :: !(Maybe Text),
+    kubernetesContext :: !(Maybe Text)
   }
   deriving stock (Generic, Eq, Show)
 
@@ -121,9 +125,9 @@ insertRunStatement = preparable sql encoder Decoders.noResult
       """
       INSERT INTO runs
         ( id, service_name, command, namespace, job_name
-        , image, status, started_at, service_config )
+        , image, status, started_at, service_config, environment, kubernetes_context )
       VALUES
-        ( $1, $2, $3, $4, $5, $6, $7, $8, $9 )
+        ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 )
       """
     encoder =
       ((\r -> unRunId (r ^. #runId)) >$< uuidParam)
@@ -135,6 +139,8 @@ insertRunStatement = preparable sql encoder Decoders.noResult
         <> (const Pending >$< runStatusParam)
         <> ((^. #startedAt) >$< utcTimeParam)
         <> ((^. #serviceConfig) >$< jsonbParam)
+        <> ((^. #environment) >$< nullableTextParam)
+        <> ((^. #kubernetesContext) >$< nullableTextParam)
 
 -- | Mark an existing run as 'Running'.
 markRunRunningStatement :: Statement RunId ()
@@ -241,7 +247,7 @@ runColumnsSql =
   id, service_name, command, namespace, job_name,
   image, status, exit_code, started_at, ended_at,
   duration_ms, log_tail, service_config, error,
-  error_summary, error_summary_source, last_watched_at
+  error_summary, error_summary_source, last_watched_at, environment, kubernetes_context
   """
 
 -- | Look up a single run by id.
@@ -362,6 +368,8 @@ runRecordRow =
     <*> Decoders.column (Decoders.nullable Decoders.text)
     <*> Decoders.column (Decoders.nonNullable Decoders.text)
     <*> Decoders.column (Decoders.nullable Decoders.timestamptz)
+    <*> Decoders.column (Decoders.nullable Decoders.text)
+    <*> Decoders.column (Decoders.nullable Decoders.text)
 
 textArrayDecoder :: Decoders.Value [Text]
 textArrayDecoder =

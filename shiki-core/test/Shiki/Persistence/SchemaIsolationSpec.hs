@@ -41,8 +41,8 @@ tests =
           runOnePool cs beta
           verifyCount cs alpha 1
           verifyCount cs beta 1
-          verifyLedgerCount cs alpha 3
-          verifyLedgerCount cs beta 3
+          verifyLedgerCount cs alpha 4
+          verifyLedgerCount cs beta 4
           verifyMissingFromPublic cs
         case result of
           Right () -> pure ()
@@ -60,6 +60,8 @@ runOnePool cs schema =
     let r =
           NewRun
             { runId = rid,
+              environment = Nothing,
+              kubernetesContext = Nothing,
               serviceName = "svc-" <> schemaText schema,
               command = ["x"],
               namespace = "ns",

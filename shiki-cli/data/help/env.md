@@ -62,15 +62,15 @@ AGENT ASSIST
 
 KUBERNETES
 
-shiki reads one kubeconfig file and uses its current-context:
+shiki reads one kubeconfig file:
 
   KUBECONFIG              Path to a single kubeconfig file. When unset,
                           shiki reads ~/.kube/config. Unlike kubectl,
                           shiki does not merge a colon-separated list.
 
-There is no --context flag. Check 'kubectl config current-context' before
-'shiki run'; to target another context without changing the global one,
-point KUBECONFIG at a one-context copy (see 'shiki help long-runs').
+Set kubernetesContext = Some "sennari" in a ProjectConfigWithContext
+environment to send Jobs there. An unbound environment uses current-context.
+'shiki runs sync' uses each run's recorded context when available.
 
 
 Full reference: docs/user/commands.md (environment variable summary)

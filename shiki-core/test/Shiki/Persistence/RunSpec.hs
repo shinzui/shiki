@@ -37,6 +37,8 @@ tests =
             insertRunStatement
             NewRun
               { runId = rid,
+                environment = Just "prod",
+                kubernetesContext = Just "sennari",
                 serviceName = "mls-service-v2",
                 command = ["subscription", "process"],
                 namespace = "prod",
@@ -66,6 +68,8 @@ tests =
           case mRow of
             Nothing -> fail "expected row"
             Just r -> do
+              assertEqual "environment" (Just "prod") (r ^. #environment)
+              assertEqual "context" (Just "sennari") (r ^. #kubernetesContext)
               assertEqual "status" Succeeded (r ^. #status)
               assertEqual "exitCode" (Just 0) (r ^. #exitCode)
               assertEqual "durationMs" (Just 12345) (r ^. #durationMs)
@@ -93,6 +97,8 @@ tests =
             insertRunStatement
             NewRun
               { runId = rid,
+                environment = Nothing,
+                kubernetesContext = Nothing,
                 serviceName = "x",
                 command = ["y"],
                 namespace = "z",

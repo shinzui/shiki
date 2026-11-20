@@ -1,7 +1,7 @@
 -- | Project-local configuration loaded from a @shiki.dhall@ file at (or
 --   above) the working directory. Models a set of named "environments"
 --   (e.g. @staging@, @prod@), each carrying its own PostgreSQL connection
---   string, plus which environment is the default. The Dhall type
+--   string and optional Kubernetes context, plus which environment is the default. The Dhall type
 --   definitions live in @schema\/ProjectConfig.dhall@ and
 --   @schema\/Environment.dhall@; the loader lives in
 --   "Shiki.Project.Config.Dhall".

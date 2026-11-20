@@ -17,6 +17,7 @@ module Shiki.K8s.ExecCredential
     KubeConfigDoc,
     KubeConfigError (..),
     execAuthForContext,
+    hasContext,
     readKubeConfigExecAuth,
 
     -- * Exec plugin runner
@@ -211,6 +212,10 @@ parseInteractiveMode t = case t of
   -- caller turns into a typed failure, not an exception or an exit.
   other -> fail ("unknown interactiveMode: " <> T.unpack other)
 
+-- | Empty kubeconfigs may omit the context list entirely.
+hasContext :: Text -> KubeConfigDoc -> Bool
+hasContext name doc = any ((== name) . view #name) (doc ^. #contexts)
+
 -- | Resolve a context (explicit name, else @current-context@) to its cluster
 --   and exec auth. A missing context/cluster/user yields a descriptive 'Left'.
 execAuthForContext :: Maybe Text -> KubeConfigDoc -> Either Text ResolvedContext
@@ -235,7 +240,7 @@ execAuthForContext mname doc = do
       }
 
 findBy :: (a -> Text) -> Text -> [a] -> Text -> Either Text a
-findBy key want xs err = maybe (Left err) Right (List.find ((== want) . key) xs)
+findBy key want xs err = maybe (Left err) Right (List.find ((== want) . key) (reverse xs))
 
 -- | Read a kubeconfig from disk and resolve the current (or named) context.
 --   Throws 'KubeConfigError' on a resolution failure (the YAML decoder throws

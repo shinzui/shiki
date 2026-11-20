@@ -96,6 +96,8 @@ sampleRun :: RunStatus -> Maybe Text -> RunRecord
 sampleRun status mSummary =
   RunRecord
     { runId = RunId sampleUuid,
+      environment = Nothing,
+      kubernetesContext = Nothing,
       serviceName = "foo",
       command = ["echo", "hi"],
       namespace = "default",

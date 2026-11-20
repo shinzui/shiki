@@ -38,6 +38,8 @@ THE RUNS TABLE COLUMNS
   id                    UUID. Subcommands accept any unambiguous prefix.
   service_name          Logical service name from the config.
   command               argv passed to the container (text[]).
+  environment           Selected project environment, if any.
+  kubernetes_context    Effective kubeconfig context, NULL for older runs.
   namespace             The Kubernetes namespace the Job ran in.
   job_name              <service>-oneoff-<timestamp>-<rand>, unique per
                         run.

@@ -67,21 +67,15 @@ lower the TTL below the longest gap in which nobody will sync.
 
 RULE 6: CHECK THE KUBE CONTEXT BEFORE SUBMITTING
 
-shiki has no --context flag. It uses the current-context of the single
-kubeconfig file named by KUBECONFIG (or ~/.kube/config), and it does not
-merge a colon-separated KUBECONFIG list. Confirm the target first:
+Check the selected environment's kubernetesContext in shiki.dhall. For
+an unbound environment, check the current context in the kubeconfig file
+named by KUBECONFIG (or ~/.kube/config):
 
   kubectl config current-context
 
-An error such as 'HostCannotConnect "0.0.0.0"' or 'connection refused'
-means the current context points at a local cluster (k3d, kind) that is
-not running; nothing was submitted. To target another cluster without
-changing the operator's global context, give shiki a one-context copy:
-
-  kubectl config view --minify --flatten --context <ctx> > <tmp>/kubeconfig
-  KUBECONFIG=<tmp>/kubeconfig shiki run ...
-
-Delete that file afterwards; it holds cluster credentials.
+Before inspecting the Deployment, shiki prints the environment, context,
+and namespace. Later, sync reads the Job in its recorded context. If that
+context is unavailable, restore it and retry sync.
 
 sync refuses to mark a run lost when the service's Deployment is missing
 from the run's namespace, since that usually means a context for the wrong
@@ -102,7 +96,6 @@ WHAT SHIKI ALREADY HANDLES
 
 A LONG RUN, END TO END
 
-  kubectl config current-context
   shiki run <service> --no-wait -- <args...>       note the run id
   shiki runs sync <id>                             every 15-30 min, or near
                                                    the expected end

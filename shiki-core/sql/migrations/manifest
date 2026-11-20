@@ -1,3 +1,4 @@
 001-create-runs.sql
 002-add-error-summary.sql
 003-add-last-watched-at.sql
+004-add-run-destination.sql

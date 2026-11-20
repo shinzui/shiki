@@ -70,6 +70,7 @@ data StoreError
 --   credential plugin, and requests against the cluster.
 data KubeError
   = KubeConfigUnavailable !Text
+  | MissingKubernetesContext !(Maybe Text) !Text
   | KubeCredentialFailed !Text
   | -- | deployment name, the rendered inspection error
     DeploymentInspectionFailed !Text !Text
@@ -121,6 +122,8 @@ renderStoreError = \case
 renderKubeError :: KubeError -> Text
 renderKubeError = \case
   KubeConfigUnavailable message -> "cannot load the Kubernetes config: " <> message
+  MissingKubernetesContext (Just env) name -> "environment " <> env <> " declares missing Kubernetes context " <> name
+  MissingKubernetesContext Nothing name -> "missing Kubernetes context " <> name
   KubeCredentialFailed message -> "Kubernetes credential plugin failed: " <> message
   DeploymentInspectionFailed deployment message ->
     "cannot inspect deployment " <> deployment <> ": " <> message

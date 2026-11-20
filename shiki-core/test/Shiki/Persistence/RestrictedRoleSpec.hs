@@ -87,6 +87,8 @@ insertOneRun pool = do
   let r =
         NewRun
           { runId = rid,
+            environment = Nothing,
+            kubernetesContext = Nothing,
             serviceName = "svc",
             command = ["x"],
             namespace = "ns",

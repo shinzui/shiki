@@ -7,21 +7,29 @@ module Shiki.K8s.Client
     KubeConfigSource (..),
     loadDefaultClientConfig,
     loadClientConfig,
+    loadDefaultClientForContext,
+    loadFileClientForContext,
+    MissingContext (..),
     dispatchK8s,
     retryOnUnauthorized,
   )
 where
 
 import Control.Concurrent.STM (atomically, newTVar)
-import Control.Exception (try)
+import Control.Exception (Exception, throwIO)
+import Data.Aeson qualified as Aeson
+import Data.Aeson.KeyMap qualified as KeyMap
+import Data.ByteString qualified as BS
 import Data.Generics.Labels ()
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
 import Data.Yaml qualified as Yaml
 import Kubernetes.Client.Config
   ( KubeConfigSource (..),
     addCACertData,
     addCACertFile,
+    applyAuthSettings,
     defaultTLSClientParams,
     mkKubeClientConfig,
     newManager,
@@ -35,7 +43,8 @@ import Network.HTTP.Client (Manager, responseStatus)
 import Network.HTTP.Types.Status (statusCode)
 import Shiki.K8s.ExecCredential
   ( KubeConfigError (..),
-    readKubeConfigExecAuth,
+    execAuthForContext,
+    hasContext,
     runExecCredential,
   )
 import Shiki.Prelude
@@ -114,75 +123,78 @@ isUnauthorized r = statusCode (responseStatus (K8s.mimeResultResponse r)) == 401
 --   the auth handlers registered by @kubernetes-api-client@ (token, client
 --   cert, GCP, OIDC) by passing a fresh OIDC cache.
 loadDefaultClientConfig :: IO ClientEnv
-loadDefaultClientConfig = do
+loadDefaultClientConfig = snd <$> loadDefaultClientForContext Nothing
+
+loadDefaultClientForContext :: Maybe Text -> IO (Text, ClientEnv)
+loadDefaultClientForContext requested = do
   envPath <- lookupEnv "KUBECONFIG"
-  path <- case envPath of
-    Just p -> pure p
-    Nothing -> do
-      home <- getHomeDirectory
-      pure (home </> ".kube" </> "config")
-  loadClientConfig (KubeConfigFile path)
+  path <- maybe ((</> ".kube/config") <$> getHomeDirectory) pure envPath
+  loadFileClientForContext path requested
 
--- | Lower-level variant that takes an explicit 'KubeConfigSource'
---   (file path or @KubeConfigCluster@ for in-cluster service-account auth).
---
---   For a file source we first ask 'Shiki.K8s.ExecCredential' whether the
---   current context's user authenticates via an __exec credential plugin__
---   (e.g. GKE's @gke-gcloud-auth-plugin@). If so — the case the upstream
---   library cannot handle — we mint a bearer token by running the plugin and
---   build the client from it. Otherwise (plain token, client-cert, OIDC, GCP,
---   in-cluster, or a kubeconfig we cannot resolve) we defer to the library's
---   'mkKubeClientConfig' exactly as before.
 loadClientConfig :: KubeConfigSource -> IO ClientEnv
-loadClientConfig src@(KubeConfigFile path) = do
-  resolved <- try (readKubeConfigExecAuth path Nothing)
-  case resolved of
-    -- Could not resolve a context/cluster/user — let the library try; it has
-    -- the same inputs and fails (or falls back) identically to today.
-    Left (KubeConfigError _) -> mkFromLibrary src
-    Right rc -> case rc ^. #exec of
-      Nothing -> mkFromLibrary src
-      Just execAuth -> do
-        kubeCfg <- Yaml.decodeFileThrow path
-        let mintConfig = do
-              token <- runExecCredential execAuth (rc ^. #cluster)
-              configFromToken kubeCfg token
-        mkFromToken kubeCfg (takeDirectory path) mintConfig
-loadClientConfig src@KubeConfigCluster = mkFromLibrary src
-
--- | The original behavior: decode the kubeconfig and install whichever auth
---   handler the library recognizes (token, client cert, GCP, OIDC), using a
---   fresh OIDC cache.
-mkFromLibrary :: KubeConfigSource -> IO ClientEnv
-mkFromLibrary src = do
+loadClientConfig (KubeConfigFile path) = snd <$> loadFileClientForContext path Nothing
+loadClientConfig KubeConfigCluster = do
   oidcCache <- atomically (newTVar Map.empty)
-  (mgr, cfg) <- mkKubeClientConfig oidcCache src
+  (mgr, cfg) <- mkKubeClientConfig oidcCache KubeConfigCluster
   ref <- newIORef cfg
-  pure ClientEnv {httpManager = mgr, clientConfigRef = ref, renewAuth = Nothing}
+  pure (ClientEnv mgr ref Nothing)
 
--- | Build the client exactly as the library's own @mkKubeClientConfig@ does
---   for the current context — same master URI and same TLS CA selection — but
---   install a bearer-token auth handler from the exec-plugin token instead of
---   running @applyAuthSettings@ (which has no exec handler). @kubeCfg@ is the
---   library's @Config@; @dir@ is the kubeconfig's directory, against which a
---   relative @certificate-authority@ file is resolved by 'addCACertFile'.
---   @mintConfig@ mints a config from a freshly run plugin; it is kept on the
---   'ClientEnv' as 'renewAuth' so an expired token can be replaced in place.
---   The TLS 'Manager' is built once and reused: only the bearer token expires.
-mkFromToken :: KC.Config -> FilePath -> IO K8s.KubernetesClientConfig -> IO ClientEnv
-mkFromToken kubeCfg dir mintConfig = do
+newtype MissingContext = MissingContext Text
+  deriving stock (Eq, Show)
+  deriving anyclass (Exception)
+
+-- | Take one snapshot. Both the regular auth handlers and any later exec
+-- refresh use the cluster and user selected from these bytes.
+loadFileClientForContext :: FilePath -> Maybe Text -> IO (Text, ClientEnv)
+loadFileClientForContext path requested = do
+  bytes <- BS.readFile path
+  snapshot <- Yaml.decodeThrow bytes
+  -- A named context also works when kubectl has no current context set.
+  let selectedDoc = case (requested, snapshot) of
+        (Just name, Aeson.Object fields) ->
+          Aeson.Object (KeyMap.insert "current-context" (Aeson.String name) fields)
+        _ -> snapshot
+  execDoc <- decodeConfig selectedDoc
+  case requested of
+    Just name | not (hasContext name execDoc) -> throwIO (MissingContext name)
+    _ -> pure ()
+  selected <- decodeConfig selectedDoc
+  let name = KC.currentContext selected
+  server <- case requested of
+    Just _ -> either (throwIO . KubeConfigError . Text.pack) (pure . KC.server) (KC.getCluster selected)
+    Nothing -> pure (either (const "localhost:8080") KC.server (KC.getCluster selected))
+  let resolved = execAuthForContext (Just name) execDoc
   base <- defaultTLSClientParams
-  withCAData <- addCACertData kubeCfg base
-  withCAFile <- addCACertFile kubeCfg dir withCAData
-  let tlsParams = tlsValidation kubeCfg withCAFile
-  mgr <- newManager tlsParams
-  cfg <- mintConfig
+  withData <- addCACertData selected base
+  withFile <- addCACertFile selected (takeDirectory path) withData
+  let tls = tlsValidation selected withFile
+      baseConfig = setMasterURI server <$> K8s.newConfig
+  (params, cfg, refresh) <- case resolved of
+    Right rc | Just plugin <- rc ^. #exec -> do
+      let mint = do
+            token <- runExecCredential plugin (rc ^. #cluster)
+            setTokenAuth token <$> baseConfig
+      initial <- mint
+      pure (tls, initial, Just mint)
+    _ -> do
+      initial <- baseConfig
+      oidcCache <- atomically (newTVar Map.empty)
+      (params, cfg) <- case KC.getAuthInfo selected of
+        Left _ -> pure (tls, initial)
+        Right (_, auth) -> do
+          let relativeToConfig = (takeDirectory path </>)
+              authFiles =
+                auth
+                  { KC.clientCertificate = relativeToConfig <$> KC.clientCertificate auth,
+                    KC.clientKey = relativeToConfig <$> KC.clientKey auth
+                  }
+          applyAuthSettings oidcCache authFiles (tls, initial)
+      pure (params, cfg, Nothing)
+  mgr <- newManager params
   ref <- newIORef cfg
-  pure ClientEnv {httpManager = mgr, clientConfigRef = ref, renewAuth = Just mintConfig}
-
--- | The typed client config for one exec-plugin token: the library's own
---   master URI for the current context plus a bearer-token auth handler.
-configFromToken :: KC.Config -> Text -> IO K8s.KubernetesClientConfig
-configFromToken kubeCfg token = do
-  let masterURI = either (const "localhost:8080") KC.server (KC.getCluster kubeCfg)
-  (setMasterURI masterURI . setTokenAuth token) <$> K8s.newConfig
+  pure (name, ClientEnv mgr ref refresh)
+  where
+    decodeConfig :: (FromJSON a) => Aeson.Value -> IO a
+    decodeConfig value = case Aeson.fromJSON value of
+      Aeson.Error err -> throwIO (KubeConfigError (Text.pack err))
+      Aeson.Success cfg -> pure cfg

@@ -210,7 +210,8 @@ assertCurrentLedger pool = do
     "all Shiki migrations are applied in manifest order"
     [ ("001-create-runs", "applied"),
       ("002-add-error-summary", "applied"),
-      ("003-add-last-watched-at", "applied")
+      ("003-add-last-watched-at", "applied"),
+      ("004-add-run-destination", "applied")
     ]
     actual
 

@@ -69,8 +69,8 @@ An agent session is the worst place to block on a Job: the host may stop a
 background process at any time, and a stopped `shiki run` leaves its row
 `running` with nothing to finish it.
 
-1. Check the kube context first (`kubectl config current-context`); shiki
-   has no `--context` flag.
+1. Check the selected environment's `kubernetesContext` in `shiki.dhall`.
+   For an unbound environment, check `kubectl config current-context`.
 2. Submit with `shiki run <service> --no-wait -- <args...>` and note the run
    id.
 3. Check back with `shiki runs sync <id>` every 15-30 minutes, or once near

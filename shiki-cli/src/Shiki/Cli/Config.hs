@@ -5,6 +5,7 @@
 --   project's @nix develop@ shellHook exports).
 module Shiki.Cli.Config
   ( resolveConnectionString,
+    connectionForEnvironment,
   )
 where
 
@@ -12,7 +13,7 @@ import Data.Generics.Labels ()
 import Data.Text qualified as Text
 import Effectful (Eff, IOE, type (:>))
 import Effectful.Error.Static (Error, throwError)
-import Shiki.Cli.Project (resolveActiveEnvironment)
+import Shiki.Cli.Project (Environment, resolveActiveEnvironment)
 import Shiki.Error (ConfigError (..), ShikiError (..))
 import Shiki.Persistence.Connection (ConnectionString (..))
 import Shiki.Prelude
@@ -29,17 +30,23 @@ resolveConnectionString ::
   Eff es ConnectionString
 resolveConnectionString mDb mEnv = case mDb of
   Just t -> pure (ConnectionString t)
-  Nothing -> do
-    mActive <- resolveActiveEnvironment mEnv
-    case mActive of
-      Just (_name, e)
-        | not (Text.null (e ^. #databaseUrl)) ->
-            pure (ConnectionString (e ^. #databaseUrl))
-      _ -> do
-        fromEnv <- liftIO (firstEnv ["SHIKI_DATABASE_URL", "PG_CONNECTION_STRING"])
-        case fromEnv of
-          Just s -> pure (ConnectionString s)
-          Nothing -> throwError (ShikiConfigError NoConnectionString)
+  Nothing -> resolveActiveEnvironment mEnv >>= connectionForEnvironment Nothing . fmap snd
+
+-- | Run dispatch already resolved the project to choose its cluster.
+connectionForEnvironment ::
+  (IOE :> es, Error ShikiError :> es) =>
+  Maybe Text -> Maybe Environment -> Eff es ConnectionString
+connectionForEnvironment override active =
+  case override <|> (active >>= usableUrl) of
+    Just url -> pure (ConnectionString url)
+    Nothing -> do
+      fallback <- liftIO (firstEnv ["SHIKI_DATABASE_URL", "PG_CONNECTION_STRING"])
+      maybe (throwError (ShikiConfigError NoConnectionString)) (pure . ConnectionString) fallback
+  where
+    usableUrl env = do
+      let url = env ^. #databaseUrl
+      guard (not (Text.null url))
+      pure url
 
 firstEnv :: [String] -> IO (Maybe Text)
 firstEnv [] = pure Nothing

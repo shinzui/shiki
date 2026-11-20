@@ -21,6 +21,8 @@ fixtureRow :: RunRecord
 fixtureRow =
   RunRecord
     { runId = RunId (UUID.fromWords 0x3f2c1a9d 0x00000000 0x00000000 0x00000001),
+      environment = Nothing,
+      kubernetesContext = Nothing,
       serviceName = "ingest",
       command = ["reindex", "--batch", "100"],
       namespace = "data",

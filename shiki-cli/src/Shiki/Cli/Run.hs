@@ -67,7 +67,7 @@ import Shiki.Persistence.Run
 import Shiki.Persistence.RunStatus (RunStatus (Failed, Succeeded))
 import Shiki.Prelude hiding (Strict, argument)
 import Shiki.Service.Config (ServiceConfig, ServiceName (..))
-import System.IO (stderr)
+import System.IO (hFlush, stderr, stdout)
 
 data RunOptions = RunOptions
   { service :: !Text,
@@ -124,9 +124,11 @@ runRun ::
     Error ShikiError :> es,
     Error CliError :> es
   ) =>
+  Maybe Text ->
+  Text ->
   RunOptions ->
   Eff es ()
-runRun opts = do
+runRun env ctx opts = do
   cfg <-
     loadServiceConfig
       (opts ^. #configDir <> "/" <> Text.unpack (opts ^. #service) <> ".dhall")
@@ -134,6 +136,10 @@ runRun opts = do
   let ns =
         Namespace
           (fromMaybe (cfg ^. #defaultNamespace) (opts ^. #overrideNs))
+
+  liftIO $ do
+    TIO.putStrLn ("environment=" <> fromMaybe "-" env <> " context=" <> ctx <> " namespace=" <> unNamespace ns)
+    hFlush stdout
 
   snap <-
     inspectDeployment
@@ -154,6 +160,8 @@ runRun opts = do
       newRow =
         NewRun
           { runId = rid,
+            environment = env,
+            kubernetesContext = Just ctx,
             serviceName = unServiceName (cfg ^. #name),
             command = opts ^. #commandArgs,
             namespace = unNamespace ns,

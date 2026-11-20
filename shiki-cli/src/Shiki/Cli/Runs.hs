@@ -50,10 +50,9 @@ import Shiki.Cli.Fzf.Selector.Run
     runTarget,
   )
 import Shiki.Cli.Runs.Format (isUnwatched, renderTable)
-import Shiki.Cli.Runs.Sync (syncRun, syncRuns)
+import Shiki.Cli.Runs.Sync (WithKube, syncRun, syncRuns)
 import Shiki.Effect.Analyzer (Analyzer, analyze)
 import Shiki.Effect.ConfigLoader (ConfigLoader, loadServiceConfig)
-import Shiki.Effect.Kube (Kube)
 import Shiki.Effect.RunStore
   ( RunStore,
     databaseNow,
@@ -177,10 +176,6 @@ analyzerKindReader = Opt.eitherReader $ \raw -> case Text.pack raw of
 --   see "Shiki.Cli.Fzf.Selector.Run").
 type WithStore es = Eff (RunStore : es) () -> Eff es ()
 
--- | How a @runs@ subcommand reaches the cluster. Only @sync@ asks for it, so
---   only @sync@ ever reads the operator's kubeconfig.
-type WithKube es = Eff (Kube : RunStore : es) () -> Eff (RunStore : es) ()
-
 -- | How @analyze@ reaches the analyzer and the service's Dhall file. Only
 --   @analyze@ asks for either, so no other @runs@ subcommand can talk to a
 --   language model or read a config file.
@@ -196,7 +191,7 @@ runRuns ::
     Error CliError :> es
   ) =>
   WithStore es ->
-  WithKube es ->
+  WithKube (RunStore : es) ->
   WithAnalyzer es ->
   RunsCommand ->
   Eff es ()
@@ -207,10 +202,10 @@ runRuns withStore withKube withAnalyzer = \case
   RunsError mId -> withRun withStore readRunOpts mId (\_ r -> doError r)
   RunsAnalyze mId override ->
     withRun withStore analyzeRunOpts mId (\_ r -> withAnalyzer (doAnalyze r override))
-  RunsSync Nothing -> withStore (withKube syncRuns)
+  RunsSync Nothing -> withStore (syncRuns withKube)
   RunsSync (Just rid) ->
     withRun withStore readRunOpts (Just rid) $ \observedAt r ->
-      withKube (syncRun observedAt r)
+      syncRun withKube observedAt r
 
 -- | Decide the target before opening the store, then look the run up and run
 --   the handler.

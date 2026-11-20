@@ -39,6 +39,8 @@ tests =
                   insertRunStatement
                   NewRun
                     { runId = rid,
+                      environment = Nothing,
+                      kubernetesContext = Nothing,
                       serviceName = svc,
                       command = ["x"],
                       namespace = "ns",
@@ -75,6 +77,8 @@ tests =
                   insertRunStatement
                   NewRun
                     { runId = rid,
+                      environment = Nothing,
+                      kubernetesContext = Nothing,
                       serviceName = "svc",
                       command = ["x"],
                       namespace = "ns",

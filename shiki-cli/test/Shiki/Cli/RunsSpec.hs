@@ -74,7 +74,7 @@ capture rows failing command =
       runShikiMain h $
         runRuns
           (runFakeRunStore store failing)
-          (\_ -> unreachableKube)
+          (\_ _ -> unreachableKube)
           withAnalyzer
           command
     hClose h

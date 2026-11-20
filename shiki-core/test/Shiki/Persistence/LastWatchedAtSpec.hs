@@ -119,6 +119,8 @@ insertOneRun pool = do
     insertRunStatement
     NewRun
       { runId = rid,
+        environment = Nothing,
+        kubernetesContext = Nothing,
         serviceName = "svc",
         command = ["x"],
         namespace = "ns",

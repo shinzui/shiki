@@ -38,7 +38,7 @@ import Options.Applicative qualified as Opt
 import Shiki.Analysis.Baikai (registerAnalyzerProviders)
 import Shiki.Cli.Agent (AgentCommand, agentParser, runAgent)
 import Shiki.Cli.Completions (CompletionsShell, completionsParser, runCompletions)
-import Shiki.Cli.Config (resolveConnectionString)
+import Shiki.Cli.Config (connectionForEnvironment, resolveConnectionString)
 import Shiki.Cli.ConfigInit
   ( ConfigInitOptions (..),
     defaultSchemaRef,
@@ -53,13 +53,14 @@ import Shiki.Cli.Fzf.Selector.Service
   )
 import Shiki.Cli.Help (HelpCommand, helpParser, runHelp)
 import Shiki.Cli.Main (CliEff, runShikiMain)
+import Shiki.Cli.Project (resolveActiveEnvironment)
 import Shiki.Cli.Run (RunOptions, runOptionsParser, runRun)
 import Shiki.Cli.Runs (RunsCommand, runRuns, runsParser)
 import Shiki.Cli.Schema (resolveSchema)
 import Shiki.Cli.Version (appVersionWithGit)
 import Shiki.Effect.Analyzer (Analyzer, runAnalyzerBaikai)
 import Shiki.Effect.ConfigLoader (ConfigLoader, loadServiceConfig, runConfigLoaderIO)
-import Shiki.Effect.Kube.Client (runKubeDefault)
+import Shiki.Effect.Kube.Client (loadKubeClientForContext, runKubeWith)
 import Shiki.Effect.RunStore (RunStore)
 import Shiki.Effect.RunStore.Postgres (withRunStore)
 import Shiki.Error (ShikiError)
@@ -120,13 +121,22 @@ dispatch opts = case opts ^. #command of
     runConfigShow (opts ^. #envName)
   Config (ConfigInit initOpts) ->
     runConfigInit initOpts
-  Run runOpts ->
-    withStore opts $ \_schema ->
-      runConfigLoaderIO (runKubeDefault (runRun runOpts))
+  Run runOpts -> do
+    active <- resolveActiveEnvironment (opts ^. #envName)
+    let env = fst <$> active
+        settings = snd <$> active
+    cs <- connectionForEnvironment (opts ^. #dbConnStr) settings
+    schema <- resolveSchema (opts ^. #dbSchema)
+    (ctx, client) <- loadKubeClientForContext env (settings >>= view #kubernetesContext)
+    withRunStore cs schema $
+      runConfigLoaderIO (runKubeWith client (runRun env ctx runOpts))
   Runs runsOpts ->
     runRuns
       (\action -> withStore opts (const action))
-      runKubeDefault
+      ( \ctx action -> do
+          (_, client) <- loadKubeClientForContext Nothing ctx
+          runKubeWith client action
+      )
       withAnalyzer
       runsOpts
   Agent agentOpts ->

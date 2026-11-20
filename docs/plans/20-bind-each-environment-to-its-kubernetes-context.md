@@ -33,9 +33,9 @@ An operator can run `shiki --env prod run worker --no-wait -- check` while their
 ## Progress
 
 - [x] 2026-11-19. Both project formats load and malformed bindings fail. Dhall reported all four package exports. All 74 core and 122 CLI tests passed.
-- [ ] A two-context kubeconfig routes authenticated requests to the selected server and rejects an absent binding.
-- [ ] The store round-trips run destinations and both history commands display them, including pre-upgrade rows.
-- [ ] The production command binds storage and submission together, announces the destination, and follows the same Job through completion or reconciliation.
+- [x] 2026-11-19. Two loopback servers verified the selected endpoint and bearer token for static and exec authentication. A 401 refreshed the token against the original selection after the kubeconfig changed. Missing contexts and dangling cluster references failed during client loading.
+- [x] 2026-11-19. Migration 004 preserved the row in a three-migration database. The CLI listed and showed its absent destination alongside two new destinations with an unusable kubeconfig. Repeated migrations and schema isolation passed against PostgreSQL.
+- [x] 2026-11-19. The CLI integration test exercised detached and waiting Jobs, namespace override, missing-context rejection before migration with and without `--db`, default routing, and mixed-context reconciliation. All 74 core and 125 CLI tests passed.
 
 ## Surprises & Discoveries
 

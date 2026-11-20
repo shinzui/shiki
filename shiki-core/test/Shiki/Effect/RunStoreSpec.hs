@@ -125,6 +125,8 @@ newRun :: RunId -> UTCTime -> NewRun
 newRun rid startedAt =
   NewRun
     { runId = rid,
+      environment = Nothing,
+      kubernetesContext = Nothing,
       serviceName = "ingest",
       command = ["reindex"],
       namespace = "data",

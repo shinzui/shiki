@@ -1,4 +1,4 @@
-module Shiki.Cli.EnvRoutingSpec (tests) where
+module Shiki.Cli.EnvRoutingSpec (tests, withEphemeralPg) where
 
 import Control.Exception (bracket)
 import Data.Aeson qualified as Aeson
@@ -59,6 +59,8 @@ tests =
                       insertRunStatement
                       NewRun
                         { runId = rid,
+                          environment = Nothing,
+                          kubernetesContext = Nothing,
                           serviceName = "mls-service-v2",
                           command = ["subscription", "process"],
                           namespace = "staging",

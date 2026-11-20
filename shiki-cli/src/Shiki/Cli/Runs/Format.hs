@@ -25,7 +25,7 @@ import Shiki.Prelude
 
 -- | The column titles, in the order 'runColumns' produces cells.
 runTableHeader :: [Text]
-runTableHeader = ["ID", "STARTED", "SERVICE", "STATUS", "DURATION", "EXIT", "COMMAND"]
+runTableHeader = ["ID", "STARTED", "SERVICE", "ENVIRONMENT", "CONTEXT", "STATUS", "DURATION", "EXIT", "COMMAND"]
 
 -- | A header row followed by one row per run, every cell padded to its
 --   column's width.
@@ -35,8 +35,7 @@ renderTable observedAt rs =
       widths = computeWidths (runTableHeader : body)
    in Text.unlines (formatRow widths runTableHeader : map (formatRow widths) body)
 
--- | The seven cells of one run: 8-character id, start time, service,
---   status, duration, exit code, command.
+-- | The picker extracts the short ID from the first cell.
 runColumns :: UTCTime -> RunRecord -> [Text]
 runColumns observedAt r =
   [ Text.take 8 (Text.pack (show (unRunId (r ^. #runId)))),
@@ -47,6 +46,8 @@ runColumns observedAt r =
           (r ^. #startedAt)
       ),
     r ^. #serviceName,
+    fromMaybe "-" (r ^. #environment),
+    fromMaybe "-" (r ^. #kubernetesContext),
     displayStatus observedAt r,
     maybe "-" humanDuration (r ^. #durationMs),
     maybe "-" (Text.pack . show) (r ^. #exitCode),
