@@ -5,8 +5,8 @@ description: "Take a fresh checkout to a first recorded shiki run: prerequisites
 docId: DOC-5
 tags: [shiki, getting-started, kubernetes, postgresql]
 generated:
-  by: human:nadeem
-  at: 2026-09-11T22:39:25Z
+  by: process:codex
+  at: 2026-11-20T00:04:32Z
 ---
 
 # Getting started
@@ -22,7 +22,7 @@ You need three things on your machine:
 - **Nix** with flakes enabled, *or* GHC `9.12.4`, `cabal-install`,
   `pkg-config`, `zlib`, and PostgreSQL installed manually. The Nix flake
   pins the supported toolchain — use it if you can.
-- **`kubectl` context** pointed at the cluster you intend to drive. shiki
+- **A kubeconfig context** for the cluster you intend to drive. shiki
   reads the same client config (`~/.kube/config`, or `KUBECONFIG` if set), so
   if `kubectl get deploy -n <ns> <name>` works, shiki can introspect that
   Deployment. See [Authentication](#authentication) below for which kubeconfig
@@ -171,8 +171,8 @@ rarely necessary.
 ## Authentication
 
 shiki authenticates to the cluster with your existing kubeconfig — the file
-at `KUBECONFIG`, or `~/.kube/config` when that variable is unset. The current
-context's user determines how shiki proves who it is. shiki supports:
+at `KUBECONFIG`, or `~/.kube/config` when that variable is unset. Shiki uses the selected environment's `kubernetesContext` or, for an unbound
+environment, the current context. That context selects both the server and the user. shiki supports:
 
 - **Static bearer token** (`user.token` / `user.tokenFile`).
 - **Client certificate** (`user.client-certificate*` / `user.client-key*`).

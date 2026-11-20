@@ -5,8 +5,8 @@ description: "Reference shiki's PostgreSQL runs table, its indexes, migration bo
 docId: DOC-8
 tags: [shiki, postgresql, schema, migrations]
 generated:
-  by: process:codex-cli
-  at: 2026-09-15T18:25:00Z
+  by: process:codex
+  at: 2026-11-20T00:04:32Z
 ---
 
 # Database schema
@@ -27,6 +27,8 @@ One row per submitted run. Written by `shiki run`, read by the
 |------------------------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `id`                   | `uuid`         | Primary key. Surfaced to operators as an 8-character prefix in `runs list`; commands accept any unambiguous prefix.                                                                                |
 | `service_name`         | `text`         | The `name` field from the service's Dhall config.                                                                                                          |
+| `environment`          | `text`         | Selected project environment, or NULL outside a project and for pre-upgrade rows. |
+| `kubernetes_context`   | `text`         | Context used to submit the Job. NULL for rows recorded before migration 004. |
 | `command`              | `text[]`       | Everything passed after `--` on the `shiki run` command line.                                                                                              |
 | `namespace`            | `text`         | The namespace the Job was submitted into (may differ from the service default if `--namespace` was used).                                                  |
 | `job_name`             | `text`         | `<service>-oneoff-YYYYMMDD-HHMMSS-<6 random lowercase letters>` — unique per run.                                                                                                            |
@@ -94,12 +96,11 @@ GRANT SELECT, INSERT, UPDATE ON shiki.runs TO some_role;
 Such a role can verify an already-current ledger but cannot apply a new
 migration, because altering `runs` and updating the ledger need their owners.
 After upgrading to a shiki release that ships a new migration—or when first
-crossing from `schema_migrations` to `pg-migrate`—run any `shiki` subcommand once
+crossing from `schema_migrations` to `pg-migrate`—run `shiki runs list` once
 as the owning role before the restricted role uses it again.
 
-In particular, migration `003-add-last-watched-at.sql` adds the watcher
-heartbeat column. Each environment must run the upgraded binary once as
-the owner of `runs` before a restricted runtime role starts using it.
+Migration `003-add-last-watched-at.sql` adds the watcher heartbeat column.
+Migration `004-add-run-destination.sql` adds the environment and context columns.
 
 ## Schema-name override
 

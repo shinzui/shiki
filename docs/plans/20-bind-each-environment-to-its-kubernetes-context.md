@@ -39,12 +39,29 @@ An operator can run `shiki --env prod run worker --no-wait -- check` while their
 
 ## Surprises & Discoveries
 
+The packaged Nix check builds the CLI before running its tests but needs the build
+directory on the subprocess path. The package check now exercises the same binary
+as the Cabal integration test. See [FRIC-1](../friction-log/1-the-packaged-cli-test-could-not-find-the-executable-it-just-built.md).
+
 ## Decision Log
 
 - 2026-11-19. Extend the public Dhall package with a second pair of types. Existing projects import the original types by name, sometimes from a moving branch. Changing the shape behind those names would break valid project files during Dhall type checking, before Shiki could decode them.
 - 2026-11-19. Use the recorded context when reconciling a detached Job. The current `runs sync` can mark a missing Job as failed when the service Deployment exists. Two clusters may have identically named Deployments, so lookup in the submission context is necessary to preserve this existing workflow.
 
 ## Outcomes & Retrospective
+
+All five acceptance criteria passed. With current context `local`, both run modes
+sent production requests to `sennari`. Removing the binding target stopped the
+command before migration 004, row insertion, or API traffic. Removing it after
+submission left the detached row unfinished while bulk sync finalized a local
+Job. Restoring the context allowed a single-run sync to collect the production
+outcome. See [ADR 6](../adr/6-resolve-and-record-the-kubernetes-context-at-submission.md).
+
+The final Cabal build, both suites (74 core tests and 125 CLI tests), Dhall package
+type-check, user documentation validation and link graph passed. The example
+evaluated against the local schema. The macOS Nix package check also passed all
+125 CLI tests. [FRIC-1](../friction-log/1-the-packaged-cli-test-could-not-find-the-executable-it-just-built.md)
+was resolved by exposing the built executable during the Nix test phase.
 
 ## Context and Orientation
 

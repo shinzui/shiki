@@ -5,8 +5,8 @@ description: "Reference every shiki subcommand, its flags, the global database a
 docId: DOC-3
 tags: [shiki, cli, commands, reference]
 generated:
-  by: process:claude-code
-  at: 2026-09-16T00:46:10Z
+  by: process:codex
+  at: 2026-11-20T00:04:32Z
 ---
 
 # Commands reference
@@ -25,7 +25,7 @@ environment variables.
 |----------------|---------------------------------------------------|----------|-----------------------------------------------------------------------------------------------|
 | `--db CONNSTR` | `SHIKI_DATABASE_URL`, then `PG_CONNECTION_STRING` | *(none)* | PostgreSQL connection string. Explicit override for the active project environment database.   |
 | `--db-schema SCHEMA` | `SHIKI_DB_SCHEMA`                           | `shiki`  | PostgreSQL schema for shiki's tables. Must match `[A-Za-z_][A-Za-z0-9_]*` and be ≤ 63 bytes. |
-| `--env NAME`   | `SHIKI_ENV`                                      | `defaultEnvironment` from `shiki.dhall` | Active project environment for project-local configuration and database routing. |
+| `--env NAME`   | `SHIKI_ENV`                                      | `defaultEnvironment` from `shiki.dhall` | Selects project storage and the Kubernetes binding for new Jobs. |
 
 Database subcommands resolve their connection string in this order:
 
@@ -202,7 +202,22 @@ shiki run SERVICE [--namespace NS] [--no-wait] [--config-dir DIR] -- ARG...
   the row is inserted — the service Dhall file does not load, or the live
   Deployment cannot be read — exit without recording a run.
 
-**Output:** one line, where `<id>` is the run's full UUID. A Job that ran to
+Before inspecting the Deployment, Shiki prints the selected environment, context
+and namespace. For example, a production run may print:
+
+```text
+environment=prod context=sennari namespace=ops
+```
+
+Outside a project, the environment displays as `-`. An unbound environment uses
+the current context. If the declared context is absent, Shiki exits 1 before migrations, run insertion
+or Kubernetes requests, including when `--db` is supplied:
+
+```text
+shiki: environment prod declares missing Kubernetes context sennari
+```
+
+The next output line includes the run's full UUID. A Job that ran to
 a verdict prints `run <id> Succeeded job=<job-name>` or
 `run <id> Failed job=<job-name>`. A run that never got a verdict —
 submission threw, the API call failed, polling died — prints
@@ -242,8 +257,9 @@ shiki runs list [--service NAME] [--limit N]
 | `--service NAME`, `-s`   | *(off)* | Filter to one service.                                           |
 | `--limit N`, `-l`        | `20`    | Max rows.                                                        |
 
-Columns: `ID` (8-char prefix), `STARTED`, `SERVICE`, `STATUS`,
-`DURATION`, `EXIT`, `COMMAND`. An empty result prints
+Columns: `ID` (8-char prefix), `STARTED`, `SERVICE`, `ENVIRONMENT`, `CONTEXT`, `STATUS`,
+`DURATION`, `EXIT`, `COMMAND`. A dash marks an unknown destination field,
+including both fields on rows recorded before migration 004. An empty result prints
 `(no runs recorded yet)` on stdout and exits 0 — an empty list is not an
 error here.
 
@@ -264,7 +280,8 @@ and exit 1.
 If `ID` is omitted, shiki opens an `fzf` picker over the 50 most recent
 runs; see [Interactive selection (fzf)](#interactive-selection-fzf).
 
-The JSON includes everything: command, namespace, image, stored status,
+The JSON includes `environment` and `kubernetesContext` (null when absent),
+command, namespace, image, stored status,
 exit code, timestamps including nullable `lastWatchedAt`, duration, the
 captured `logTail`, `errorMessage`, `errorSummary`, `errorSummarySource`,
 and a full copy of the `serviceConfig` that was used. For an unwatched row,
@@ -351,6 +368,10 @@ reads each such run's Job and writes the outcome:
 | succeeded or failed                  | finalized exactly as `shiki run` would have: status, exit code, the Job's own end time, log tail, error summary |
 | not found, run under 2 minutes old   | left alone (the Job may not be created yet)                                                                       |
 | not found, run older                 | `failed`, with `error` saying the Job no longer exists and its outcome is unknown                                |
+
+Sync looks up each Job in the context recorded at submission. A missing recorded
+context produces a per-run error and leaves that row unfinished. Older rows
+with a null context use the current context.
 
 Without `ID`, every `pending` or `running` run is synced, oldest first.
 With `ID`, only that run; a run that already finished prints

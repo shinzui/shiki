@@ -1,5 +1,9 @@
 # shiki User Documentation Log
 
+## 2026-11-20
+
+* **Update**: Document Kubernetes context bindings, run destination output, history for older runs, and reconciliation in the recorded context.
+
 ## 2026-09-16
 * **Update**: Add an "Errors and exit codes" section: every failure is one `shiki: …` line on stderr with exit 1, `agent assist` exits with its child's status, Ctrl-C during `shiki run` leaves the Job running, and only `run` and `runs sync` read a kubeconfig
 * **Update**: Correct the missing-connection-string message in the project configuration reference to match the wording shiki now prints

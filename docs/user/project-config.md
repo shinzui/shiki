@@ -1,12 +1,12 @@
 ---
 type: Reference
 title: "Project Configuration"
-description: "Reference the project-local shiki.dhall file format, named environments, environment selection order, and database connection precedence."
+description: "Reference the project-local shiki.dhall file format, named environments, Kubernetes context bindings, and database connection precedence."
 docId: DOC-7
 tags: [shiki, configuration, dhall, environments]
 generated:
-  by: process:claude-code
-  at: 2026-09-16T00:46:10Z
+  by: process:codex
+  at: 2026-11-20T00:04:32Z
 ---
 
 # Project Configuration
@@ -15,29 +15,37 @@ generated:
 and `shiki` discovers it by walking up from the current working directory until it finds
 the first file named `shiki.dhall`.
 
-This file powers `shiki config show` and database routing for `shiki run`, `shiki runs`,
-and `shiki agent`.
+This file selects storage for database commands and the Kubernetes destination for `shiki run`.
 
 ## File Format
 
-The file declares named shiki environments and one default environment. Each environment
-currently carries a PostgreSQL connection string:
+Each environment has a database URL. To bind Jobs to a Kubernetes context, use a
+schema revision that exports `ProjectConfigWithContext`. Give every environment a
+`kubernetesContext` value. Here production uses `sennari` and staging uses the
+current context from the operator's kubeconfig.
 
 ```dhall
 let Schema =
       https://raw.githubusercontent.com/shinzui/shiki/master/schema/package.dhall
 
-let mkEnv = \(url : Text) -> { databaseUrl = url } : Schema.Environment
+let mkEnv =
+      \(url : Text) ->
+      \(context : Optional Text) ->
+        { databaseUrl = url, kubernetesContext = context } : Schema.EnvironmentWithContext
 
 in    { environments =
           toMap
-            { staging = mkEnv "postgresql://shiki:changeme@db.staging.internal:5432/shiki"
-            , prod = mkEnv "postgresql://shiki:changeme@db.prod.internal:5432/shiki"
+            { staging = mkEnv "postgresql://shiki:changeme@db.staging.internal:5432/shiki" (None Text)
+            , prod = mkEnv "postgresql://shiki:changeme@db.prod.internal:5432/shiki" (Some "sennari")
             }
       , defaultEnvironment = "staging"
       }
-    : Schema.ProjectConfig
+    : Schema.ProjectConfigWithContext
 ```
+
+Existing files using `Schema.ProjectConfig` and `Schema.Environment` continue
+to use the current context. A project can opt in by switching to the types in
+the example above.
 
 Run `shiki config init --schema-ref <tag-or-commit>` to create a starter
 `shiki.dhall`. The generated file imports shiki's public schema package from
@@ -99,9 +107,9 @@ Use `--db` for a one-off override:
 shiki --env staging --db postgresql://localhost/shiki runs list
 ```
 
-In that example, `--db` wins for the database connection and `--env staging`
-is not consulted at all by database commands, so it is not checked against the
-declared environments either.
+The history command in this example opens the specified database directly.
+For `shiki run`, a database override still uses the selected environment's Kubernetes context.
+A missing bound context stops the command before migrations or Job creation.
 
 If the active environment has no usable database URL and neither fallback
 environment variable is set, shiki exits before opening a pool:
