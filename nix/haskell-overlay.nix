@@ -27,8 +27,12 @@ let
   # The test-suite starts throwaway databases with ephemeral-pg, which needs
   # initdb/postgres on PATH. This only matters where tests run: the managed
   # checks.shiki-cli-test (nix/haskell-cli-app.nix) re-enables them.
-  ephemeralPostgres = drv: {
+  cliTestTools = drv: {
     testToolDepends = (drv.testToolDepends or [ ]) ++ [ pkgs.postgresql ];
+    # Setup test runs before installation. Exercise the just-built executable.
+    preCheck = (drv.preCheck or "") + ''
+      export PATH="$PWD/dist/build/shiki:$PATH"
+    '';
   };
 in
 final: prev:
@@ -168,6 +172,6 @@ final: prev:
 
   shiki-cli =
     dontHaddock (dontCheck
-      (overrideCabal (drv: stageRootFiles drv // shikiVersionFlags drv // ephemeralPostgres drv)
+      (overrideCabal (drv: stageRootFiles drv // shikiVersionFlags drv // cliTestTools drv)
         (doJailbreak (final.callCabal2nix "shiki-cli" ../shiki-cli { }))));
 }

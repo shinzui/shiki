@@ -148,5 +148,24 @@ in  Schema.Project::{
         , okfVersion = "0.2"
         , description = Some "Improvement requests addressed to shiki"
         }
+      , Schema.OkfBundle::{
+        , name = "friction-log"
+        , path = "docs/friction-log"
+        , profile = Some "docs/friction-log/profile.dhall"
+        , profileBinding = Some
+            ( Schema.ProfileBinding.Published
+                Schema.PinnedImport::{
+                , publisher = "shinzui/okf-profiles"
+                , publisherRef = Some
+                    Schema.MoriRef::{ namespace = "shinzui", name = "okf-profiles" }
+                , export = Some "coordination.frictionLog"
+                , version = Some "v0.23.0"
+                , pin = Some
+                    "sha256:a3343fd47e2cc51907ae81ccaec2f3957e048e37545df7ecb0bcac8604d4cab0"
+                }
+            )
+        , okfVersion = "0.2"
+        , description = Some "Friction recorded while implementing Shiki plans"
+        }
       ]
     }

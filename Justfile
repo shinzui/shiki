@@ -79,6 +79,9 @@ user-documentation-validate:
     okf validate docs/user --strict --profile mori/user-documentation-profile.dhall --profile-enforce --log-enforce
     okf graph docs/user
 
+friction-log-validate:
+    okf validate docs/friction-log --strict --profile docs/friction-log/profile.dhall --profile-enforce --log-enforce
+
 # --- Nix ---
 
 # Build via nix
