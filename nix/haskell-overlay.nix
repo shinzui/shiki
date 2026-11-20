@@ -23,6 +23,13 @@ let
       "--ghc-option=-DGIT_HASH=\"${builtins.substring 0 7 gitRev}\""
     ];
   };
+
+  # The test-suite starts throwaway databases with ephemeral-pg, which needs
+  # initdb/postgres on PATH. This only matters where tests run: the managed
+  # checks.shiki-cli-test (nix/haskell-cli-app.nix) re-enables them.
+  ephemeralPostgres = drv: {
+    testToolDepends = (drv.testToolDepends or [ ]) ++ [ pkgs.postgresql ];
+  };
 in
 final: prev:
 {
@@ -61,6 +68,36 @@ final: prev:
       }
       { });
 
+  # The `haskell-nix` input's default baikai generation is 0.6.x, but
+  # baikai-effectful 0.4.0.2 needs baikai >= 0.7. Pin the family to the
+  # Hackage releases cabal.project resolves to.
+  baikai =
+    dontCheck (final.callHackageDirect
+      {
+        pkg = "baikai";
+        ver = "0.7.2.0";
+        sha256 = "sha256-YF6BEQvWqegthAJSjNa+yOSpexuENpSzFZehN/+2DjQ=";
+      }
+      { });
+
+  baikai-claude =
+    dontCheck (final.callHackageDirect
+      {
+        pkg = "baikai-claude";
+        ver = "0.7.1.0";
+        sha256 = "sha256-HskzJuUC3ZTYcQQcTLbV/IJ030fvCm5oDEEddNdH46M=";
+      }
+      { });
+
+  baikai-openai =
+    dontCheck (final.callHackageDirect
+      {
+        pkg = "baikai-openai";
+        ver = "0.7.1.0";
+        sha256 = "sha256-2d/u91NmFK+Na+/3T2JxfsgbYGTH5GZXa4oXDL4eslM=";
+      }
+      { });
+
   baikai-effectful =
     dontCheck (final.callHackageDirect
       {
@@ -87,6 +124,12 @@ final: prev:
 
   kubernetes-api-client =
     dontCheck (doJailbreak (overrideCabal noDerivingTypeable prev.kubernetes-api-client));
+
+  # binary-instances 1.0.6 (via kubernetes-api-client and hoauth2) caps tagged
+  # below 0.8.10, QuickCheck below 2.16 and quickcheck-instances below 0.4, but
+  # the GHC 9.12 set ships tagged 0.8.11, QuickCheck 2.18 and
+  # quickcheck-instances 0.4. Lift the bounds; its test-suite is skipped.
+  binary-instances = dontCheck (doJailbreak prev.binary-instances);
 
   jose-jwt =
     dontCheck (doJailbreak
@@ -125,6 +168,6 @@ final: prev:
 
   shiki-cli =
     dontHaddock (dontCheck
-      (overrideCabal (drv: stageRootFiles drv // shikiVersionFlags drv)
+      (overrideCabal (drv: stageRootFiles drv // shikiVersionFlags drv // ephemeralPostgres drv)
         (doJailbreak (final.callCabal2nix "shiki-cli" ../shiki-cli { }))));
 }
